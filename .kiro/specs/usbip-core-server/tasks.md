@@ -27,17 +27,17 @@
     - _Requirements: 1.1, 1.3, 1.5_
 
 - [ ] 3. Implement Network Layer
-  - [ ] 3.1 Create network service interfaces
+  - [x] 3.1 Create network service interfaces
     - Define NetworkService protocol
     - Define ClientConnection protocol
     - _Requirements: 2.1, 2.2_
   
-  - [ ] 3.2 Implement TCP server using Network.framework
+  - [x] 3.2 Implement TCP server using Network.framework
     - Create TCPServer class implementing NetworkService
     - Implement connection acceptance on port 3240
     - _Requirements: 2.1, 2.2, 2.4_
   
-  - [ ] 3.3 Implement client connection handling
+  - [-] 3.3 Implement client connection handling
     - Create TCPClientConnection class
     - Implement data sending/receiving functionality
     - Implement connection cleanup on disconnect
