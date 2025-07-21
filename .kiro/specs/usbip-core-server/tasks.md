@@ -1,26 +1,26 @@
 # Implementation Plan
 
-- [-] 1. Set up Git branch and project structure
+- [x] 1. Set up Git branch and project structure
   - Create a new git branch for the USB/IP core server feature
   - Create directory structure according to the project organization guidelines
   - Set up Swift Package Manager configuration
   - Make initial commit with project structure
   - _Requirements: All_
 
-- [ ] 2. Implement Protocol Layer
-  - [ ] 2.1 Create USB/IP protocol message structures
+- [x] 2. Implement Protocol Layer
+  - [x] 2.1 Create USB/IP protocol message structures
     - Implement common header structure
     - Implement device list request/response structures
     - Implement device import request/response structures
     - Commit protocol message structures
     - _Requirements: 1.1, 1.2, 1.4_
   
-  - [ ] 2.2 Implement message encoding functionality
+  - [x] 2.2 Implement message encoding functionality
     - Create encoder for USB/IP messages
     - Implement proper endianness handling
     - _Requirements: 1.2, 1.5_
   
-  - [ ] 2.3 Implement message decoding functionality
+  - [x] 2.3 Implement message decoding functionality
     - Create decoder for USB/IP messages
     - Implement validation and error handling for malformed messages
     - Commit protocol layer implementation
