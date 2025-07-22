@@ -11,6 +11,12 @@ public protocol DeviceDiscovery {
     /// Get a specific device by bus ID and device ID
     func getDevice(busID: String, deviceID: String) throws -> USBDevice?
     
+    /// Start monitoring for device notifications
+    func startNotifications() throws
+    
+    /// Stop monitoring for device notifications
+    func stopNotifications()
+    
     /// Callback for device connection events
     var onDeviceConnected: ((USBDevice) -> Void)? { get set }
     
@@ -18,8 +24,23 @@ public protocol DeviceDiscovery {
     var onDeviceDisconnected: ((USBDevice) -> Void)? { get set }
 }
 
+/// Protocol for USB device information
+public protocol USBDeviceInfo {
+    var busID: String { get }
+    var deviceID: String { get }
+    var vendorID: UInt16 { get }
+    var productID: UInt16 { get }
+    var deviceClass: UInt8 { get }
+    var deviceSubClass: UInt8 { get }
+    var deviceProtocol: UInt8 { get }
+    var speed: USBSpeed { get }
+    var manufacturerString: String? { get }
+    var productString: String? { get }
+    var serialNumberString: String? { get }
+}
+
 /// Represents a USB device
-public struct USBDevice {
+public struct USBDevice: USBDeviceInfo {
     public let busID: String
     public let deviceID: String
     public let vendorID: UInt16
