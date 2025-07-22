@@ -204,9 +204,11 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertFalse(config.shouldLog(level: .debug))  // debug > info
     }
     
-    func testLogLevelPriority() {
-        XCTAssertGreaterThan(LogLevel.debug.priority, LogLevel.info.priority)
-        XCTAssertGreaterThan(LogLevel.info.priority, LogLevel.warning.priority)
-        XCTAssertGreaterThan(LogLevel.warning.priority, LogLevel.error.priority)
+    func testLogLevelComparison() {
+        // Test that log levels can be compared (debug is lowest, critical is highest)
+        XCTAssertLessThan(LogLevel.debug, LogLevel.info)
+        XCTAssertLessThan(LogLevel.info, LogLevel.warning)
+        XCTAssertLessThan(LogLevel.warning, LogLevel.error)
+        XCTAssertLessThan(LogLevel.error, LogLevel.critical)
     }
 }

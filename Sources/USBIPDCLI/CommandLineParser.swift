@@ -5,6 +5,9 @@ import Foundation
 import USBIPDCore
 import Common
 
+// Logger for command-line operations
+private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "cli-parser")
+
 /// Represents a command that can be executed by the CLI
 public protocol Command {
     /// The name of the command
@@ -62,21 +65,33 @@ public class CommandLineParser {
     
     /// Initialize a new command-line parser with default dependencies
     public convenience init() {
+        logger.debug("Initializing command-line parser with default dependencies")
+        
         // Create default dependencies
         let deviceDiscovery = IOKitDeviceDiscovery()
+        logger.debug("Created IOKitDeviceDiscovery instance")
         
         // Load or create default server config
         let serverConfig: ServerConfig
         do {
+            logger.debug("Loading server configuration")
             serverConfig = try ServerConfig.load()
+            logger.info("Loaded server configuration", context: [
+                "port": serverConfig.port,
+                "logLevel": serverConfig.logLevel.rawValue,
+                "debugMode": serverConfig.debugMode ? "enabled" : "disabled"
+            ])
         } catch {
+            logger.warning("Failed to load server configuration", context: ["error": error.localizedDescription])
             print("Warning: Failed to load server configuration: \(error.localizedDescription)")
             print("Using default configuration.")
             serverConfig = ServerConfig()
+            logger.info("Using default server configuration")
         }
         
         // Create network service
         let networkService = TCPServer()
+        logger.debug("Created TCPServer instance")
         
         // Create server
         let server = ServerCoordinator(
@@ -84,8 +99,10 @@ public class CommandLineParser {
             deviceDiscovery: deviceDiscovery,
             config: serverConfig
         )
+        logger.debug("Created ServerCoordinator instance")
         
         self.init(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, server: server)
+        logger.debug("Command-line parser initialization complete")
     }
     
     /// Register all available commands
@@ -112,8 +129,11 @@ public class CommandLineParser {
         // Skip the first argument (program name)
         let args = Array(arguments.dropFirst())
         
+        logger.debug("Parsing command-line arguments", context: ["arguments": args.joined(separator: " ")])
+        
         if args.isEmpty {
             // Show help if no arguments provided
+            logger.info("No command specified, showing help")
             try commands["help"]?.execute(with: [])
             return
         }
@@ -121,11 +141,17 @@ public class CommandLineParser {
         let commandName = args[0]
         let commandArgs = Array(args.dropFirst())
         
+        logger.info("Executing command", context: ["command": commandName, "arguments": commandArgs.joined(separator: " ")])
+        
         guard let command = commands[commandName] else {
+            logger.error("Unknown command", context: ["command": commandName])
             throw CommandLineError.unknownCommand(commandName)
         }
         
+        logger.debug("Found command handler", context: ["command": commandName, "type": String(describing: type(of: command))])
+        
         try command.execute(with: commandArgs)
+        logger.info("Command executed successfully", context: ["command": commandName])
     }
     
     /// Get all registered commands

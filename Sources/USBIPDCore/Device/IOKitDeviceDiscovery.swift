@@ -4,6 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.usb
+import Common
 
 /// IOKit-based implementation of USB device discovery
 public class IOKitDeviceDiscovery: DeviceDiscovery {
@@ -16,6 +17,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     private var notificationPort: IONotificationPortRef?
     private var addedIterator: io_iterator_t = 0
     private var removedIterator: io_iterator_t = 0
+    private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "device-discovery")
     
     // MARK: - Initialization
     
@@ -28,10 +30,12 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     // MARK: - DeviceDiscovery Protocol
     
     public func discoverDevices() throws -> [USBDevice] {
+        logger.debug("Starting USB device discovery")
         var devices: [USBDevice] = []
         
         // Create matching dictionary for USB devices
         guard let matchingDict = IOServiceMatching(kIOUSBDeviceClassName) else {
+            logger.error("Failed to create IOKit matching dictionary")
             throw DeviceDiscoveryError.failedToCreateMatchingDictionary
         }
         
@@ -39,6 +43,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         let result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
         
         guard result == KERN_SUCCESS else {
+            logger.error("Failed to get matching services", context: ["result": result])
             throw DeviceDiscoveryError.failedToGetMatchingServices(result)
         }
         
@@ -46,6 +51,8 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             IOObjectRelease(iterator)
         }
         
+        logger.debug("Iterating through discovered USB devices")
+        var deviceCount = 0
         var service: io_service_t = IOIteratorNext(iterator)
         while service != 0 {
             defer {
@@ -56,18 +63,41 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             do {
                 let device = try createUSBDevice(from: service)
                 devices.append(device)
+                deviceCount += 1
+                
+                logger.debug("Found USB device", context: [
+                    "busID": device.busID,
+                    "deviceID": device.deviceID,
+                    "vendorID": String(format: "0x%04x", device.vendorID),
+                    "productID": String(format: "0x%04x", device.productID),
+                    "product": device.productString ?? "Unknown"
+                ])
             } catch {
-                // Log error but continue with other devices
-                print("Warning: Failed to create USB device from service: \(error)")
+                logger.warning("Failed to create USB device from service", context: ["error": error.localizedDescription])
             }
         }
         
+        logger.info("Discovered \(deviceCount) USB devices")
         return devices
     }
     
     public func getDevice(busID: String, deviceID: String) throws -> USBDevice? {
+        logger.debug("Looking for specific device", context: ["busID": busID, "deviceID": deviceID])
         let devices = try discoverDevices()
-        return devices.first { $0.busID == busID && $0.deviceID == deviceID }
+        let device = devices.first { $0.busID == busID && $0.deviceID == deviceID }
+        
+        if let device = device {
+            logger.debug("Found requested device", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "vendorID": String(format: "0x%04x", device.vendorID),
+                "productID": String(format: "0x%04x", device.productID)
+            ])
+        } else {
+            logger.warning("Device not found", context: ["busID": busID, "deviceID": deviceID])
+        }
+        
+        return device
     }
     
     // MARK: - Private Methods
@@ -206,12 +236,16 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     public func startNotifications() throws {
         guard notificationPort == nil else {
+            logger.debug("Device notifications already started")
             return // Already started
         }
+        
+        logger.info("Starting USB device notifications")
         
         // Create notification port
         notificationPort = IONotificationPortCreate(kIOMasterPortDefault)
         guard let port = notificationPort else {
+            logger.error("Failed to create IOKit notification port")
             throw DeviceDiscoveryError.failedToCreateNotificationPort
         }
         
@@ -219,6 +253,9 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         let runLoopSource = IONotificationPortGetRunLoopSource(port)?.takeUnretainedValue()
         if let source = runLoopSource {
             CFRunLoopAddSource(CFRunLoopGetCurrent(), source, CFRunLoopMode.defaultMode)
+            logger.debug("Added notification port to run loop")
+        } else {
+            logger.warning("Failed to get run loop source from notification port")
         }
         
         // Set up device added notifications
@@ -233,6 +270,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         )
         
         guard addedResult == KERN_SUCCESS else {
+            logger.error("Failed to add device added notification", context: ["result": addedResult])
             throw DeviceDiscoveryError.failedToAddNotification(addedResult)
         }
         
@@ -248,36 +286,53 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         )
         
         guard removedResult == KERN_SUCCESS else {
+            logger.error("Failed to add device removed notification", context: ["result": removedResult])
             throw DeviceDiscoveryError.failedToAddNotification(removedResult)
         }
+        
+        logger.debug("Consuming initial device notifications")
         
         // Consume initial notifications
         consumeIterator(addedIterator, isAddedNotification: true)
         consumeIterator(removedIterator, isAddedNotification: false)
+        
+        logger.info("USB device notifications started successfully")
     }
     
     public func stopNotifications() {
+        logger.info("Stopping USB device notifications")
+        
         if let port = notificationPort {
             if let runLoopSource = IONotificationPortGetRunLoopSource(port)?.takeUnretainedValue() {
                 CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, CFRunLoopMode.defaultMode)
+                logger.debug("Removed notification port from run loop")
             }
             IONotificationPortDestroy(port)
             notificationPort = nil
+            logger.debug("Destroyed notification port")
         }
         
         if addedIterator != 0 {
             IOObjectRelease(addedIterator)
             addedIterator = 0
+            logger.debug("Released device added iterator")
         }
         
         if removedIterator != 0 {
             IOObjectRelease(removedIterator)
             removedIterator = 0
+            logger.debug("Released device removed iterator")
         }
+        
+        logger.info("USB device notifications stopped")
     }
     
     // Changed from private to internal for callback access
     func consumeIterator(_ iterator: io_iterator_t, isAddedNotification: Bool) {
+        let eventType = isAddedNotification ? "added" : "removed"
+        logger.debug("Processing \(eventType) device notifications")
+        
+        var deviceCount = 0
         var service: io_service_t = IOIteratorNext(iterator)
         while service != 0 {
             defer {
@@ -285,12 +340,21 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                 service = IOIteratorNext(iterator)
             }
             
+            deviceCount += 1
+            
             if isAddedNotification {
                 do {
                     let device = try createUSBDevice(from: service)
+                    logger.info("USB device connected", context: [
+                        "busID": device.busID,
+                        "deviceID": device.deviceID,
+                        "vendorID": String(format: "0x%04x", device.vendorID),
+                        "productID": String(format: "0x%04x", device.productID),
+                        "product": device.productString ?? "Unknown"
+                    ])
                     onDeviceConnected?(device)
                 } catch {
-                    print("Warning: Failed to create USB device from added notification: \(error)")
+                    logger.error("Failed to create USB device from added notification", context: ["error": error.localizedDescription])
                 }
             } else {
                 // For removed notifications, we don't have full device info
@@ -305,6 +369,11 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                     // Try to get address if available
                     if let address = getUInt8PropertyOptional(from: service, key: "USB Address") {
                         let deviceID = String(format: "%d", address)
+                        
+                        logger.info("USB device disconnected", context: [
+                            "busID": busID,
+                            "deviceID": deviceID
+                        ])
                         
                         // Create minimal device with just identification info
                         let device = USBDevice(
@@ -323,12 +392,16 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                         
                         onDeviceDisconnected?(device)
                     } else {
-                        print("Warning: Could not get device address for removed device")
+                        logger.warning("Could not get device address for removed device", context: ["locationID": locationID])
                     }
                 } else {
-                    print("Warning: Could not get location ID for removed device")
+                    logger.warning("Could not get location ID for removed device")
                 }
             }
+        }
+        
+        if deviceCount > 0 {
+            logger.debug("Processed \(deviceCount) \(eventType) device notifications")
         }
     }
 }

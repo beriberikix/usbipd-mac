@@ -79,7 +79,7 @@
     - Commit core server implementation
     - _Requirements: 5.3_
 
-- [ ] 6. Implement CLI Layer
+- [x] 6. Implement CLI Layer
   - [x] 6.1 Create command-line argument parser
     - Implement CommandLineParser class
     - Support all required commands (list, bind, unbind, etc.)
@@ -96,13 +96,13 @@
     - Commit CLI layer implementation
     - _Requirements: 4.2, 5.5_
 
-- [ ] 7. Implement Logging System
-  - [ ] 7.1 Create logging infrastructure
+- [x] 7. Implement Logging System
+  - [x] 7.1 Create logging infrastructure
     - Implement Logger class
     - Support different log levels
     - _Requirements: 5.1, 5.3, 5.5_
   
-  - [ ] 7.2 Integrate logging throughout the application
+  - [x] 7.2 Integrate logging throughout the application
     - Add logging calls at key points
     - Implement error logging
     - Commit logging system implementation

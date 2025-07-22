@@ -4,6 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.usb
+import Common
 
 /// Class for monitoring USB device connections and disconnections
 public class DeviceMonitor {
@@ -37,6 +38,7 @@ public class DeviceMonitor {
     private var deviceDiscovery: DeviceDiscovery
     private var isMonitoring: Bool = false
     private var knownDevices: [String: USBDevice] = [:]
+    private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "device-monitor")
     
     // MARK: - Initialization
     
@@ -62,29 +64,52 @@ public class DeviceMonitor {
     
     /// Start monitoring for device changes
     public func startMonitoring() throws {
-        guard !isMonitoring else { return }
+        guard !isMonitoring else {
+            logger.debug("Device monitoring already active")
+            return
+        }
+        
+        logger.info("Starting device monitoring")
         
         // First, discover all current devices to establish baseline
+        logger.debug("Discovering initial devices")
         let devices = try deviceDiscovery.discoverDevices()
         
         // Store known devices by unique identifier
         for device in devices {
             let key = deviceKey(busID: device.busID, deviceID: device.deviceID)
             knownDevices[key] = device
+            logger.debug("Added initial device to known devices", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "vendorID": String(format: "0x%04x", device.vendorID),
+                "productID": String(format: "0x%04x", device.productID)
+            ])
         }
+        
+        logger.debug("Starting device notifications")
         
         // Start IOKit notifications
         try deviceDiscovery.startNotifications()
         isMonitoring = true
+        
+        logger.info("Device monitoring started successfully", context: ["initialDeviceCount": devices.count])
     }
     
     /// Stop monitoring for device changes
     public func stopMonitoring() {
-        guard isMonitoring else { return }
+        guard isMonitoring else {
+            logger.debug("Device monitoring not active")
+            return
+        }
+        
+        logger.info("Stopping device monitoring", context: ["knownDeviceCount": knownDevices.count])
         
         deviceDiscovery.stopNotifications()
         knownDevices.removeAll()
         isMonitoring = false
+        
+        logger.info("Device monitoring stopped")
     }
     
     /// Check if monitoring is active
@@ -104,11 +129,30 @@ public class DeviceMonitor {
         
         // Check if this is a new device
         if knownDevices[key] == nil {
+            logger.debug("New device connected", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "vendorID": String(format: "0x%04x", device.vendorID),
+                "productID": String(format: "0x%04x", device.productID),
+                "product": device.productString ?? "Unknown"
+            ])
+            
             knownDevices[key] = device
             
             // Notify about the new device
             let event = DeviceEvent(type: .connected, device: device)
             onDeviceEvent?(event)
+            
+            logger.info("Device connected event processed", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "totalDevices": knownDevices.count
+            ])
+        } else {
+            logger.debug("Ignoring already known device", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID
+            ])
         }
     }
     
@@ -117,11 +161,29 @@ public class DeviceMonitor {
         
         // Check if this is a known device
         if let knownDevice = knownDevices[key] {
+            logger.debug("Known device disconnected", context: [
+                "busID": knownDevice.busID,
+                "deviceID": knownDevice.deviceID,
+                "vendorID": String(format: "0x%04x", knownDevice.vendorID),
+                "productID": String(format: "0x%04x", knownDevice.productID)
+            ])
+            
             knownDevices.removeValue(forKey: key)
             
             // Notify about the disconnected device
             let event = DeviceEvent(type: .disconnected, device: knownDevice)
             onDeviceEvent?(event)
+            
+            logger.info("Device disconnected event processed", context: [
+                "busID": knownDevice.busID,
+                "deviceID": knownDevice.deviceID,
+                "remainingDevices": knownDevices.count
+            ])
+        } else {
+            logger.debug("Ignoring unknown disconnected device", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID
+            ])
         }
     }
     

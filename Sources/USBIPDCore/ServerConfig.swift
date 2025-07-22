@@ -4,21 +4,44 @@
 import Foundation
 import Common
 
-/// Log levels for server operations
-public enum LogLevel: String, CaseIterable, Codable {
-    case debug = "debug"
-    case info = "info"
-    case warning = "warning"
-    case error = "error"
-    
-    /// Priority order for log levels (higher number = more verbose)
-    public var priority: Int {
-        switch self {
-        case .error: return 0
-        case .warning: return 1
-        case .info: return 2
-        case .debug: return 3
+/// Type alias for log level to use Common.LogLevel
+public typealias LogLevel = Common.LogLevel
+
+/// Extension to make Common.LogLevel Codable for configuration serialization
+extension Common.LogLevel: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        
+        switch rawValue.lowercased() {
+        case "debug": self = .debug
+        case "info": self = .info
+        case "warning": self = .warning
+        case "error": self = .error
+        case "critical": self = .critical
+        default:
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Invalid log level: \(rawValue)"
+                )
+            )
         }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        let rawValue: String
+        
+        switch self {
+        case .debug: rawValue = "debug"
+        case .info: rawValue = "info"
+        case .warning: rawValue = "warning"
+        case .error: rawValue = "error"
+        case .critical: rawValue = "critical"
+        }
+        
+        try container.encode(rawValue)
     }
 }
 
@@ -156,7 +179,7 @@ public class ServerConfig: Codable {
     /// - Parameter messageLevel: Log level of the message
     /// - Returns: True if message should be logged
     public func shouldLog(level messageLevel: LogLevel) -> Bool {
-        return messageLevel.priority <= logLevel.priority
+        return messageLevel >= logLevel
     }
     
     /// Validate configuration values

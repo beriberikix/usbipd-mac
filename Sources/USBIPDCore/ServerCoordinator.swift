@@ -27,6 +27,9 @@ public class ServerCoordinator: USBIPServer {
     /// Server configuration
     private let config: ServerConfig
     
+    /// Logger instance for server events
+    private let logger: Logger
+    
     /// Flag indicating if the server is running
     private var isServerRunning = false
     
@@ -38,6 +41,14 @@ public class ServerCoordinator: USBIPServer {
         self.networkService = networkService
         self.deviceDiscovery = deviceDiscovery
         self.config = config
+        
+        // Initialize logger with appropriate configuration
+        let loggerConfig = LoggerConfig(
+            level: config.logLevel,
+            includeTimestamp: true,
+            includeContext: config.debugMode
+        )
+        self.logger = Logger(config: loggerConfig, subsystem: "com.usbipd.mac", category: "server")
         
         // Create request processor with configurable logging
         self.requestProcessor = RequestProcessor(deviceDiscovery: deviceDiscovery) { [weak config] message, processorLevel in
@@ -105,6 +116,8 @@ public class ServerCoordinator: USBIPServer {
         networkService.onClientConnected = { [weak self] clientConnection in
             guard let self = self else { return }
             
+            self.logger.info("Client connected", context: ["connectionId": clientConnection.id.uuidString])
+            
             // Create a local mutable variable for the connection
             var connection = clientConnection
             
@@ -112,20 +125,36 @@ public class ServerCoordinator: USBIPServer {
             connection.onDataReceived = { [weak self] data in
                 guard let self = self else { return }
                 
+                self.logger.debug("Received data from client", context: [
+                    "connectionId": connection.id.uuidString,
+                    "dataSize": data.count
+                ])
+                
                 do {
                     // Process the request using the request processor
                     let responseData = try self.requestProcessor.processRequest(data)
                     
                     // Send the response back to the client
                     try connection.send(data: responseData)
+                    
+                    self.logger.debug("Sent response to client", context: [
+                        "connectionId": connection.id.uuidString,
+                        "responseSize": responseData.count
+                    ])
                 } catch {
-                    print("[ERROR] Failed to process request: \(error.localizedDescription)")
+                    self.logger.error("Failed to process request", context: [
+                        "connectionId": connection.id.uuidString,
+                        "error": error.localizedDescription
+                    ])
                     
                     // Forward error to server error handler
                     self.onError?(error)
                     
                     // Close the connection on critical errors
                     if case USBIPProtocolError.invalidHeader = error {
+                        self.logger.warning("Closing connection due to invalid header", context: [
+                            "connectionId": connection.id.uuidString
+                        ])
                         try? connection.close()
                     }
                 }
@@ -135,24 +164,47 @@ public class ServerCoordinator: USBIPServer {
             connection.onError = { [weak self] error in
                 guard let self = self else { return }
                 
+                self.logger.error("Client connection error", context: [
+                    "connectionId": connection.id.uuidString,
+                    "error": error.localizedDescription
+                ])
+                
                 // Forward error to server error handler
                 self.onError?(error)
             }
         }
         
         // Handle client disconnections
-        networkService.onClientDisconnected = { _ in
+        networkService.onClientDisconnected = { [weak self] clientConnection in
+            guard let self = self else { return }
+            
+            self.logger.info("Client disconnected", context: ["connectionId": clientConnection.id.uuidString])
             // Clean up resources if needed
         }
         
         // Handle device connections
-        deviceDiscovery.onDeviceConnected = { _ in
-            // Update device list if needed
+        deviceDiscovery.onDeviceConnected = { [weak self] device in
+            guard let self = self else { return }
+            
+            self.logger.info("USB device connected", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "vendorID": String(format: "0x%04x", device.vendorID),
+                "productID": String(format: "0x%04x", device.productID),
+                "product": device.productString ?? "Unknown"
+            ])
         }
         
         // Handle device disconnections
-        deviceDiscovery.onDeviceDisconnected = { _ in
-            // Update device list if needed
+        deviceDiscovery.onDeviceDisconnected = { [weak self] device in
+            guard let self = self else { return }
+            
+            self.logger.info("USB device disconnected", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "vendorID": String(format: "0x%04x", device.vendorID),
+                "productID": String(format: "0x%04x", device.productID)
+            ])
         }
     }
     

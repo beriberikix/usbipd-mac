@@ -4,6 +4,9 @@
 import Foundation
 import Common
 
+// Logger for encoding/decoding operations
+private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "protocol-encoding")
+
 // MARK: - Data Extensions for Reading
 
 extension Data {
@@ -122,17 +125,23 @@ public struct USBIPMessageDecoder {
     
     /// Decode a device list request with validation
     public static func decodeDeviceListRequest(from data: Data) throws -> DeviceListRequest {
+        logger.debug("Decoding device list request", context: ["dataSize": data.count])
+        
         // Validate minimum data length
         guard data.count >= 8 else {
+            logger.error("Invalid data length for device list request", context: ["dataSize": data.count, "requiredSize": 8])
             throw USBIPProtocolError.invalidDataLength
         }
         
         // Validate that this is exactly the expected length for a device list request
         guard data.count == 8 else {
+            logger.error("Invalid message format for device list request", context: ["dataSize": data.count, "expectedSize": 8])
             throw USBIPProtocolError.invalidMessageFormat
         }
         
-        return try DeviceListRequest.decode(from: data)
+        let request = try DeviceListRequest.decode(from: data)
+        logger.debug("Successfully decoded device list request")
+        return request
     }
     
     /// Decode a device list response with validation
@@ -147,17 +156,23 @@ public struct USBIPMessageDecoder {
     
     /// Decode a device import request with validation
     public static func decodeDeviceImportRequest(from data: Data) throws -> DeviceImportRequest {
+        logger.debug("Decoding device import request", context: ["dataSize": data.count])
+        
         // Validate minimum data length (header + busID)
         guard data.count >= 40 else {
+            logger.error("Invalid data length for device import request", context: ["dataSize": data.count, "requiredSize": 40])
             throw USBIPProtocolError.invalidDataLength
         }
         
         // Validate that this is exactly the expected length for a device import request
         guard data.count == 40 else {
+            logger.error("Invalid message format for device import request", context: ["dataSize": data.count, "expectedSize": 40])
             throw USBIPProtocolError.invalidMessageFormat
         }
         
-        return try DeviceImportRequest.decode(from: data)
+        let request = try DeviceImportRequest.decode(from: data)
+        logger.debug("Successfully decoded device import request", context: ["busID": request.busID])
+        return request
     }
     
     /// Decode a device import response with validation
@@ -177,7 +192,10 @@ public struct USBIPMessageDecoder {
     
     /// Validate that data contains a valid USB/IP header
     public static func validateHeader(in data: Data) throws -> USBIPHeader {
+        logger.debug("Validating USB/IP header", context: ["dataSize": data.count])
+        
         guard data.count >= 8 else {
+            logger.error("Invalid data length for header validation", context: ["dataSize": data.count, "requiredSize": 8])
             throw USBIPProtocolError.invalidDataLength
         }
         
@@ -185,8 +203,18 @@ public struct USBIPMessageDecoder {
         
         // Validate protocol version
         guard header.version == USBIPProtocol.version else {
+            logger.error("Unsupported protocol version", context: [
+                "receivedVersion": String(format: "0x%04x", header.version),
+                "expectedVersion": String(format: "0x%04x", USBIPProtocol.version)
+            ])
             throw USBIPProtocolError.unsupportedVersion(header.version)
         }
+        
+        logger.debug("Header validation successful", context: [
+            "version": String(format: "0x%04x", header.version),
+            "command": String(format: "0x%04x", header.command.rawValue),
+            "status": header.status
+        ])
         
         return header
     }

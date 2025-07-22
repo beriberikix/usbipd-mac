@@ -5,6 +5,9 @@ import Foundation
 import USBIPDCore
 import Common
 
+// Logger for command operations
+private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "cli-commands")
+
 /// Command handler error types
 public enum CommandHandlerError: Error, LocalizedError {
     case deviceBindingFailed(String)
@@ -50,6 +53,8 @@ public class HelpCommand: Command {
     }
     
     public func execute(with arguments: [String]) throws {
+        logger.debug("Executing help command")
+        
         print("USB/IP Daemon for macOS")
         print("Version: 0.1.0")
         print("")
@@ -58,6 +63,7 @@ public class HelpCommand: Command {
         print("Commands:")
         
         guard let commands = parser?.getCommands() else {
+            logger.warning("Parser reference is nil, cannot display commands")
             return
         }
         
@@ -67,6 +73,8 @@ public class HelpCommand: Command {
         for command in sortedCommands {
             print("  \(command.name.padding(toLength: 10, withPad: " ", startingAt: 0)) \(command.description)")
         }
+        
+        logger.debug("Help command executed successfully")
     }
 }
 
@@ -84,43 +92,56 @@ public class ListCommand: Command {
     }
     
     public func execute(with arguments: [String]) throws {
+        logger.debug("Executing list command", context: ["arguments": arguments.joined(separator: " ")])
+        
         // Parse options
         var showRemoteOnly = false
         
         for arg in arguments {
             switch arg {
             case "-l", "--local":
+                logger.debug("Using local device listing mode (default)")
                 // Local is the default, so we don't need to do anything
                 break
             case "-r", "--remote":
+                logger.debug("Using remote device listing mode")
                 showRemoteOnly = true
             case "-h", "--help":
+                logger.debug("Showing help for list command")
                 printHelp()
                 return
             default:
+                logger.error("Unknown option for list command", context: ["option": arg])
                 throw CommandLineError.invalidArguments("Unknown option: \(arg)")
             }
         }
         
         // For MVP, we only support local devices
         if showRemoteOnly {
+            logger.warning("Remote device listing requested but not supported")
             print("Remote device listing is not supported in this version")
             return
         }
         
         do {
+            logger.debug("Discovering USB devices")
             // Get devices from device discovery
             let devices = try deviceDiscovery.discoverDevices()
+            
+            logger.info("Found \(devices.count) USB devices")
             
             // Format and print the device list
             let formattedOutput = outputFormatter.formatDeviceList(devices)
             print(formattedOutput)
             
             if devices.isEmpty {
+                logger.info("No USB devices found")
                 print("No USB devices found.")
             }
+            
+            logger.debug("List command executed successfully")
         } catch {
-            // Log the error and rethrow
+            logger.error("Failed to list devices", context: ["error": error.localizedDescription])
             print("Error: Failed to list devices: \(error.localizedDescription)")
             throw CommandLineError.executionFailed("Failed to list devices: \(error.localizedDescription)")
         }
@@ -150,20 +171,26 @@ public class BindCommand: Command {
     }
     
     public func execute(with arguments: [String]) throws {
+        logger.debug("Executing bind command", context: ["arguments": arguments.joined(separator: " ")])
+        
         if arguments.isEmpty {
+            logger.error("Missing required busid argument")
             throw CommandLineError.missingArguments("Device busid required")
         }
         
         if arguments.contains("-h") || arguments.contains("--help") {
+            logger.debug("Showing help for bind command")
             printHelp()
             return
         }
         
         let busid = arguments[0]
+        logger.debug("Processing bind request", context: ["busid": busid])
         
         // Validate busid format (e.g., 1-1, 2-3.4, etc.)
         let busidPattern = #"^\d+-\d+(\.\d+)*$"#
         guard busid.range(of: busidPattern, options: .regularExpression) != nil else {
+            logger.error("Invalid busid format", context: ["busid": busid])
             throw CommandLineError.invalidArguments("Invalid busid format: \(busid)")
         }
         
@@ -171,30 +198,49 @@ public class BindCommand: Command {
             // Split busid into components (e.g., "1-2" -> busID: "1", deviceID: "2")
             let components = busid.split(separator: "-")
             guard components.count >= 2 else {
+                logger.error("Invalid busid format after splitting", context: ["busid": busid])
                 throw CommandLineError.invalidArguments("Invalid busid format: \(busid)")
             }
             
             let busPart = String(components[0])
             let devicePart = String(components[1])
             
+            logger.debug("Looking for device", context: ["busID": busPart, "deviceID": devicePart])
+            
             // Check if device exists
             guard let device = try deviceDiscovery.getDevice(busID: busPart, deviceID: devicePart) else {
+                logger.error("Device not found", context: ["busid": busid])
                 throw CommandHandlerError.deviceNotFound("No device found with busid \(busid)")
             }
+            
+            logger.info("Found device to bind", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "vendorID": String(format: "0x%04x", device.vendorID),
+                "productID": String(format: "0x%04x", device.productID),
+                "product": device.productString ?? "Unknown"
+            ])
             
             // Add device to allowed devices in config
             let deviceIdentifier = "\(device.busID)-\(device.deviceID)"
             serverConfig.allowDevice(deviceIdentifier)
             
+            logger.debug("Added device to allowed devices list", context: ["deviceIdentifier": deviceIdentifier])
+            
             // Save the updated configuration
+            logger.debug("Saving updated configuration")
             try serverConfig.save()
             
+            logger.info("Successfully bound device", context: ["busid": busid])
             print("Successfully bound device \(busid): \(device.vendorID.hexString):\(device.productID.hexString) (\(device.productString ?? "Unknown"))")
         } catch let deviceError as DeviceDiscoveryError {
+            logger.error("Device discovery error during bind", context: ["error": deviceError.localizedDescription])
             throw CommandHandlerError.deviceBindingFailed(deviceError.localizedDescription)
         } catch let configError as ServerError {
+            logger.error("Server configuration error during bind", context: ["error": configError.localizedDescription])
             throw CommandHandlerError.deviceBindingFailed(configError.localizedDescription)
         } catch {
+            logger.error("Unexpected error during bind", context: ["error": error.localizedDescription])
             throw CommandHandlerError.deviceBindingFailed(error.localizedDescription)
         }
     }
@@ -224,37 +270,49 @@ public class UnbindCommand: Command {
     }
     
     public func execute(with arguments: [String]) throws {
+        logger.debug("Executing unbind command", context: ["arguments": arguments.joined(separator: " ")])
+        
         if arguments.isEmpty {
+            logger.error("Missing required busid argument")
             throw CommandLineError.missingArguments("Device busid required")
         }
         
         if arguments.contains("-h") || arguments.contains("--help") {
+            logger.debug("Showing help for unbind command")
             printHelp()
             return
         }
         
         let busid = arguments[0]
+        logger.debug("Processing unbind request", context: ["busid": busid])
         
         // Validate busid format
         let busidPattern = #"^\d+-\d+(\.\d+)*$"#
         guard busid.range(of: busidPattern, options: .regularExpression) != nil else {
+            logger.error("Invalid busid format", context: ["busid": busid])
             throw CommandLineError.invalidArguments("Invalid busid format: \(busid)")
         }
         
         do {
             // Remove device from allowed devices in config
+            logger.debug("Removing device from allowed devices list", context: ["busid": busid])
             let removed = serverConfig.disallowDevice(busid)
             
             if removed {
                 // Save the updated configuration
+                logger.debug("Saving updated configuration")
                 try serverConfig.save()
+                logger.info("Successfully unbound device", context: ["busid": busid])
                 print("Successfully unbound device \(busid)")
             } else {
+                logger.info("Device was not bound", context: ["busid": busid])
                 print("Device \(busid) was not bound")
             }
         } catch let configError as ServerError {
+            logger.error("Server configuration error during unbind", context: ["error": configError.localizedDescription])
             throw CommandHandlerError.deviceUnbindingFailed(configError.localizedDescription)
         } catch {
+            logger.error("Unexpected error during unbind", context: ["error": error.localizedDescription])
             throw CommandHandlerError.deviceUnbindingFailed(error.localizedDescription)
         }
     }
@@ -354,6 +412,8 @@ public class DaemonCommand: Command {
     }
     
     public func execute(with arguments: [String]) throws {
+        logger.debug("Executing daemon command", context: ["arguments": arguments.joined(separator: " ")])
+        
         var foreground = false
         var configPath: String? = nil
         
@@ -361,27 +421,39 @@ public class DaemonCommand: Command {
         while i < arguments.count {
             switch arguments[i] {
             case "-f", "--foreground":
+                logger.debug("Running in foreground mode")
                 foreground = true
                 i += 1
             case "-c", "--config":
                 if i + 1 < arguments.count {
                     configPath = arguments[i + 1]
+                    logger.debug("Using custom config path", context: ["configPath": configPath!])
                     i += 2
                 } else {
+                    logger.error("Missing value for --config option")
                     throw CommandLineError.invalidArguments("Missing value for --config option")
                 }
             case "-h", "--help":
+                logger.debug("Showing help for daemon command")
                 printHelp()
                 return
             default:
+                logger.error("Unknown option for daemon command", context: ["option": arguments[i]])
                 throw CommandLineError.invalidArguments("Unknown option: \(arguments[i])")
             }
         }
         
         // Load configuration if specified
         if let configPath = configPath {
+            logger.debug("Loading configuration from custom path", context: ["configPath": configPath])
             do {
                 let loadedConfig = try ServerConfig.load(from: configPath)
+                
+                logger.info("Loaded custom configuration", context: [
+                    "port": loadedConfig.port,
+                    "logLevel": loadedConfig.logLevel.rawValue,
+                    "debugMode": loadedConfig.debugMode ? "enabled" : "disabled"
+                ])
                 
                 // Update the server's configuration
                 // Note: This is a simplification; in a real implementation,
@@ -394,18 +466,24 @@ public class DaemonCommand: Command {
                 serverConfig.allowedDevices = loadedConfig.allowedDevices
                 serverConfig.autoBindDevices = loadedConfig.autoBindDevices
                 serverConfig.logFilePath = loadedConfig.logFilePath
+                
+                logger.debug("Applied custom configuration to server")
             } catch {
+                logger.error("Failed to load configuration", context: ["error": error.localizedDescription])
                 throw CommandHandlerError.serverStartFailed("Failed to load configuration: \(error.localizedDescription)")
             }
         }
         
         do {
             // Start the server
+            logger.info("Starting USB/IP server", context: ["port": serverConfig.port])
             try server.start()
             
+            logger.info("USB/IP server started successfully", context: ["port": serverConfig.port])
             print("USB/IP daemon started on port \(serverConfig.port)")
             
             if foreground {
+                logger.debug("Running in foreground mode")
                 print("Running in foreground mode. Press Ctrl+C to stop.")
                 
                 // For the MVP, we'll just print a message and exit
@@ -414,11 +492,13 @@ public class DaemonCommand: Command {
                 print("Note: In the MVP, the server will run until the process is terminated.")
                 print("In a full implementation, the server would handle signals properly.")
             } else {
+                logger.debug("Running in background mode")
                 print("Running in background mode.")
                 // In a real implementation, we would daemonize the process here
                 // For the MVP, we'll just exit and assume the server keeps running
             }
         } catch {
+            logger.error("Failed to start server", context: ["error": error.localizedDescription])
             throw CommandHandlerError.serverStartFailed("Failed to start server: \(error.localizedDescription)")
         }
     }
