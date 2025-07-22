@@ -26,7 +26,7 @@
     - Commit protocol layer implementation
     - _Requirements: 1.1, 1.3, 1.5_
 
-- [ ] 3. Implement Network Layer
+- [x] 3. Implement Network Layer
   - [x] 3.1 Create network service interfaces
     - Define NetworkService protocol
     - Define ClientConnection protocol
@@ -37,60 +37,60 @@
     - Implement connection acceptance on port 3240
     - _Requirements: 2.1, 2.2, 2.4_
   
-  - [-] 3.3 Implement client connection handling
+  - [x] 3.3 Implement client connection handling
     - Create TCPClientConnection class
     - Implement data sending/receiving functionality
     - Implement connection cleanup on disconnect
     - Commit network layer implementation
     - _Requirements: 2.3, 2.5_
 
-- [ ] 4. Implement Device Layer
-  - [ ] 4.1 Create device discovery interfaces
+- [x] 4. Implement Device Layer
+  - [x] 4.1 Create device discovery interfaces
     - Define DeviceDiscovery protocol
     - Define USBDeviceInfo protocol
     - _Requirements: 3.1, 3.2, 3.5_
   
-  - [ ] 4.2 Implement IOKit-based device discovery
+  - [x] 4.2 Implement IOKit-based device discovery
     - Create IOKitDeviceDiscovery class
     - Implement USB device enumeration using IOKit
     - Extract device details (vendor ID, product ID, etc.)
     - _Requirements: 3.1, 3.2, 3.4_
   
-  - [ ] 4.3 Implement device monitoring for changes
+  - [x] 4.3 Implement device monitoring for changes
     - Create DeviceMonitor class
     - Set up IOKit notifications for device connection/disconnection
     - Commit device layer implementation
     - _Requirements: 3.3_
 
-- [ ] 5. Implement Core Server
-  - [ ] 5.1 Create server coordinator
+- [x] 5. Implement Core Server
+  - [x] 5.1 Create server coordinator
     - Implement USBIPServer protocol
     - Create ServerCoordinator class
     - _Requirements: 2.1, 2.2, 6.1, 6.3_
   
-  - [ ] 5.2 Implement request processing
+  - [x] 5.2 Implement request processing
     - Create RequestProcessor class
     - Implement handlers for device list and device import requests
     - _Requirements: 1.3, 6.2, 6.4_
   
-  - [ ] 5.3 Implement server configuration
+  - [x] 5.3 Implement server configuration
     - Create ServerConfig class
     - Implement configuration loading/saving
     - Commit core server implementation
     - _Requirements: 5.3_
 
 - [ ] 6. Implement CLI Layer
-  - [ ] 6.1 Create command-line argument parser
+  - [x] 6.1 Create command-line argument parser
     - Implement CommandLineParser class
     - Support all required commands (list, bind, unbind, etc.)
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
   
-  - [ ] 6.2 Implement command handlers
+  - [x] 6.2 Implement command handlers
     - Create handlers for each supported command
     - Implement proper error reporting
     - _Requirements: 4.8, 5.1, 5.2_
   
-  - [ ] 6.3 Implement output formatting
+  - [x] 6.3 Implement output formatting
     - Create OutputFormatter class
     - Format device list output compatible with Linux usbipd
     - Commit CLI layer implementation
