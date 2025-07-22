@@ -33,4 +33,5 @@ public enum ServerError: Error {
     case alreadyRunning
     case notRunning
     case initializationFailed(String)
+    case configurationError(String)
 }
