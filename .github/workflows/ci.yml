@@ -52,9 +52,8 @@ jobs:
             echo "❌ SwiftLint violations detected - check output above for details"
           fi
 
-  # Swift environment setup and build preparation
-  setup:
-    name: Swift Environment Setup
+  build:
+    name: Build Validation
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -67,37 +66,8 @@ jobs:
       
       - name: Verify Swift installation
         run: |
-          echo "Swift version information:"
-          swift --version
-          echo ""
-          echo "Swift Package Manager version:"
-          swift package --version
-          echo ""
-          echo "Xcode version information:"
-          xcodebuild -version
-          echo ""
-          echo "macOS version information:"
-          sw_vers
-      
-      - name: Swift environment setup complete
-        run: |
-          echo "✅ Swift environment configured successfully"
-          echo "- Swift version: $(swift --version | head -n1)"
-          echo "- macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
-          echo "- Xcode version: $(xcodebuild -version | head -n1)"
-
-  build:
-    name: Build Validation
-    runs-on: macos-latest
-    needs: setup
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v1
-        with:
-          swift-version: 'latest'
+          echo "Swift version: $(swift --version | head -n1)"
+          echo "macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
       
       - name: Cache Swift packages
         uses: actions/cache@v3
@@ -143,7 +113,6 @@ jobs:
   test:
     name: Unit Tests
     runs-on: macos-latest
-    needs: setup
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -152,6 +121,11 @@ jobs:
         uses: swift-actions/setup-swift@v1
         with:
           swift-version: 'latest'
+      
+      - name: Verify Swift installation
+        run: |
+          echo "Swift version: $(swift --version | head -n1)"
+          echo "macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
       
       - name: Cache Swift packages
         uses: actions/cache@v3
@@ -199,7 +173,6 @@ jobs:
   integration-test:
     name: Integration Tests (QEMU)
     runs-on: macos-latest
-    needs: setup
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -208,6 +181,11 @@ jobs:
         uses: swift-actions/setup-swift@v1
         with:
           swift-version: 'latest'
+      
+      - name: Verify Swift installation
+        run: |
+          echo "Swift version: $(swift --version | head -n1)"
+          echo "macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
       
       - name: Cache Swift packages
         uses: actions/cache@v3
