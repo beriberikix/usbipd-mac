@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Placeholder jobs - will be implemented in subsequent tasks
+  setup:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Workflow setup complete
+        run: echo "Basic GitHub Actions workflow structure is ready"
