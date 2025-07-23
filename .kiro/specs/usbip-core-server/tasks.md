@@ -121,7 +121,7 @@
   - Commit final changes
   - _Requirements: All_
 
-- [-] 10. Create Pull Request
+- [x] 10. Create Pull Request
   - Push the feature branch to GitHub
   - Create a pull request with a detailed description of the implementation
   - Include references to the requirements and design documents
