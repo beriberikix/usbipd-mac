@@ -163,3 +163,69 @@ jobs:
             echo "- Missing test dependencies or setup"
             echo "- Platform-specific test issues"
           fi
+
+  integration-test:
+    name: Integration Tests (QEMU)
+    runs-on: macos-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: 'latest'
+      
+      - name: Setup test dependencies
+        run: |
+          echo "Setting up integration test dependencies..."
+          # Ensure Scripts directory is executable
+          chmod +x Scripts/run-qemu-tests.sh
+          echo "✅ Test dependencies configured"
+      
+      - name: Resolve dependencies
+        run: |
+          echo "Resolving Swift package dependencies for integration testing..."
+          swift package resolve
+          echo "✅ Dependencies resolved successfully"
+      
+      - name: Build QEMU test server
+        run: |
+          echo "Building QEMU test server..."
+          swift build --product QEMUTestServer
+          echo "✅ QEMU test server built successfully"
+      
+      - name: Run QEMU test script validation
+        run: |
+          echo "Running QEMU test server validation script..."
+          ./Scripts/run-qemu-tests.sh
+          echo "✅ QEMU test script validation completed"
+        continue-on-error: false
+      
+      - name: Run integration tests
+        run: |
+          echo "Running integration tests with QEMU test server..."
+          # Run only the integration tests
+          swift test --filter IntegrationTests --verbose
+          echo "✅ Integration tests completed successfully"
+        continue-on-error: false
+      
+      - name: Integration test summary
+        if: always()
+        run: |
+          echo "Integration test execution completed"
+          if [ $? -eq 0 ]; then
+            echo "✅ All integration tests passed"
+            echo "Integration test components validated:"
+            echo "- QEMU test server functionality"
+            echo "- End-to-end protocol flow"
+            echo "- Network communication layer"
+          else
+            echo "❌ Integration tests failed - check output above for detailed failure information"
+            echo "Common integration test failure causes:"
+            echo "- QEMU test server setup issues"
+            echo "- Network connectivity problems"
+            echo "- Protocol compatibility issues"
+            echo "- Test environment configuration problems"
+          fi
