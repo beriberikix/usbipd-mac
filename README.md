@@ -52,15 +52,21 @@ This project uses GitHub Actions for continuous integration. The CI pipeline run
 
 ### Branch Protection
 
-The main branch is protected with required status checks. Pull requests cannot be merged until all CI checks pass:
+The main branch is protected with required status checks and approval requirements. Pull requests cannot be merged until:
 
+**Required Status Checks:**
 - Code Quality (SwiftLint) ✅
 - Build Validation ✅  
 - Unit Tests ✅
 - Integration Tests (QEMU) ✅
 
-To set up branch protection for repository maintainers:
+**Approval Requirements:**
+- At least 1 maintainer review and approval ✅
+- Branch must be up to date with main ✅
+- Stale reviews dismissed on new commits ✅
+- Administrators cannot bypass without approval ✅
 
+**Setup and Validation:**
 ```bash
 # Using the provided setup script
 ./.github/scripts/setup-branch-protection.sh
@@ -68,6 +74,8 @@ To set up branch protection for repository maintainers:
 # Or validate existing configuration
 ./.github/scripts/validate-branch-protection.sh
 ```
+
+This ensures that even if technical checks could be bypassed, maintainer approval acts as a safeguard to maintain code quality and project stability.
 
 See [Branch Protection Configuration](.github/BRANCH_PROTECTION.md) for detailed setup instructions.
 

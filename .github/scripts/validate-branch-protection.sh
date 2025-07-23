@@ -141,7 +141,42 @@ print_check "Validating review requirements..."
 if [ "$REQUIRED_REVIEWS" -ge "1" ]; then
     echo "  ✅ Required reviews: $REQUIRED_REVIEWS"
 else
-    print_warning "No required reviews configured"
+    echo "  ❌ No required reviews configured - maintainer approval required"
+    VALIDATION_PASSED=false
+fi
+
+# Validate additional approval settings
+DISMISS_STALE=$(echo "$PROTECTION_DATA" | jq -r '.required_pull_request_reviews.dismiss_stale_reviews' 2>/dev/null || echo "false")
+CODE_OWNER_REVIEWS=$(echo "$PROTECTION_DATA" | jq -r '.required_pull_request_reviews.require_code_owner_reviews' 2>/dev/null || echo "false")
+ALLOW_FORCE_PUSHES=$(echo "$PROTECTION_DATA" | jq -r '.allow_force_pushes.enabled' 2>/dev/null || echo "true")
+ALLOW_DELETIONS=$(echo "$PROTECTION_DATA" | jq -r '.allow_deletions.enabled' 2>/dev/null || echo "true")
+
+print_check "Validating approval bypass prevention settings..."
+if [ "$DISMISS_STALE" = "true" ]; then
+    echo "  ✅ Dismiss stale reviews: enabled"
+else
+    echo "  ❌ Dismiss stale reviews: disabled - should be enabled"
+    VALIDATION_PASSED=false
+fi
+
+if [ "$CODE_OWNER_REVIEWS" = "true" ]; then
+    echo "  ✅ Code owner reviews: required"
+else
+    echo "  ⚠️  Code owner reviews: not required (acceptable if no CODEOWNERS file)"
+fi
+
+if [ "$ALLOW_FORCE_PUSHES" = "false" ]; then
+    echo "  ✅ Force pushes: blocked"
+else
+    echo "  ❌ Force pushes: allowed - should be blocked"
+    VALIDATION_PASSED=false
+fi
+
+if [ "$ALLOW_DELETIONS" = "false" ]; then
+    echo "  ✅ Branch deletions: blocked"
+else
+    echo "  ❌ Branch deletions: allowed - should be blocked"
+    VALIDATION_PASSED=false
 fi
 
 # Final validation result
@@ -152,7 +187,8 @@ if [ "$VALIDATION_PASSED" = true ]; then
     echo ""
     echo "Requirements addressed:"
     echo "  ✅ 6.1: PRs with failing checks cannot be merged"
-    echo "  ✅ 6.2: PRs with passing checks can be merged"
+    echo "  ✅ 6.2: PRs with passing checks can be merged (with approval)"
+    echo "  ✅ 6.4: Maintainer approval required for bypassing checks"
     echo ""
     echo "Next steps:"
     echo "  1. Create a test PR to verify the configuration works"
@@ -162,6 +198,7 @@ else
     echo ""
     echo "Issues found that need to be addressed:"
     echo "  - Missing required status checks"
+    echo "  - Missing approval requirements"
     echo "  - Incorrect configuration settings"
     echo ""
     echo "To fix these issues:"

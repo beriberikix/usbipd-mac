@@ -28,21 +28,41 @@ Based on the CI workflow (`.github/workflows/ci.yml`), the following job names s
    - `Build Validation`
    - `Unit Tests`
    - `Integration Tests (QEMU)`
-7. Enable **Restrict pushes that create files that do not exist in the current branch**
-8. Save the branch protection rule
+7. Enable **Require pull request reviews before merging**
+   - Set **Required number of reviewers before merging** to **1**
+   - Enable **Dismiss stale pull request approvals when new commits are pushed**
+   - Enable **Require review from code owners** (if CODEOWNERS file exists)
+8. Enable **Restrict pushes that create files that do not exist in the current branch**
+9. Enable **Do not allow bypassing the above settings** (enforces rules for administrators)
+10. Disable **Allow force pushes** and **Allow deletions** for additional protection
+11. Save the branch protection rule
+
+### Via Setup Script (Recommended)
+
+The easiest way to configure branch protection is using the provided setup script:
+
+```bash
+# Run the automated setup script
+./.github/scripts/setup-branch-protection.sh
+
+# Validate the configuration
+./.github/scripts/validate-branch-protection.sh
+```
 
 ### Via GitHub CLI (Alternative)
 
 If you have GitHub CLI installed, you can configure branch protection using:
 
 ```bash
-# Enable branch protection with required status checks
+# Enable branch protection with required status checks and approval requirements
 gh api repos/:owner/:repo/branches/main/protection \
   --method PUT \
   --field required_status_checks='{"strict":true,"contexts":["Code Quality (SwiftLint)","Build Validation","Unit Tests","Integration Tests (QEMU)"]}' \
   --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1}' \
-  --field restrictions=null
+  --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true,"require_code_owner_reviews":true}' \
+  --field restrictions=null \
+  --field allow_force_pushes=false \
+  --field allow_deletions=false
 ```
 
 ### Via GitHub API (Alternative)
@@ -66,9 +86,15 @@ curl -X PUT \
     },
     "enforce_admins": true,
     "required_pull_request_reviews": {
-      "required_approving_review_count": 1
+      "required_approving_review_count": 1,
+      "dismiss_stale_reviews": true,
+      "require_code_owner_reviews": true,
+      "require_last_push_approval": false
     },
-    "restrictions": null
+    "restrictions": null,
+    "allow_force_pushes": false,
+    "allow_deletions": false,
+    "block_creations": false
   }'
 ```
 
@@ -88,7 +114,11 @@ With these settings configured:
 - **Pull requests cannot be merged** if any of the 4 required checks fail
 - **Branches must be up to date** with main before merging
 - **All 4 checks must pass** for the merge button to become available
+- **At least 1 maintainer approval** is required before merging
+- **Administrators cannot bypass** these requirements without explicit approval
+- **Stale reviews are dismissed** when new commits are pushed
 - **Status is clearly visible** in the PR interface showing which checks are pending/passing/failing
+- **Force pushes and branch deletions** are blocked for additional protection
 
 ## Troubleshooting
 
@@ -103,6 +133,30 @@ If status checks are not appearing:
 This configuration addresses the following requirements:
 
 - **Requirement 6.1**: Pull requests with failing checks are prevented from merging
-- **Requirement 6.2**: Pull requests with passing checks are allowed to merge
+- **Requirement 6.2**: Pull requests with passing checks are allowed to merge (with maintainer approval)
 - **Requirement 6.3**: Check status is clearly reported during execution (handled by workflow design)
-- **Requirement 6.4**: Maintainer approval can bypass checks (configurable via branch protection settings)
+- **Requirement 6.4**: Maintainer approval is required for bypassing checks (enforced via branch protection)
+
+## Approval Requirements for Bypassing Checks
+
+The branch protection configuration includes specific settings to ensure maintainer oversight:
+
+### Review Requirements
+- **Required approving reviews**: 1 maintainer must approve before merging
+- **Dismiss stale reviews**: Approvals are dismissed when new commits are pushed
+- **Code owner reviews**: Required when CODEOWNERS file is present
+- **Administrator enforcement**: Admins cannot bypass without following the approval process
+
+### Bypass Prevention
+- **Enforce for administrators**: Prevents admins from bypassing protection rules
+- **Force push protection**: Blocks force pushes that could bypass checks
+- **Branch deletion protection**: Prevents accidental or malicious branch deletion
+
+### Approval Workflow
+1. Developer creates pull request
+2. All 4 status checks must pass (lint, build, unit tests, integration tests)
+3. At least 1 maintainer must review and approve the changes
+4. Branch must be up to date with main before merging
+5. Only then can the pull request be merged
+
+This ensures that even if checks could theoretically be bypassed, maintainer approval acts as a safeguard to maintain code quality and project stability.
