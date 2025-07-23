@@ -41,6 +41,36 @@ xcodebuild -scheme usbipd-mac test
 ./Scripts/run-qemu-tests.sh
 ```
 
+## Continuous Integration
+
+This project uses GitHub Actions for continuous integration. The CI pipeline runs on every pull request and push to the main branch, performing:
+
+- **Code Quality Checks**: SwiftLint validation for consistent code style
+- **Build Validation**: Ensures the project compiles successfully with Swift Package Manager
+- **Unit Tests**: Runs all unit tests to verify functionality
+- **Integration Tests**: Validates QEMU test server functionality and end-to-end flows
+
+### Branch Protection
+
+The main branch is protected with required status checks. Pull requests cannot be merged until all CI checks pass:
+
+- Code Quality (SwiftLint) ✅
+- Build Validation ✅  
+- Unit Tests ✅
+- Integration Tests (QEMU) ✅
+
+To set up branch protection for repository maintainers:
+
+```bash
+# Using the provided setup script
+./.github/scripts/setup-branch-protection.sh
+
+# Or validate existing configuration
+./.github/scripts/validate-branch-protection.sh
+```
+
+See [Branch Protection Configuration](.github/BRANCH_PROTECTION.md) for detailed setup instructions.
+
 ## License
 
 [MIT License](LICENSE)
