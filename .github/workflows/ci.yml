@@ -14,6 +14,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Cache SwiftLint
+        uses: actions/cache@v3
+        with:
+          path: |
+            /usr/local/bin/swiftlint
+            /opt/homebrew/bin/swiftlint
+          key: ${{ runner.os }}-swiftlint-${{ hashFiles('.swiftlint.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftlint-
+      
       - name: Install SwiftLint
         run: |
           # Check if SwiftLint is already installed
@@ -89,6 +99,17 @@ jobs:
         with:
           swift-version: 'latest'
       
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+      
       - name: Resolve dependencies
         run: |
           echo "Resolving Swift package dependencies..."
@@ -131,6 +152,17 @@ jobs:
         uses: swift-actions/setup-swift@v1
         with:
           swift-version: 'latest'
+      
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
       
       - name: Resolve dependencies
         run: |
@@ -176,6 +208,17 @@ jobs:
         uses: swift-actions/setup-swift@v1
         with:
           swift-version: 'latest'
+      
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
       
       - name: Setup test dependencies
         run: |
