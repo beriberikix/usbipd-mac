@@ -3,18 +3,29 @@
 
 import XCTest
 @testable import USBIPDCLI
+@testable import USBIPDCore
+@testable import Common
 
 final class CommandLineParserTests: XCTestCase {
     
     var parser: CommandLineParser!
+    var mockDeviceDiscovery: MockDeviceDiscovery!
+    var mockServerConfig: ServerConfig!
+    var mockServer: MockUSBIPServer!
     
     override func setUp() {
         super.setUp()
-        parser = CommandLineParser()
+        mockDeviceDiscovery = MockDeviceDiscovery()
+        mockServerConfig = ServerConfig()
+        mockServer = MockUSBIPServer()
+        parser = CommandLineParser(deviceDiscovery: mockDeviceDiscovery, serverConfig: mockServerConfig, server: mockServer)
     }
     
     override func tearDown() {
         parser = nil
+        mockDeviceDiscovery = nil
+        mockServerConfig = nil
+        mockServer = nil
         super.tearDown()
     }
     
@@ -81,3 +92,5 @@ final class CommandLineParserTests: XCTestCase {
         }
     }
 }
+
+// End of tests
