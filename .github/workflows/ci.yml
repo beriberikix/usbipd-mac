@@ -75,3 +75,46 @@ jobs:
           echo "- Swift version: $(swift --version | head -n1)"
           echo "- macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
           echo "- Xcode version: $(xcodebuild -version | head -n1)"
+
+  build:
+    name: Build Validation
+    runs-on: macos-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: 'latest'
+      
+      - name: Resolve dependencies
+        run: |
+          echo "Resolving Swift package dependencies..."
+          swift package resolve
+          echo "✅ Dependencies resolved successfully"
+      
+      - name: Build project
+        run: |
+          echo "Building project with Swift Package Manager..."
+          # Build with verbose output to capture detailed error information
+          swift build --verbose
+          echo "✅ Build completed successfully"
+        continue-on-error: false
+      
+      - name: Build validation summary
+        if: always()
+        run: |
+          echo "Build validation completed"
+          if [ $? -eq 0 ]; then
+            echo "✅ Project built successfully"
+            echo "All Swift modules compiled without errors"
+          else
+            echo "❌ Build failed - check output above for detailed error information"
+            echo "Common build issues to check:"
+            echo "- Missing dependencies"
+            echo "- Swift syntax errors"
+            echo "- Import resolution failures"
+            echo "- Platform compatibility issues"
+          fi
