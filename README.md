@@ -43,12 +43,113 @@ xcodebuild -scheme usbipd-mac test
 
 ## Continuous Integration
 
-This project uses GitHub Actions for continuous integration. The CI pipeline runs on every pull request and push to the main branch, performing:
+This project uses GitHub Actions for continuous integration to ensure code quality and prevent regressions. The CI pipeline automatically runs on every pull request and push to the main branch, providing fast feedback to developers.
 
-- **Code Quality Checks**: SwiftLint validation for consistent code style
-- **Build Validation**: Ensures the project compiles successfully with Swift Package Manager
-- **Unit Tests**: Runs all unit tests to verify functionality
-- **Integration Tests**: Validates QEMU test server functionality and end-to-end flows
+### CI Pipeline Overview
+
+The CI pipeline consists of four parallel jobs that validate different aspects of the codebase:
+
+#### 1. Code Quality (SwiftLint)
+- **Purpose**: Validates Swift code style and consistency
+- **Tool**: SwiftLint with project-specific configuration (`.swiftlint.yml`)
+- **Execution**: Runs in strict mode where warnings are treated as errors
+- **Caching**: SwiftLint installation is cached for faster execution
+
+#### 2. Build Validation
+- **Purpose**: Ensures the project compiles successfully
+- **Tool**: Swift Package Manager with latest Swift version
+- **Environment**: Latest macOS runner with verbose build output
+- **Caching**: Swift packages and build artifacts are cached
+
+#### 3. Unit Tests
+- **Purpose**: Validates functionality through automated unit tests
+- **Coverage**: USBIPDCoreTests and USBIPDCLITests suites
+- **Execution**: Parallel test execution with verbose output
+- **Environment**: Latest Swift and macOS versions
+
+#### 4. Integration Tests (QEMU)
+- **Purpose**: End-to-end validation with QEMU test server
+- **Components**: QEMU test server build and validation script
+- **Coverage**: Network communication and protocol flow testing
+- **Dependencies**: Builds QEMUTestServer product and runs validation script
+
+### Running Checks Locally
+
+Before submitting a pull request, you can run the same checks locally to catch issues early:
+
+#### Code Quality Check
+```bash
+# Install SwiftLint (if not already installed)
+brew install swiftlint
+
+# Run SwiftLint with the same strict settings as CI
+swiftlint lint --strict
+
+# Auto-fix some violations (optional)
+swiftlint --fix
+```
+
+#### Build Validation
+```bash
+# Clean build to match CI environment
+swift package clean
+
+# Resolve dependencies
+swift package resolve
+
+# Build project with verbose output
+swift build --verbose
+```
+
+#### Unit Tests
+```bash
+# Run all unit tests with parallel execution
+swift test --parallel --verbose
+
+# Run specific test suite
+swift test --filter USBIPDCoreTests
+swift test --filter USBIPDCLITests
+```
+
+#### Integration Tests
+```bash
+# Build QEMU test server
+swift build --product QEMUTestServer
+
+# Run QEMU validation script
+./Scripts/run-qemu-tests.sh
+
+# Run integration tests specifically
+swift test --filter IntegrationTests --verbose
+```
+
+#### Complete Local Validation
+```bash
+# Run all checks in sequence (mimics CI pipeline)
+echo "Running SwiftLint..."
+swiftlint lint --strict
+
+echo "Building project..."
+swift build --verbose
+
+echo "Running unit tests..."
+swift test --parallel --verbose
+
+echo "Running integration tests..."
+./Scripts/run-qemu-tests.sh
+swift test --filter IntegrationTests --verbose
+
+echo "All checks completed successfully!"
+```
+
+### Performance Optimization
+
+The CI pipeline is optimized for fast feedback:
+
+- **Parallel Execution**: All four jobs run simultaneously
+- **Dependency Caching**: Swift packages and SwiftLint are cached between runs
+- **Incremental Builds**: Build artifacts are cached when possible
+- **Target Execution Time**: Complete pipeline typically runs under 10 minutes
 
 ### Branch Protection
 
@@ -78,6 +179,111 @@ The main branch is protected with required status checks and approval requiremen
 This ensures that even if technical checks could be bypassed, maintainer approval acts as a safeguard to maintain code quality and project stability.
 
 See [Branch Protection Configuration](.github/BRANCH_PROTECTION.md) for detailed setup instructions.
+
+### Troubleshooting CI Issues
+
+If CI checks fail, here are common solutions and next steps:
+
+#### Quick Diagnosis Steps
+
+1. **Identify the failing job**: Check which specific job failed (lint, build, test, integration-test)
+2. **Review error summary**: Each job provides a summary with common causes
+3. **Run locally first**: Always reproduce the issue locally before investigating CI-specific problems
+4. **Check recent changes**: Consider if recent updates might be the cause
+
+#### Common Issues and Solutions
+
+**SwiftLint Failures:**
+```bash
+# Check violations locally
+swiftlint lint --strict
+
+# Auto-fix violations where possible
+swiftlint --fix
+
+# Verify configuration
+python -c "import yaml; yaml.safe_load(open('.swiftlint.yml'))"
+```
+
+**Build Failures:**
+```bash
+# Clean build to match CI environment
+swift package clean
+swift package resolve
+swift build --verbose
+
+# Check for dependency conflicts
+swift package show-dependencies
+```
+
+**Test Failures:**
+```bash
+# Run tests with detailed output
+swift test --verbose --parallel
+
+# Run specific test suite
+swift test --filter USBIPDCoreTests
+swift test --filter USBIPDCLITests
+```
+
+**Integration Test Failures:**
+```bash
+# Build and test QEMU server
+swift build --product QEMUTestServer
+./Scripts/run-qemu-tests.sh
+
+# Run integration tests specifically
+swift test --filter IntegrationTests --verbose
+```
+
+#### Updating Swift and macOS Versions
+
+When new Swift or macOS versions become available:
+
+**Swift Version Updates:**
+1. Update `Package.swift` tools version: `// swift-tools-version:5.9`
+2. Test locally: `swift build && swift test`
+3. Update CI if using specific version (workflow uses `latest` by default)
+4. Handle deprecated APIs and breaking changes
+
+**macOS Version Updates:**
+1. CI automatically uses `macos-latest` (currently macOS 13+)
+2. Update minimum deployment target if needed: `.macOS(.v13)`
+3. Add availability checks for new APIs:
+   ```swift
+   if #available(macOS 14.0, *) {
+       // Use new API
+   } else {
+       // Fallback implementation
+   }
+   ```
+
+#### Performance Issues
+
+If CI execution exceeds 10 minutes:
+- Check dependency caching effectiveness
+- Profile slow tests: `swift test --verbose 2>&1 | grep "Test Case.*passed"`
+- Optimize build configuration for performance testing
+- Consider parallel execution improvements
+
+#### For Comprehensive Troubleshooting
+
+See the detailed [CI Troubleshooting Guide](.github/CI_TROUBLESHOOTING.md) which covers:
+- Detailed diagnosis procedures for each job type
+- Step-by-step solutions for common issues
+- Swift and macOS version update procedures
+- Cache optimization and debugging
+- Branch protection troubleshooting
+- Emergency procedures for critical issues
+
+#### Getting Help
+
+If these solutions don't resolve your issue:
+1. Check the [comprehensive troubleshooting guide](.github/CI_TROUBLESHOOTING.md)
+2. Review CI job logs for detailed error messages
+3. Reproduce the issue locally using the same commands
+4. Check [GitHub Actions status](https://www.githubstatus.com/) for platform issues
+5. Consult project maintainers for project-specific guidance
 
 ## License
 
