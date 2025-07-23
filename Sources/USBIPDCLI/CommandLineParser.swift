@@ -63,47 +63,7 @@ public class CommandLineParser {
         registerCommands()
     }
     
-    /// Initialize a new command-line parser with default dependencies
-    public convenience init() {
-        logger.debug("Initializing command-line parser with default dependencies")
-        
-        // Create default dependencies
-        let deviceDiscovery = IOKitDeviceDiscovery()
-        logger.debug("Created IOKitDeviceDiscovery instance")
-        
-        // Load or create default server config
-        let serverConfig: ServerConfig
-        do {
-            logger.debug("Loading server configuration")
-            serverConfig = try ServerConfig.load()
-            logger.info("Loaded server configuration", context: [
-                "port": serverConfig.port,
-                "logLevel": serverConfig.logLevel.rawValue,
-                "debugMode": serverConfig.debugMode ? "enabled" : "disabled"
-            ])
-        } catch {
-            logger.warning("Failed to load server configuration", context: ["error": error.localizedDescription])
-            print("Warning: Failed to load server configuration: \(error.localizedDescription)")
-            print("Using default configuration.")
-            serverConfig = ServerConfig()
-            logger.info("Using default server configuration")
-        }
-        
-        // Create network service
-        let networkService = TCPServer()
-        logger.debug("Created TCPServer instance")
-        
-        // Create server
-        let server = ServerCoordinator(
-            networkService: networkService,
-            deviceDiscovery: deviceDiscovery,
-            config: serverConfig
-        )
-        logger.debug("Created ServerCoordinator instance")
-        
-        self.init(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, server: server)
-        logger.debug("Command-line parser initialization complete")
-    }
+
     
     /// Register all available commands
     private func registerCommands() {
