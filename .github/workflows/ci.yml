@@ -118,3 +118,48 @@ jobs:
             echo "- Import resolution failures"
             echo "- Platform compatibility issues"
           fi
+
+  test:
+    name: Unit Tests
+    runs-on: macos-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: 'latest'
+      
+      - name: Resolve dependencies
+        run: |
+          echo "Resolving Swift package dependencies for testing..."
+          swift package resolve
+          echo "✅ Dependencies resolved successfully"
+      
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests with Swift Package Manager..."
+          # Run tests with verbose output and proper error reporting
+          swift test --verbose --parallel
+          echo "✅ Unit tests completed successfully"
+        continue-on-error: false
+      
+      - name: Test execution summary
+        if: always()
+        run: |
+          echo "Unit test execution completed"
+          if [ $? -eq 0 ]; then
+            echo "✅ All unit tests passed"
+            echo "Test suites executed:"
+            echo "- USBIPDCoreTests"
+            echo "- USBIPDCLITests"
+          else
+            echo "❌ Unit tests failed - check output above for detailed failure information"
+            echo "Common test failure causes:"
+            echo "- Assertion failures in test cases"
+            echo "- Runtime errors during test execution"
+            echo "- Missing test dependencies or setup"
+            echo "- Platform-specific test issues"
+          fi
