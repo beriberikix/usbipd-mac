@@ -1,0 +1,139 @@
+name: Validate Branch Protection
+
+# This workflow validates that branch protection rules are properly configured
+# It can be run manually to verify the configuration
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to validate protection rules for'
+        required: false
+        default: 'main'
+        type: string
+
+jobs:
+  validate-protection:
+    name: Validate Branch Protection Rules
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      
+    steps:
+      - name: 🔍 Starting Branch Protection Validation
+        run: |
+          echo "::notice title=Branch Protection Validation::Validating branch protection configuration"
+          echo "🔍 This workflow validates that required branch protection rules are configured"
+          echo "📊 Status: STARTING"
+          echo "🎯 Target branch: ${{ inputs.branch || 'main' }}"
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Validate Branch Protection Configuration
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: ${{ inputs.branch || 'main' }}
+        run: |
+          echo "::group::Branch Protection Validation"
+          echo "::notice title=Validation Process::Checking branch protection rules via GitHub API"
+          
+          # Get branch protection information
+          REPO="${{ github.repository }}"
+          echo "📋 Repository: $REPO"
+          echo "🌿 Branch: $BRANCH_NAME"
+          
+          # Check if branch protection is enabled
+          PROTECTION_DATA=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/branches/$BRANCH_NAME/protection" || echo "null")
+          
+          if [ "$PROTECTION_DATA" = "null" ] || echo "$PROTECTION_DATA" | grep -q "Branch not protected"; then
+            echo "::error title=Protection Missing::Branch protection is not configured"
+            echo "❌ Branch protection: NOT CONFIGURED"
+            echo "🔧 Action required: Configure branch protection rules"
+            echo "📋 Use the configuration script: .github/scripts/configure-branch-protection.sh"
+            exit 1
+          fi
+          
+          echo "✅ Branch protection: ENABLED"
+          
+          # Validate required status checks
+          REQUIRED_CHECKS=$(echo "$PROTECTION_DATA" | jq -r '.required_status_checks.contexts[]?' 2>/dev/null || echo "")
+          EXPECTED_CHECKS=("Code Quality (SwiftLint)" "Build Validation" "Unit Tests" "Integration Tests (QEMU)")
+          
+          echo "🔍 Validating required status checks..."
+          
+          MISSING_CHECKS=()
+          for check in "${EXPECTED_CHECKS[@]}"; do
+            if echo "$REQUIRED_CHECKS" | grep -Fxq "$check"; then
+              echo "  ✅ $check: REQUIRED"
+            else
+              echo "  ❌ $check: MISSING"
+              MISSING_CHECKS+=("$check")
+            fi
+          done
+          
+          if [ ${#MISSING_CHECKS[@]} -gt 0 ]; then
+            echo "::error title=Missing Status Checks::Required status checks are not configured"
+            echo "❌ Missing required status checks:"
+            for check in "${MISSING_CHECKS[@]}"; do
+              echo "   • $check"
+            done
+            exit 1
+          fi
+          
+          # Validate other protection settings
+          ENFORCE_ADMINS=$(echo "$PROTECTION_DATA" | jq -r '.enforce_admins.enabled' 2>/dev/null || echo "false")
+          REQUIRE_REVIEWS=$(echo "$PROTECTION_DATA" | jq -r '.required_pull_request_reviews != null' 2>/dev/null || echo "false")
+          STRICT_CHECKS=$(echo "$PROTECTION_DATA" | jq -r '.required_status_checks.strict' 2>/dev/null || echo "false")
+          
+          echo "🔍 Validating protection settings..."
+          
+          if [ "$ENFORCE_ADMINS" = "true" ]; then
+            echo "  ✅ Administrator enforcement: ENABLED"
+          else
+            echo "  ⚠️ Administrator enforcement: DISABLED"
+            echo "::warning title=Admin Enforcement::Administrator enforcement is not enabled"
+          fi
+          
+          if [ "$REQUIRE_REVIEWS" = "true" ]; then
+            echo "  ✅ Pull request reviews: REQUIRED"
+          else
+            echo "  ⚠️ Pull request reviews: NOT REQUIRED"
+            echo "::warning title=Review Requirement::Pull request reviews are not required"
+          fi
+          
+          if [ "$STRICT_CHECKS" = "true" ]; then
+            echo "  ✅ Up-to-date branches: REQUIRED"
+          else
+            echo "  ⚠️ Up-to-date branches: NOT REQUIRED"
+            echo "::warning title=Branch Updates::Branches are not required to be up-to-date"
+          fi
+          
+          echo "::endgroup::"
+      
+      - name: 📊 Branch Protection Validation Summary
+        if: always()
+        run: |
+          echo "::group::Branch Protection Validation Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Validation Complete::Branch protection validation completed successfully"
+            echo "✅ Branch protection rules: PROPERLY CONFIGURED"
+            echo "✅ Required status checks: ALL PRESENT"
+            echo "🎯 Branch protection settings validated:"
+            echo "   • Code Quality (SwiftLint) - Required"
+            echo "   • Build Validation - Required"
+            echo "   • Unit Tests - Required"
+            echo "   • Integration Tests (QEMU) - Required"
+            echo "📋 Branch is properly protected against broken code"
+          else
+            echo "::error title=Validation Failed::Branch protection validation failed"
+            echo "❌ Branch protection rules: INCOMPLETE OR MISSING"
+            echo "🔧 Action required: Configure missing branch protection rules"
+            echo "📋 Configuration options:"
+            echo "   • Manual: GitHub Settings → Branches → Add rule"
+            echo "   • Automated: Run .github/scripts/configure-branch-protection.sh"
+            echo "   • Documentation: See .github/branch-protection-config.md"
+          fi
+          echo "::endgroup::"
