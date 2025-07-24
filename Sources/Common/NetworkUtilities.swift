@@ -1,0 +1,126 @@
+import Foundation
+import Network
+
+/// Network utility functions for USB/IP server operations
+public enum NetworkUtilities {
+    
+    /// Validates if a given string is a valid IPv4 address
+    /// - Parameter address: The IP address string to validate
+    /// - Returns: True if the address is a valid IPv4 address
+    public static func isValidIPv4Address(_ address: String) -> Bool {
+        var sin = sockaddr_in()
+        return address.withCString { cstring in
+            inet_pton(AF_INET, cstring, &sin.sin_addr) == 1
+        }
+    }
+    
+    /// Validates if a given string is a valid IPv6 address
+    /// - Parameter address: The IP address string to validate
+    /// - Returns: True if the address is a valid IPv6 address
+    public static func isValidIPv6Address(_ address: String) -> Bool {
+        var sin6 = sockaddr_in6()
+        return address.withCString { cstring in
+            inet_pton(AF_INET6, cstring, &sin6.sin6_addr) == 1
+        }
+    }
+    
+    /// Validates if a given string is a valid IP address (IPv4 or IPv6)
+    /// - Parameter address: The IP address string to validate
+    /// - Returns: True if the address is a valid IP address
+    public static func isValidIPAddress(_ address: String) -> Bool {
+        return isValidIPv4Address(address) || isValidIPv6Address(address)
+    }
+    
+    /// Validates if a given port number is within the valid range
+    /// - Parameter port: The port number to validate
+    /// - Returns: True if the port is valid (1-65535)
+    public static func isValidPort(_ port: Int) -> Bool {
+        return port > 0 && port <= 65535
+    }
+    
+    /// Creates a standardized network endpoint from host and port
+    /// - Parameters:
+    ///   - host: The hostname or IP address
+    ///   - port: The port number
+    /// - Returns: A Network.NWEndpoint if the parameters are valid, nil otherwise
+    public static func createEndpoint(host: String, port: Int) -> NWEndpoint? {
+        guard isValidPort(port) else {
+            logWarning("Invalid port number: \(port)")
+            return nil
+        }
+        
+        // Validate IP address format if it looks like an IP
+        if isValidIPAddress(host) {
+            return NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(integerLiteral: UInt16(port)))
+        }
+        
+        // For hostnames, let Network framework handle validation
+        return NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(integerLiteral: UInt16(port)))
+    }
+    
+    /// Formats a network endpoint as a human-readable string
+    /// - Parameter endpoint: The network endpoint to format
+    /// - Returns: A formatted string representation of the endpoint
+    public static func formatEndpoint(_ endpoint: NWEndpoint) -> String {
+        switch endpoint {
+        case .hostPort(let host, let port):
+            return "\(host):\(port)"
+        case .service(let name, let type, let domain, _):
+            return "\(name).\(type).\(domain)"
+        case .unix(let path):
+            return "unix:\(path)"
+        @unknown default:
+            return "unknown endpoint type"
+        }
+    }
+    
+    /// Extracts the port number from a network endpoint
+    /// - Parameter endpoint: The network endpoint
+    /// - Returns: The port number if available, nil otherwise
+    public static func extractPort(from endpoint: NWEndpoint) -> Int? {
+        switch endpoint {
+        case .hostPort(_, let port):
+            return Int(port.rawValue)
+        default:
+            return nil
+        }
+    }
+    
+    /// Extracts the host from a network endpoint
+    /// - Parameter endpoint: The network endpoint
+    /// - Returns: The host string if available, nil otherwise
+    public static func extractHost(from endpoint: NWEndpoint) -> String? {
+        switch endpoint {
+        case .hostPort(let host, _):
+            return String(describing: host)
+        default:
+            return nil
+        }
+    }
+}
+
+/// Extension to provide convenient network validation for common USB/IP operations
+public extension String {
+    /// Checks if the string represents a valid IP address
+    var isValidIPAddress: Bool {
+        return NetworkUtilities.isValidIPAddress(self)
+    }
+    
+    /// Checks if the string represents a valid IPv4 address
+    var isValidIPv4Address: Bool {
+        return NetworkUtilities.isValidIPv4Address(self)
+    }
+    
+    /// Checks if the string represents a valid IPv6 address
+    var isValidIPv6Address: Bool {
+        return NetworkUtilities.isValidIPv6Address(self)
+    }
+}
+
+/// Extension to provide convenient port validation
+public extension Int {
+    /// Checks if the integer represents a valid port number
+    var isValidPort: Bool {
+        return NetworkUtilities.isValidPort(self)
+    }
+}
