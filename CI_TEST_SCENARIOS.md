@@ -63,14 +63,16 @@ This document describes the test scenarios created to verify that the GitHub Act
 
 ## Verification Steps
 
-### 1. Check GitHub Actions Workflow Runs
+### 1. Merge CI Workflow to Main
 
-1. Navigate to the repository's **Actions** tab
-2. Look for workflow runs triggered by the test branches
-3. Verify that each run shows the expected failure pattern:
-   - `test/swiftlint-violations`: SwiftLint job fails
-   - `test/build-errors`: Build job fails
-   - `test/test-failures`: Test job fails
+**Important**: The CI workflow is currently in the `feature/github-actions-ci` branch and must be merged to `main` first for the test scenarios to work properly.
+
+```bash
+# Merge the CI workflow to main
+git checkout main
+git merge feature/github-actions-ci
+git push origin main
+```
 
 ### 2. Create Pull Requests
 

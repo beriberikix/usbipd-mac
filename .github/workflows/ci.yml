@@ -1,0 +1,464 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  # Global environment variables for consistent status reporting
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  lint:
+    name: Code Quality (SwiftLint)
+    runs-on: macos-latest
+    steps:
+      - name: 📋 Starting Code Quality Check
+        run: |
+          echo "::notice title=Code Quality Check::Starting SwiftLint validation for code quality and style compliance"
+          echo "🔍 This check validates Swift code against project style guidelines"
+          echo "📊 Status: STARTING"
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Cache SwiftLint
+        uses: actions/cache@v3
+        with:
+          path: |
+            /usr/local/bin/swiftlint
+            /opt/homebrew/bin/swiftlint
+          key: ${{ runner.os }}-swiftlint-${{ hashFiles('.swiftlint.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftlint-
+      
+      - name: 🔧 Install SwiftLint
+        run: |
+          echo "::group::SwiftLint Installation"
+          echo "📦 Checking SwiftLint installation status..."
+          # Check if SwiftLint is already installed
+          if ! command -v swiftlint &> /dev/null; then
+            echo "::notice title=SwiftLint Installation::Installing SwiftLint via Homebrew"
+            echo "⬇️ SwiftLint not found, installing via Homebrew..."
+            brew install swiftlint
+            echo "✅ SwiftLint installation completed"
+          else
+            echo "::notice title=SwiftLint Found::Using cached SwiftLint installation"
+            echo "✅ SwiftLint is already installed"
+            echo "📋 Version: $(swiftlint version)"
+          fi
+          echo "::endgroup::"
+      
+      - name: 🔍 Run SwiftLint Analysis
+        run: |
+          echo "::group::SwiftLint Analysis"
+          echo "::notice title=Code Analysis::Running SwiftLint with strict validation"
+          echo "🔍 Analyzing Swift code for style violations..."
+          echo "📊 Status: RUNNING"
+          echo "⚙️ Configuration: Using .swiftlint.yml rules"
+          echo "🎯 Mode: Strict (warnings treated as errors)"
+          
+          # Use --strict to fail on warnings, --reporter xcode for detailed output
+          if swiftlint lint --strict --reporter xcode; then
+            echo "::notice title=SwiftLint Success::No code style violations found"
+            echo "✅ Code quality check PASSED"
+            echo "📊 Status: SUCCESS"
+          else
+            echo "::error title=SwiftLint Violations::Code style violations detected"
+            echo "❌ Code quality check FAILED"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+        continue-on-error: false
+      
+      - name: 📊 Code Quality Summary
+        if: always()
+        run: |
+          echo "::group::Code Quality Check Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Code Quality Complete::All code quality checks passed successfully"
+            echo "✅ SwiftLint validation: PASSED"
+            echo "📋 No style violations found"
+            echo "🎯 Code meets project quality standards"
+          else
+            echo "::error title=Code Quality Failed::Code quality checks failed"
+            echo "❌ SwiftLint validation: FAILED"
+            echo "📋 Style violations detected - see details above"
+            echo "🔧 Action required: Fix code style issues before merging"
+          fi
+          echo "::endgroup::"
+
+  build:
+    name: Build Validation
+    runs-on: macos-latest
+    steps:
+      - name: 🏗️ Starting Build Validation
+        run: |
+          echo "::notice title=Build Validation::Starting project compilation and build validation"
+          echo "🔨 This check validates that the project compiles successfully"
+          echo "📊 Status: STARTING"
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🛠️ Setup Swift Environment
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: 'latest'
+      
+      - name: 📋 Verify Build Environment
+        run: |
+          echo "::group::Build Environment Information"
+          echo "::notice title=Environment Setup::Verifying Swift and macOS environment"
+          echo "🔧 Swift version: $(swift --version | head -n1)"
+          echo "🖥️ macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
+          echo "📊 Environment status: READY"
+          echo "::endgroup::"
+      
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+      
+      - name: 📦 Resolve Dependencies
+        run: |
+          echo "::group::Dependency Resolution"
+          echo "::notice title=Dependencies::Resolving Swift package dependencies"
+          echo "📦 Resolving Swift package dependencies..."
+          echo "📊 Status: RESOLVING"
+          
+          if swift package resolve; then
+            echo "::notice title=Dependencies Success::All dependencies resolved successfully"
+            echo "✅ Dependencies resolved successfully"
+            echo "📊 Status: RESOLVED"
+          else
+            echo "::error title=Dependencies Failed::Failed to resolve package dependencies"
+            echo "❌ Dependency resolution failed"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+      
+      - name: 🔨 Build Project
+        run: |
+          echo "::group::Project Compilation"
+          echo "::notice title=Build Process::Compiling project with Swift Package Manager"
+          echo "🔨 Building project with Swift Package Manager..."
+          echo "📊 Status: BUILDING"
+          echo "⚙️ Build mode: Debug with verbose output"
+          
+          # Build with verbose output to capture detailed error information
+          if swift build --verbose; then
+            echo "::notice title=Build Success::Project compiled successfully"
+            echo "✅ Build completed successfully"
+            echo "📊 Status: SUCCESS"
+            echo "🎯 All Swift modules compiled without errors"
+          else
+            echo "::error title=Build Failed::Project compilation failed"
+            echo "❌ Build failed - see detailed error information above"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+        continue-on-error: false
+      
+      - name: 📊 Build Validation Summary
+        if: always()
+        run: |
+          echo "::group::Build Validation Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Build Complete::Build validation completed successfully"
+            echo "✅ Project compilation: PASSED"
+            echo "✅ Dependency resolution: PASSED"
+            echo "🎯 All Swift modules built successfully"
+            echo "📋 Build artifacts ready for testing"
+          else
+            echo "::error title=Build Failed::Build validation failed"
+            echo "❌ Project compilation: FAILED"
+            echo "🔧 Action required: Fix build errors before merging"
+            echo "📋 Common build issues to check:"
+            echo "   • Missing or incompatible dependencies"
+            echo "   • Swift syntax or compilation errors"
+            echo "   • Import resolution failures"
+            echo "   • Platform compatibility issues"
+            echo "   • Package.swift configuration problems"
+          fi
+          echo "::endgroup::"
+
+  test:
+    name: Unit Tests
+    runs-on: macos-latest
+    steps:
+      - name: 🧪 Starting Unit Test Execution
+        run: |
+          echo "::notice title=Unit Tests::Starting comprehensive unit test execution"
+          echo "🧪 This check validates functionality through automated unit tests"
+          echo "📊 Status: STARTING"
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🛠️ Setup Swift Environment
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: 'latest'
+      
+      - name: 📋 Verify Test Environment
+        run: |
+          echo "::group::Test Environment Information"
+          echo "::notice title=Test Environment::Verifying Swift and macOS test environment"
+          echo "🔧 Swift version: $(swift --version | head -n1)"
+          echo "🖥️ macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
+          echo "📊 Test environment status: READY"
+          echo "::endgroup::"
+      
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+      
+      - name: 📦 Resolve Test Dependencies
+        run: |
+          echo "::group::Test Dependency Resolution"
+          echo "::notice title=Test Dependencies::Resolving dependencies for test execution"
+          echo "📦 Resolving Swift package dependencies for testing..."
+          echo "📊 Status: RESOLVING"
+          
+          if swift package resolve; then
+            echo "::notice title=Dependencies Success::Test dependencies resolved successfully"
+            echo "✅ Dependencies resolved successfully"
+            echo "📊 Status: RESOLVED"
+          else
+            echo "::error title=Dependencies Failed::Failed to resolve test dependencies"
+            echo "❌ Test dependency resolution failed"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+      
+      - name: 🧪 Execute Unit Tests
+        run: |
+          echo "::group::Unit Test Execution"
+          echo "::notice title=Test Execution::Running comprehensive unit test suite"
+          echo "🧪 Running unit tests with Swift Package Manager..."
+          echo "📊 Status: TESTING"
+          echo "⚙️ Test mode: Parallel execution with verbose output"
+          echo "🎯 Test suites to execute:"
+          echo "   • USBIPDCoreTests - Core functionality validation"
+          echo "   • USBIPDCLITests - Command-line interface validation"
+          
+          # Run tests with verbose output and proper error reporting
+          if swift test --verbose --parallel; then
+            echo "::notice title=Tests Success::All unit tests passed successfully"
+            echo "✅ Unit tests completed successfully"
+            echo "📊 Status: SUCCESS"
+          else
+            echo "::error title=Tests Failed::Unit test execution failed"
+            echo "❌ Unit tests failed - see detailed failure information above"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+        continue-on-error: false
+      
+      - name: 📊 Unit Test Summary
+        if: always()
+        run: |
+          echo "::group::Unit Test Execution Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Tests Complete::Unit test execution completed successfully"
+            echo "✅ All unit tests: PASSED"
+            echo "🎯 Test suites executed successfully:"
+            echo "   • USBIPDCoreTests - Core functionality validation"
+            echo "   • USBIPDCLITests - Command-line interface validation"
+            echo "📋 All functionality validated through automated tests"
+          else
+            echo "::error title=Tests Failed::Unit test execution failed"
+            echo "❌ Unit test execution: FAILED"
+            echo "🔧 Action required: Fix failing tests before merging"
+            echo "📋 Common test failure causes:"
+            echo "   • Assertion failures in test cases"
+            echo "   • Runtime errors during test execution"
+            echo "   • Missing test dependencies or setup"
+            echo "   • Platform-specific test compatibility issues"
+            echo "   • Test data or mock configuration problems"
+          fi
+          echo "::endgroup::"
+
+  integration-test:
+    name: Integration Tests (QEMU)
+    runs-on: macos-latest
+    steps:
+      - name: 🔗 Starting Integration Test Execution
+        run: |
+          echo "::notice title=Integration Tests::Starting end-to-end integration test validation"
+          echo "🔗 This check validates complete system functionality with QEMU test server"
+          echo "📊 Status: STARTING"
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🛠️ Setup Swift Environment
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: 'latest'
+      
+      - name: 📋 Verify Integration Test Environment
+        run: |
+          echo "::group::Integration Test Environment Information"
+          echo "::notice title=Integration Environment::Verifying Swift and macOS integration test environment"
+          echo "🔧 Swift version: $(swift --version | head -n1)"
+          echo "🖥️ macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
+          echo "📊 Integration test environment status: READY"
+          echo "::endgroup::"
+      
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+      
+      - name: 🔧 Setup Integration Test Dependencies
+        run: |
+          echo "::group::Integration Test Setup"
+          echo "::notice title=Test Setup::Configuring integration test dependencies"
+          echo "🔧 Setting up integration test dependencies..."
+          echo "📊 Status: CONFIGURING"
+          
+          # Ensure Scripts directory is executable
+          chmod +x Scripts/run-qemu-tests.sh
+          echo "✅ Test script permissions configured"
+          echo "📊 Status: CONFIGURED"
+          echo "::endgroup::"
+      
+      - name: 📦 Resolve Integration Dependencies
+        run: |
+          echo "::group::Integration Dependency Resolution"
+          echo "::notice title=Integration Dependencies::Resolving dependencies for integration testing"
+          echo "📦 Resolving Swift package dependencies for integration testing..."
+          echo "📊 Status: RESOLVING"
+          
+          if swift package resolve; then
+            echo "::notice title=Dependencies Success::Integration dependencies resolved successfully"
+            echo "✅ Dependencies resolved successfully"
+            echo "📊 Status: RESOLVED"
+          else
+            echo "::error title=Dependencies Failed::Failed to resolve integration dependencies"
+            echo "❌ Integration dependency resolution failed"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+      
+      - name: 🏗️ Build QEMU Test Server
+        run: |
+          echo "::group::QEMU Test Server Build"
+          echo "::notice title=QEMU Build::Building QEMU test server for integration testing"
+          echo "🏗️ Building QEMU test server..."
+          echo "📊 Status: BUILDING"
+          
+          if swift build --product QEMUTestServer; then
+            echo "::notice title=QEMU Build Success::QEMU test server built successfully"
+            echo "✅ QEMU test server built successfully"
+            echo "📊 Status: BUILT"
+          else
+            echo "::error title=QEMU Build Failed::Failed to build QEMU test server"
+            echo "❌ QEMU test server build failed"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+      
+      - name: 🧪 Run QEMU Test Script Validation
+        run: |
+          echo "::group::QEMU Script Validation"
+          echo "::notice title=QEMU Validation::Running QEMU test server validation script"
+          echo "🧪 Running QEMU test server validation script..."
+          echo "📊 Status: VALIDATING"
+          
+          if ./Scripts/run-qemu-tests.sh; then
+            echo "::notice title=QEMU Validation Success::QEMU test script validation completed successfully"
+            echo "✅ QEMU test script validation completed"
+            echo "📊 Status: VALIDATED"
+          else
+            echo "::error title=QEMU Validation Failed::QEMU test script validation failed"
+            echo "❌ QEMU test script validation failed"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+        continue-on-error: false
+      
+      - name: 🔗 Execute Integration Tests
+        run: |
+          echo "::group::Integration Test Execution"
+          echo "::notice title=Integration Execution::Running end-to-end integration tests"
+          echo "🔗 Running integration tests with QEMU test server..."
+          echo "📊 Status: TESTING"
+          echo "⚙️ Test mode: Integration tests with verbose output"
+          echo "🎯 Integration test components:"
+          echo "   • QEMU test server functionality"
+          echo "   • End-to-end protocol flow validation"
+          echo "   • Network communication layer testing"
+          
+          # Run only the integration tests
+          if swift test --filter IntegrationTests --verbose; then
+            echo "::notice title=Integration Success::Integration tests completed successfully"
+            echo "✅ Integration tests completed successfully"
+            echo "📊 Status: SUCCESS"
+          else
+            echo "::error title=Integration Failed::Integration test execution failed"
+            echo "❌ Integration tests failed - see detailed failure information above"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+          echo "::endgroup::"
+        continue-on-error: false
+      
+      - name: 📊 Integration Test Summary
+        if: always()
+        run: |
+          echo "::group::Integration Test Execution Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Integration Complete::Integration test execution completed successfully"
+            echo "✅ All integration tests: PASSED"
+            echo "✅ QEMU test server: VALIDATED"
+            echo "🎯 Integration test components validated:"
+            echo "   • QEMU test server functionality"
+            echo "   • End-to-end protocol flow validation"
+            echo "   • Network communication layer testing"
+            echo "   • System integration and compatibility"
+            echo "📋 Complete system functionality validated"
+          else
+            echo "::error title=Integration Failed::Integration test execution failed"
+            echo "❌ Integration test execution: FAILED"
+            echo "🔧 Action required: Fix integration issues before merging"
+            echo "📋 Common integration test failure causes:"
+            echo "   • QEMU test server setup or configuration issues"
+            echo "   • Network connectivity or communication problems"
+            echo "   • USB/IP protocol compatibility issues"
+            echo "   • Test environment configuration problems"
+            echo "   • System-level integration failures"
+            echo "   • Resource availability or timing issues"
+          fi
+          echo "::endgroup::"
