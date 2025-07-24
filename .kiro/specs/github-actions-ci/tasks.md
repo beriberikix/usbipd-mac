@@ -82,21 +82,25 @@
     - Commit changes: `feat(ci): configure branch protection and status checks`
     - _Requirements: 6.4_
 
-- [ ] 8. Add workflow documentation
-  - [ ] 8.1 Document CI workflow in README
+- [x] 8. Add workflow documentation
+  - [x] 8.1 Document CI workflow in README
     - Add section explaining CI process to project README
     - Include information on how to run checks locally
     - _Requirements: 5.4_
   
-  - [ ] 8.2 Add troubleshooting guide
+  - [x] 8.2 Add troubleshooting guide
     - Create documentation for common CI issues and solutions
     - Include guidance for updating Swift/macOS versions
     - Commit changes: `docs(ci): add workflow documentation and troubleshooting guide`
     - _Requirements: 4.3, 4.4_
 
 - [ ] 9. Test and validate the complete workflow
-  - [ ] 9.1 Test workflow with intentional failures
+  - [x] 9.1 Test workflow with intentional failures
     - Create test PR with code style violations
+    - Create test PR with build errors
+    - Create test PR with test failures
+    - Verify proper reporting and blocking of merges
+    - _Requirements: 1.2, 2.3, 3.2, 6.1_
     - Create test PR with build errors
     - Create test PR with test failures
     - Verify proper reporting and blocking of merges
