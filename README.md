@@ -303,7 +303,7 @@ If these solutions don't resolve your issue:
 
 ### Performance Monitoring
 
-The project includes built-in performance monitoring utilities for tracking operation execution times:
+The project includes built-in performance monitoring utilities for tracking operation execution times and network utilities for robust endpoint handling:
 
 ```swift
 import Common
@@ -320,6 +320,32 @@ let result = measurePerformance("network_request") {
 ```
 
 Performance measurements are automatically logged with timing information and can include additional context for debugging and optimization.
+
+### Network Utilities
+
+The project provides comprehensive network utilities for IP address validation and endpoint management:
+
+```swift
+import Common
+
+// IP address validation
+if "192.168.1.1".isValidIPAddress {
+    print("Valid IP address")
+}
+
+// Port validation
+if 3240.isValidPort {
+    print("Valid port number")
+}
+
+// Endpoint creation and management
+if let endpoint = NetworkUtilities.createEndpoint(host: "localhost", port: 3240) {
+    let formatted = NetworkUtilities.formatEndpoint(endpoint)
+    print("Endpoint: \(formatted)")
+}
+```
+
+These utilities ensure robust network communication and proper validation of network parameters throughout the USB/IP implementation.
 
 ## License
 
