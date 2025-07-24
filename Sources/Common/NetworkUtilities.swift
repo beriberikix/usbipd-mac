@@ -1,5 +1,9 @@
+//
 // NetworkUtilities.swift
+// usbipd-mac
+//
 // Network utility functions for USB/IP server operations
+//
 
 import Foundation
 import Network
@@ -39,6 +43,13 @@ public enum NetworkUtilities {
     /// - Returns: True if the port is valid (1-65535)
     public static func isValidPort(_ port: Int) -> Bool {
         port > 0 && port <= 65535
+    }
+    
+    /// Checks if a port number is in the well-known port range
+    /// - Parameter port: The port number to check
+    /// - Returns: True if the port is in the well-known range (1-1023)
+    public static func isWellKnownPort(_ port: Int) -> Bool {
+        port >= 1 && port <= 1023
     }
     
     /// Creates a standardized network endpoint from host and port
@@ -116,17 +127,17 @@ public enum NetworkUtilities {
 public extension String {
     /// Checks if the string represents a valid IP address
     var isValidIPAddress: Bool {
-        return NetworkUtilities.isValidIPAddress(self)
+        NetworkUtilities.isValidIPAddress(self)
     }
     
     /// Checks if the string represents a valid IPv4 address
     var isValidIPv4Address: Bool {
-        return NetworkUtilities.isValidIPv4Address(self)
+        NetworkUtilities.isValidIPv4Address(self)
     }
     
     /// Checks if the string represents a valid IPv6 address
     var isValidIPv6Address: Bool {
-        return NetworkUtilities.isValidIPv6Address(self)
+        NetworkUtilities.isValidIPv6Address(self)
     }
 }
 
@@ -134,6 +145,11 @@ public extension String {
 public extension Int {
     /// Checks if the integer represents a valid port number
     var isValidPort: Bool {
-        return NetworkUtilities.isValidPort(self)
+        NetworkUtilities.isValidPort(self)
+    }
+    
+    /// Checks if the integer represents a well-known port number (1-1023)
+    var isWellKnownPort: Bool {
+        NetworkUtilities.isWellKnownPort(self)
     }
 }

@@ -1,3 +1,10 @@
+//
+// NetworkUtilitiesTests.swift
+// usbipd-mac
+//
+// Tests for NetworkUtilities functionality
+//
+
 import XCTest
 import Network
 @testable import Common
@@ -137,6 +144,28 @@ final class NetworkUtilitiesTests: XCTestCase {
         }
     }
     
+    func testWellKnownPorts() {
+        let wellKnownPorts = [1, 22, 80, 443, 1023]
+        
+        for port in wellKnownPorts {
+            XCTAssertTrue(
+                NetworkUtilities.isWellKnownPort(port),
+                "Expected \(port) to be a well-known port"
+            )
+        }
+    }
+    
+    func testNonWellKnownPorts() {
+        let nonWellKnownPorts = [0, 1024, 3240, 8080, 65535, -1]
+        
+        for port in nonWellKnownPorts {
+            XCTAssertFalse(
+                NetworkUtilities.isWellKnownPort(port),
+                "Expected \(port) to not be a well-known port"
+            )
+        }
+    }
+    
     // MARK: - Endpoint Creation Tests
     
     func testCreateValidEndpoint() {
@@ -209,6 +238,20 @@ final class NetworkUtilitiesTests: XCTestCase {
         XCTAssertFalse(0.isValidPort)
         XCTAssertFalse((-1).isValidPort)
         XCTAssertFalse(65536.isValidPort)
+    }
+    
+    func testIntWellKnownPortExtension() {
+        XCTAssertTrue(80.isWellKnownPort)
+        XCTAssertTrue(443.isWellKnownPort)
+        XCTAssertTrue(22.isWellKnownPort)
+        XCTAssertTrue(1.isWellKnownPort)
+        XCTAssertTrue(1023.isWellKnownPort)
+        
+        XCTAssertFalse(1024.isWellKnownPort)
+        XCTAssertFalse(3240.isWellKnownPort)
+        XCTAssertFalse(8080.isWellKnownPort)
+        XCTAssertFalse(0.isWellKnownPort)
+        XCTAssertFalse((-1).isWellKnownPort)
     }
     
     // MARK: - Edge Cases

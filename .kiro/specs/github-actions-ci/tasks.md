@@ -131,4 +131,5 @@
   - [ ] 10.3 Merge to main after approval
     - Ensure all checks pass on the PR
     - Use proper merge strategy (squash or rebase)
+    - Cleanup unused branches after merge
     - _Requirements: 6.2_
