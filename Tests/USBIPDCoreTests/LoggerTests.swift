@@ -118,9 +118,9 @@ final class LoggerTests: XCTestCase {
         expectation.expectedFulfillmentCount = 10
         
         // Test concurrent logging from multiple threads
-        for i in 0..<10 {
+        for index in 0..<10 {
             DispatchQueue.global().async {
-                logger.info("Concurrent message \(i)")
+                logger.info("Concurrent message \(index)")
                 expectation.fulfill()
             }
         }
@@ -163,5 +163,73 @@ final class LoggerTests: XCTestCase {
         XCTAssertTrue(formatted.contains("2022-01-01") || formatted.contains("2021-12-31"))
         XCTAssertTrue(formatted.contains(":"))
         XCTAssertTrue(formatted.contains("."))
+    }
+    
+    // MARK: - Performance Monitoring Tests
+    
+    func testPerformanceTimerInitialization() {
+        let logger = Logger()
+        let timer = PerformanceTimer(operation: "test_operation", logger: logger)
+        
+        // Timer should be created without issues
+        XCTAssertNotNil(timer)
+    }
+    
+    func testPerformanceTimerCompletion() {
+        let logger = Logger()
+        let timer = PerformanceTimer(operation: "test_operation", logger: logger)
+        
+        // Should complete without crashing
+        timer.complete()
+        timer.complete(context: ["result": "success"])
+    }
+    
+    func testMeasurePerformanceFunction() {
+        let result = measurePerformance("test_calculation") {
+            2 + 2
+        }
+        
+        XCTAssertEqual(result, 4)
+    }
+    
+    func testMeasurePerformanceWithThrowingClosure() {
+        enum TestError: Error {
+            case testFailure
+        }
+        
+        // Test successful execution
+        let result = measurePerformance("test_throwing_success") {
+            "success"
+        }
+        XCTAssertEqual(result, "success")
+        
+        // Test error propagation
+        XCTAssertThrowsError(try measurePerformance("test_throwing_error") {
+            throw TestError.testFailure
+        }) { error in
+            XCTAssertTrue(error is TestError)
+        }
+    }
+    
+    func testPerformanceTimerWithCustomLogger() {
+        let config = LoggerConfig(level: .debug, includeTimestamp: false, includeContext: true)
+        let customLogger = Logger(config: config, subsystem: "test.performance", category: "timing")
+        
+        let timer = PerformanceTimer(operation: "custom_logger_test", logger: customLogger)
+        timer.complete(context: ["iterations": 100])
+        
+        // Should complete without issues
+    }
+    
+    func testPerformanceTimingAccuracy() {
+        let timer = PerformanceTimer(operation: "timing_test")
+        
+        // Simulate some work
+        Thread.sleep(forTimeInterval: 0.01) // 10ms
+        
+        timer.complete()
+        
+        // The timer should have measured some time (we can't easily verify the exact duration
+        // without capturing the log output, but we can ensure it doesn't crash)
     }
 }

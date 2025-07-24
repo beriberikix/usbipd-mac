@@ -299,6 +299,28 @@ If these solutions don't resolve your issue:
 4. Check [GitHub Actions status](https://www.githubstatus.com/) for platform issues
 5. Consult project maintainers for project-specific guidance
 
+## Development Features
+
+### Performance Monitoring
+
+The project includes built-in performance monitoring utilities for tracking operation execution times:
+
+```swift
+import Common
+
+// Using PerformanceTimer directly
+let timer = PerformanceTimer(operation: "device_discovery")
+// ... perform operation ...
+timer.complete(context: ["device_count": deviceCount])
+
+// Using the convenience function
+let result = measurePerformance("network_request") {
+    return performNetworkOperation()
+}
+```
+
+Performance measurements are automatically logged with timing information and can include additional context for debugging and optimization.
+
 ## License
 
 [MIT License](LICENSE)

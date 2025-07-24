@@ -10,7 +10,7 @@ public enum LogLevel: Int, CaseIterable, Comparable {
     case critical = 4
     
     public static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
-        return lhs.rawValue < rhs.rawValue
+        lhs.rawValue < rhs.rawValue
     }
     
     /// String representation of the log level
@@ -305,4 +305,52 @@ public func logError(
     line: Int = #line
 ) {
     Logger.shared.error(error, message: message, context: context, file: file, function: function, line: line)
+}
+
+// MARK: - Performance Monitoring
+
+/// Performance measurement utility for logging execution times
+public struct PerformanceTimer {
+    private let startTime: CFAbsoluteTime
+    private let operation: String
+    private let logger: Logger
+    
+    /// Initialize a performance timer
+    /// - Parameters:
+    ///   - operation: Name of the operation being timed
+    ///   - logger: Logger instance to use (defaults to shared)
+    public init(operation: String, logger: Logger = Logger.shared) {
+        self.operation = operation
+        self.logger = logger
+        self.startTime = CFAbsoluteTimeGetCurrent()
+        
+        logger.debug("Started operation: \(operation)")
+    }
+    
+    /// Complete the timing and log the result
+    /// - Parameter context: Additional context to include in the log
+    public func complete(context: [String: Any] = [:]) {
+        let duration = CFAbsoluteTimeGetCurrent() - startTime
+        var fullContext = context
+        fullContext["duration_ms"] = String(format: "%.2f", duration * 1000)
+        
+        logger.info("Completed operation: \(operation)", context: fullContext)
+    }
+}
+
+/// Convenience function to measure performance of a closure
+/// - Parameters:
+///   - operation: Name of the operation
+///   - logger: Logger to use
+///   - closure: Closure to execute and measure
+/// - Returns: Result of the closure
+public func measurePerformance<T>(
+    _ operation: String,
+    logger: Logger = Logger.shared,
+    _ closure: () throws -> T
+) rethrows -> T {
+    let timer = PerformanceTimer(operation: operation, logger: logger)
+    let result = try closure()
+    timer.complete()
+    return result
 }
