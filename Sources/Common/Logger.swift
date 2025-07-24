@@ -185,14 +185,14 @@ public final class Logger {
     /// Log protocol-related messages with structured formatting
     /// - Parameters:
     ///   - level: Log level for the message
-    ///   - protocol: Protocol name (e.g., "USB/IP", "TCP")
+    ///   - protocolName: Protocol name (e.g., "USB/IP", "TCP")
     ///   - operation: Operation being performed (e.g., "device_list", "attach")
     ///   - message: Descriptive message
     ///   - data: Optional data payload information
     ///   - context: Additional context information
     public func logProtocol(
         _ level: LogLevel,
-        protocol: String,
+        protocolName: String,
         operation: String,
         message: String,
         data: [String: Any] = [:],
@@ -202,7 +202,7 @@ public final class Logger {
         line: Int = #line
     ) {
         var fullContext = context
-        fullContext["protocol"] = protocol
+        fullContext["protocol"] = protocolName
         fullContext["operation"] = operation
         
         // Add data information if provided
@@ -210,7 +210,7 @@ public final class Logger {
             fullContext["data"] = data
         }
         
-        let protocolMessage = "[\(protocol)] \(operation): \(message)"
+        let protocolMessage = "[\(protocolName)] \(operation): \(message)"
         log(level, protocolMessage, context: fullContext, file: file, function: function, line: line)
     }
     
@@ -342,7 +342,7 @@ public func logError(
 /// Global protocol logging function for structured protocol message logging
 public func logProtocol(
     _ level: LogLevel,
-    protocol: String,
+    protocolName: String,
     operation: String,
     message: String,
     data: [String: Any] = [:],
@@ -353,7 +353,7 @@ public func logProtocol(
 ) {
     Logger.shared.logProtocol(
         level,
-        protocol: protocol,
+        protocolName: protocolName,
         operation: operation,
         message: message,
         data: data,

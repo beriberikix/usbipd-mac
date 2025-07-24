@@ -1,3 +1,6 @@
+// NetworkUtilities.swift
+// Network utility functions for USB/IP server operations
+
 import Foundation
 import Network
 
@@ -28,14 +31,14 @@ public enum NetworkUtilities {
     /// - Parameter address: The IP address string to validate
     /// - Returns: True if the address is a valid IP address
     public static func isValidIPAddress(_ address: String) -> Bool {
-        return isValidIPv4Address(address) || isValidIPv6Address(address)
+        isValidIPv4Address(address) || isValidIPv6Address(address)
     }
     
     /// Validates if a given port number is within the valid range
     /// - Parameter port: The port number to validate
     /// - Returns: True if the port is valid (1-65535)
     public static func isValidPort(_ port: Int) -> Bool {
-        return port > 0 && port <= 65535
+        port > 0 && port <= 65535
     }
     
     /// Creates a standardized network endpoint from host and port
@@ -51,11 +54,17 @@ public enum NetworkUtilities {
         
         // Validate IP address format if it looks like an IP
         if isValidIPAddress(host) {
-            return NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(integerLiteral: UInt16(port)))
+            return NWEndpoint.hostPort(
+                host: NWEndpoint.Host(host),
+                port: NWEndpoint.Port(integerLiteral: UInt16(port))
+            )
         }
         
         // For hostnames, let Network framework handle validation
-        return NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(integerLiteral: UInt16(port)))
+        return NWEndpoint.hostPort(
+            host: NWEndpoint.Host(host),
+            port: NWEndpoint.Port(integerLiteral: UInt16(port))
+        )
     }
     
     /// Formats a network endpoint as a human-readable string
@@ -63,14 +72,18 @@ public enum NetworkUtilities {
     /// - Returns: A formatted string representation of the endpoint
     public static func formatEndpoint(_ endpoint: NWEndpoint) -> String {
         switch endpoint {
-        case .hostPort(let host, let port):
-            return "\(host):\(port)"
-        case .service(let name, let type, let domain, _):
-            return "\(name).\(type).\(domain)"
-        case .unix(let path):
-            return "unix:\(path)"
+        case let .hostPort(host, port):
+            "\(host):\(port)"
+        case let .service(name, type, domain, _):
+            "\(name).\(type).\(domain)"
+        case let .unix(path):
+            "unix:\(path)"
+        case let .url(url):
+            url.absoluteString
+        case .opaque:
+            "opaque endpoint"
         @unknown default:
-            return "unknown endpoint type"
+            "unknown endpoint type"
         }
     }
     
