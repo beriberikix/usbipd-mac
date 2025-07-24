@@ -171,14 +171,28 @@ The main branch is protected with required status checks and approval requiremen
 ```bash
 # Using the provided setup script
 ./.github/scripts/setup-branch-protection.sh
-
-# Or validate existing configuration
-./.github/scripts/validate-branch-protection.sh
 ```
 
 This ensures that even if technical checks could be bypassed, maintainer approval acts as a safeguard to maintain code quality and project stability.
 
-See [Branch Protection Configuration](.github/BRANCH_PROTECTION.md) for detailed setup instructions.
+**Maintainer Approval Process:**
+
+When CI checks fail or need to be bypassed (satisfying requirement 6.4):
+
+1. **Normal Process**: Fix the failing checks and push new commits
+2. **Emergency Bypass**: 
+   - Requires explicit approval from repository maintainers
+   - Maintainer must review the specific reason for bypass
+   - Approval must be documented in PR comments
+   - Follow-up issue should be created to address the underlying problem
+
+**Configuration Details:**
+- Administrators cannot bypass protection rules without approval
+- All status checks must pass before merging
+- At least 1 maintainer approval is required for all PRs
+- Stale reviews are dismissed when new commits are pushed
+
+See [Branch Protection Configuration](.github/branch-protection-config.md) for detailed setup instructions.
 
 ### Troubleshooting CI Issues
 

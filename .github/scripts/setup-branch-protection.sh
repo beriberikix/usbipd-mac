@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # GitHub Branch Protection Setup Script
-# This script configures branch protection with required status checks and approval requirements
+# This script configures branch protection rules for the main branch
+# to enforce CI checks and require maintainer approval for bypassing
 
 set -e
 
@@ -12,34 +13,29 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Function to print colored output
-print_status() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
+# Configuration
+BRANCH="main"
+REQUIRED_CHECKS=(
+    "Code Quality (SwiftLint)"
+    "Build Validation"
+    "Unit Tests"
+    "Integration Tests (QEMU)"
+)
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-print_check() {
-    echo -e "${BLUE}[SETUP]${NC} $1"
-}
+echo -e "${BLUE}🔒 GitHub Branch Protection Setup${NC}"
+echo "=================================================="
 
 # Check if GitHub CLI is installed
 if ! command -v gh &> /dev/null; then
-    print_error "GitHub CLI (gh) is not installed. Please install it first:"
-    echo "  brew install gh"
+    echo -e "${RED}❌ GitHub CLI (gh) is not installed${NC}"
+    echo "Please install GitHub CLI: https://cli.github.com/"
     exit 1
 fi
 
 # Check if user is authenticated
 if ! gh auth status &> /dev/null; then
-    print_error "Not authenticated with GitHub CLI. Please run:"
-    echo "  gh auth login"
+    echo -e "${RED}❌ Not authenticated with GitHub CLI${NC}"
+    echo "Please run: gh auth login"
     exit 1
 fi
 
@@ -48,45 +44,29 @@ REPO_INFO=$(gh repo view --json owner,name)
 OWNER=$(echo "$REPO_INFO" | jq -r '.owner.login')
 REPO_NAME=$(echo "$REPO_INFO" | jq -r '.name')
 
-print_status "Setting up branch protection for $OWNER/$REPO_NAME"
+echo -e "${BLUE}📋 Repository: ${OWNER}/${REPO_NAME}${NC}"
+echo -e "${BLUE}🌿 Branch: ${BRANCH}${NC}"
 
-# Required status checks based on CI workflow job names
-REQUIRED_CHECKS=(
-    "Code Quality (SwiftLint)"
-    "Build Validation"
-    "Unit Tests"
-    "Integration Tests (QEMU)"
-)
-
-print_check "Configuring branch protection with the following settings:"
-echo "  Branch: main"
-echo "  Required status checks: ${#REQUIRED_CHECKS[@]} checks"
-for check in "${REQUIRED_CHECKS[@]}"; do
-    echo "    - $check"
-done
-echo "  Strict status checks: enabled (branches must be up to date)"
-echo "  Required reviews: 1 (maintainer approval required)"
-echo "  Dismiss stale reviews: enabled"
-echo "  Require review from code owners: enabled"
-echo "  Enforce for administrators: enabled (admins cannot bypass without approval)"
-echo "  Allow force pushes: disabled"
-echo "  Allow deletions: disabled"
-
-# Confirm before proceeding
-echo ""
-read -p "Do you want to proceed with this configuration? (y/N): " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    print_warning "Branch protection setup cancelled by user"
-    exit 0
+# Check current branch protection status
+echo -e "\n${YELLOW}🔍 Checking current branch protection status...${NC}"
+if gh api "repos/${OWNER}/${REPO_NAME}/branches/${BRANCH}/protection" &> /dev/null; then
+    echo -e "${YELLOW}⚠️  Branch protection already exists. This will update the configuration.${NC}"
+else
+    echo -e "${GREEN}✅ No existing branch protection found. Creating new configuration.${NC}"
 fi
 
-# Build the contexts array for the API call
+# Prepare required status checks JSON
 CONTEXTS_JSON=$(printf '%s\n' "${REQUIRED_CHECKS[@]}" | jq -R . | jq -s .)
 
-print_check "Applying branch protection settings..."
+echo -e "\n${BLUE}📝 Required Status Checks:${NC}"
+for check in "${REQUIRED_CHECKS[@]}"; do
+    echo "   • $check"
+done
 
-# Configure branch protection using GitHub API
+# Create branch protection configuration
+echo -e "\n${YELLOW}🔧 Applying branch protection rules...${NC}"
+
+# Build the protection configuration
 PROTECTION_CONFIG=$(cat <<EOF
 {
   "required_status_checks": {
@@ -97,57 +77,50 @@ PROTECTION_CONFIG=$(cat <<EOF
   "required_pull_request_reviews": {
     "required_approving_review_count": 1,
     "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": true,
-    "require_last_push_approval": false
+    "require_code_owner_reviews": false
   },
   "restrictions": null,
   "allow_force_pushes": false,
-  "allow_deletions": false,
-  "block_creations": false
+  "allow_deletions": false
 }
 EOF
 )
 
-if gh api "repos/$OWNER/$REPO_NAME/branches/main/protection" \
-    --method PUT \
-    --input - <<< "$PROTECTION_CONFIG"; then
-    
-    print_status "✅ Branch protection configured successfully!"
-    echo ""
-    echo "Configuration summary:"
-    echo "  ✅ Required status checks: ${#REQUIRED_CHECKS[@]} checks configured"
-    echo "  ✅ Strict mode: enabled (branches must be up to date)"
-    echo "  ✅ Required reviews: 1 maintainer approval required"
-    echo "  ✅ Dismiss stale reviews: enabled"
-    echo "  ✅ Code owner reviews: required when applicable"
-    echo "  ✅ Enforce for admins: enabled"
-    echo "  ✅ Force pushes: blocked"
-    echo "  ✅ Branch deletions: blocked"
-    echo ""
-    echo "Requirements addressed:"
-    echo "  ✅ 6.1: PRs with failing checks cannot be merged"
-    echo "  ✅ 6.2: PRs with passing checks can be merged"
-    echo "  ✅ 6.3: Check status is clearly reported (handled by workflow)"
-    echo "  ✅ 6.4: Maintainer approval required for bypassing checks"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Run validation: .github/scripts/validate-branch-protection.sh"
-    echo "  2. Create a test PR to verify the configuration"
-    echo "  3. Ensure team members understand the new requirements"
-    
+# Apply the branch protection
+if echo "$PROTECTION_CONFIG" | gh api "repos/${OWNER}/${REPO_NAME}/branches/${BRANCH}/protection" --method PUT --input -; then
+    echo -e "${GREEN}✅ Branch protection rules applied successfully!${NC}"
 else
-    print_error "❌ Failed to configure branch protection"
-    echo ""
-    echo "Possible causes:"
-    echo "  - Insufficient permissions (admin access required)"
-    echo "  - Repository settings prevent branch protection changes"
-    echo "  - Network connectivity issues"
-    echo "  - Invalid configuration format"
-    echo ""
-    echo "Troubleshooting:"
-    echo "  1. Verify you have admin access to the repository"
-    echo "  2. Check repository settings for any restrictions"
-    echo "  3. Try running the command again"
-    echo "  4. Configure manually via GitHub Settings → Branches"
+    echo -e "${RED}❌ Failed to apply branch protection rules${NC}"
     exit 1
 fi
+
+echo -e "\n${GREEN}🎉 Branch Protection Configuration Complete!${NC}"
+echo "=================================================="
+echo -e "${BLUE}📋 Applied Settings:${NC}"
+echo "   • Require pull request reviews (1 approval minimum)"
+echo "   • Require status checks to pass before merging"
+echo "   • Require branches to be up to date before merging"
+echo "   • Enforce restrictions for administrators"
+echo "   • Dismiss stale reviews when new commits are pushed"
+echo "   • Prevent force pushes and branch deletions"
+
+echo -e "\n${BLUE}🔒 Required Status Checks:${NC}"
+for check in "${REQUIRED_CHECKS[@]}"; do
+    echo "   ✓ $check"
+done
+
+echo -e "\n${YELLOW}⚠️  Important Notes:${NC}"
+echo "   • Administrators cannot bypass these protection rules"
+echo "   • All CI checks must pass before merging"
+echo "   • At least 1 maintainer approval is required"
+echo "   • This satisfies requirement 6.4 for maintainer approval"
+
+echo -e "\n${BLUE}🔍 Verification:${NC}"
+echo "   1. Create a test pull request"
+echo "   2. Verify CI checks are required"
+echo "   3. Confirm maintainer approval is needed"
+echo "   4. Test that failed checks block merging"
+
+echo -e "\n${GREEN}✅ Setup complete! Branch protection is now active.${NC}"
+</text>
+</invoke>
