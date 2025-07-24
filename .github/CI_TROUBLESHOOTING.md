@@ -1,1012 +1,822 @@
 # CI Troubleshooting Guide
 
-This guide provides comprehensive solutions for common GitHub Actions CI issues in the usbipd-mac project.
+This comprehensive guide provides detailed solutions for common CI issues and procedures for maintaining the GitHub Actions workflow.
 
 ## Table of Contents
 
-- [Quick Diagnosis](#quick-diagnosis)
-- [SwiftLint Issues](#swiftlint-issues)
-- [Build Failures](#build-failures)
-- [Test Failures](#test-failures)
-- [Integration Test Issues](#integration-test-issues)
-- [Environment and Version Issues](#environment-and-version-issues)
-- [Performance and Timeout Issues](#performance-and-timeout-issues)
-- [Updating Swift and macOS Versions](#updating-swift-and-macos-versions)
-- [Cache Issues](#cache-issues)
-- [Branch Protection Issues](#branch-protection-issues)
+1. [Quick Diagnosis](#quick-diagnosis)
+2. [SwiftLint Issues](#swiftlint-issues)
+3. [Build Issues](#build-issues)
+4. [Test Issues](#test-issues)
+5. [Integration Test Issues](#integration-test-issues)
+6. [Performance Issues](#performance-issues)
+7. [Swift and macOS Version Updates](#swift-and-macos-version-updates)
+8. [Cache Issues](#cache-issues)
+9. [Branch Protection Issues](#branch-protection-issues)
+10. [Emergency Procedures](#emergency-procedures)
 
 ## Quick Diagnosis
 
-When CI fails, start with these quick checks:
+### Step 1: Identify the Problem
 
-1. **Check the failing job**: Look at which specific job failed (lint, build, test, integration-test)
-2. **Review the error summary**: Each job provides a summary section with common causes
-3. **Run locally first**: Always reproduce the issue locally before investigating CI-specific problems
-4. **Check recent changes**: Consider if recent dependency updates or configuration changes might be the cause
+1. **Check the CI status**: Look at which specific job failed
+2. **Review the error summary**: Each job provides a summary with common causes
+3. **Check the timing**: Note if the failure is consistent or intermittent
+
+### Step 2: Reproduce Locally
+
+Always reproduce the issue locally before investigating CI-specific problems:
+
+```bash
+# Run the complete local validation sequence
+echo "🔍 Running SwiftLint..."
+swiftlint lint --strict --reporter xcode
+
+echo "🔨 Building project..."
+swift package clean && swift package resolve && swift build --verbose
+
+echo "🧪 Running unit tests..."
+swift test --verbose --parallel
+
+echo "🔗 Running integration tests..."
+chmod +x Scripts/run-qemu-tests.sh
+swift build --product QEMUTestServer
+./Scripts/run-qemu-tests.sh
+swift test --filter IntegrationTests --verbose
+```
+
+### Step 3: Check Environment Differences
+
+Compare your local environment with CI:
+
+```bash
+# Check versions (should match CI)
+swift --version
+sw_vers -productName && sw_vers -productVersion
+swiftlint version
+which swiftlint
+```
 
 ## SwiftLint Issues
 
-### Common SwiftLint Failures
+### Common SwiftLint Violations
 
-#### Issue: SwiftLint Installation Fails
+#### Line Length Violations
 ```
-Error: Failed to install SwiftLint via Homebrew
+error: Line Length Violation: Line should be 120 characters or less: currently 145 characters (line_length)
 ```
-
-**Diagnosis:**
-- Homebrew installation issues on the runner
-- Network connectivity problems
-- SwiftLint package availability issues
 
 **Solutions:**
-1. **Check Homebrew status**: The issue is usually temporary
-2. **Retry the workflow**: Often resolves transient network issues
-3. **Update SwiftLint cache key**: If persistent, update the cache key in `.github/workflows/ci.yml`:
-   ```yaml
-   key: ${{ runner.os }}-swiftlint-v2-${{ hashFiles('.swiftlint.yml') }}
-   ```
+```swift
+// ❌ Too long
+let veryLongVariableName = someObject.someMethod().anotherMethod().yetAnotherMethod().finalMethod()
 
-#### Issue: SwiftLint Rule Violations
+// ✅ Break into multiple lines
+let veryLongVariableName = someObject
+    .someMethod()
+    .anotherMethod()
+    .yetAnotherMethod()
+    .finalMethod()
+
+// ✅ Use intermediate variables
+let intermediateResult = someObject.someMethod().anotherMethod()
+let veryLongVariableName = intermediateResult.yetAnotherMethod().finalMethod()
 ```
-error: Line Length Violation: Line should be 120 characters or less (line_length)
+
+#### Force Cast/Unwrapping Violations
+```
+error: Force Cast Violation: Force casts should be avoided (force_cast)
+error: Force Unwrapping Violation: Force unwrapping should be avoided (force_unwrapping)
+```
+
+**Solutions:**
+```swift
+// ❌ Force casting and unwrapping
+let result = someValue as! String
+let unwrapped = optionalValue!
+
+// ✅ Safe casting and unwrapping
+guard let result = someValue as? String else {
+    // Handle casting failure
+    return
+}
+
+if let unwrapped = optionalValue {
+    // Use unwrapped value
+} else {
+    // Handle nil case
+}
+
+// ✅ Nil coalescing for defaults
+let value = optionalValue ?? defaultValue
+```
+
+#### Trailing Whitespace
+```
 warning: Trailing Whitespace: Lines should not have trailing whitespace (trailing_whitespace)
 ```
 
-**Diagnosis:**
-- Code doesn't meet project style guidelines
-- New SwiftLint rules were added to `.swiftlint.yml`
-- Auto-formatting tools weren't used
-
 **Solutions:**
-1. **Run SwiftLint locally**:
-   ```bash
-   # Install SwiftLint if needed
-   brew install swiftlint
-   
-   # Check violations
-   swiftlint lint --strict
-   
-   # Auto-fix violations where possible
-   swiftlint --fix
-   ```
+```bash
+# Auto-fix trailing whitespace
+swiftlint --fix
 
-2. **Common fixes**:
-   - Remove trailing whitespace
-   - Break long lines (120 character limit)
-   - Add missing documentation comments for public APIs
-   - Fix indentation and spacing issues
-
-3. **Update SwiftLint configuration** (if rules are too strict):
-   ```yaml
-   # .swiftlint.yml
-   disabled_rules:
-     - line_length  # Temporarily disable if needed
-   
-   line_length:
-     warning: 120
-     error: 150
-   ```
-
-#### Issue: SwiftLint Configuration Errors
+# Configure your editor to show/remove trailing whitespace
+# Xcode: Preferences > Text Editing > While editing > Including whitespace-only lines
 ```
-error: Configuration file contains invalid keys
+
+### SwiftLint Configuration Issues
+
+#### Invalid YAML Configuration
+```
+error: Could not read configuration file at '.swiftlint.yml': The operation couldn't be completed.
 ```
 
 **Diagnosis:**
-- Invalid YAML syntax in `.swiftlint.yml`
-- Unsupported SwiftLint rules or options
-- Version mismatch between local and CI SwiftLint
+```bash
+# Validate YAML syntax
+python -c "import yaml; yaml.safe_load(open('.swiftlint.yml'))"
+
+# Check for common YAML issues
+cat .swiftlint.yml | grep -E "^\s*-\s*$|^\s*:\s*$"
+```
+
+**Common YAML Issues:**
+- Missing spaces after colons: `key:value` → `key: value`
+- Incorrect indentation (use spaces, not tabs)
+- Missing quotes around special characters
+- Trailing commas in lists
+
+#### SwiftLint Installation Issues
+```
+error: SwiftLint not found in PATH
+```
 
 **Solutions:**
-1. **Validate YAML syntax**:
-   ```bash
-   # Check YAML syntax
-   python -c "import yaml; yaml.safe_load(open('.swiftlint.yml'))"
-   ```
+```bash
+# Install SwiftLint
+brew install swiftlint
 
-2. **Check SwiftLint version compatibility**:
-   ```bash
-   # Check local version
-   swiftlint version
-   
-   # Update to match CI (latest)
-   brew upgrade swiftlint
-   ```
+# Verify installation
+which swiftlint
+swiftlint version
 
-3. **Test configuration locally**:
-   ```bash
-   swiftlint lint --config .swiftlint.yml --strict
-   ```
-
-## Build Failures
-
-### Common Build Issues
-
-#### Issue: Swift Package Resolution Fails
-```
-error: failed to resolve dependencies
+# If Homebrew is not available, use alternative installation
+curl -L https://github.com/realm/SwiftLint/releases/latest/download/portable_swiftlint.zip -o swiftlint.zip
+unzip swiftlint.zip
+sudo mv swiftlint /usr/local/bin/
 ```
 
-**Diagnosis:**
-- Network connectivity issues
-- Invalid Package.swift configuration
-- Dependency version conflicts
-- Missing or moved repositories
+## Build Issues
+
+### Dependency Resolution Failures
+
+#### Network Connectivity Issues
+```
+error: failed to resolve dependencies: unable to resolve package at 'https://github.com/...'
+```
 
 **Solutions:**
-1. **Check Package.swift syntax**:
-   ```bash
-   swift package dump-package
-   ```
+```bash
+# Clear package cache
+rm -rf .build
+swift package clean
 
-2. **Resolve dependencies locally**:
-   ```bash
-   swift package clean
-   swift package resolve
-   swift package show-dependencies
-   ```
+# Reset package state
+swift package reset
 
-3. **Update dependency versions**:
-   ```bash
-   swift package update
-   ```
+# Resolve with verbose output
+swift package resolve --verbose
 
-4. **Check for dependency conflicts**:
-   - Review Package.resolved for version conflicts
-   - Ensure all dependencies support the same Swift version
+# Check network connectivity
+curl -I https://github.com
 
-#### Issue: Swift Compilation Errors
-```
-error: cannot find 'SomeType' in scope
-error: module 'SomeModule' not found
+# Use SSH instead of HTTPS if authentication issues
+# Update Package.swift to use SSH URLs for private repos
 ```
 
-**Diagnosis:**
-- Missing imports
-- Typos in type names
-- Module visibility issues
-- Swift version compatibility problems
+#### Version Conflicts
+```
+error: package 'PackageName' is required using two different revision-based requirements
+```
 
 **Solutions:**
-1. **Check imports and module structure**:
-   ```swift
-   import Foundation
-   import SystemExtensions
-   // Ensure all required imports are present
-   ```
+```bash
+# Show dependency tree
+swift package show-dependencies
 
-2. **Verify module targets in Package.swift**:
-   ```swift
-   .target(
-       name: "USBIPDCore",
-       dependencies: [
-           "Common",
-           // Ensure all dependencies are listed
-       ]
-   )
-   ```
+# Update Package.swift to use compatible versions
+# Remove version conflicts by specifying exact versions or ranges
 
-3. **Test compilation locally**:
-   ```bash
-   swift build --verbose
-   ```
-
-#### Issue: Platform Compatibility Errors
-```
-error: 'SomeAPI' is only available in macOS 12.0 or newer
+# Example fix in Package.swift:
+.package(url: "https://github.com/example/package", from: "1.0.0")
+// Instead of mixing exact and range requirements
 ```
 
-**Diagnosis:**
-- Using APIs not available in minimum deployment target
-- Missing availability checks
-- Incorrect platform version specifications
+### Compilation Errors
+
+#### Missing Imports
+```
+error: no such module 'ModuleName'
+```
 
 **Solutions:**
-1. **Add availability checks**:
-   ```swift
-   if #available(macOS 12.0, *) {
-       // Use newer API
-   } else {
-       // Fallback implementation
-   }
-   ```
+```swift
+// Check Package.swift dependencies
+.target(
+    name: "YourTarget",
+    dependencies: [
+        "MissingModule", // Add missing dependency
+    ]
+)
 
-2. **Update minimum deployment target** in Package.swift:
-   ```swift
-   platforms: [
-       .macOS(.v12)  // Update as needed
-   ]
-   ```
-
-3. **Use alternative APIs** for older versions
-
-## Test Failures
-
-### Common Test Issues
-
-#### Issue: Unit Test Failures
-```
-Test Case 'TestClass.testMethod' failed
-XCTAssertEqual failed: ("expected") is not equal to ("actual")
+// Verify import statement
+import Foundation
+import MissingModule // Ensure correct module name
 ```
 
-**Diagnosis:**
-- Logic errors in implementation
-- Incorrect test expectations
-- Test data or mock setup issues
-- Race conditions in async tests
+#### Symbol Not Found
+```
+error: cannot find 'symbolName' in scope
+```
 
 **Solutions:**
-1. **Run tests locally with verbose output**:
-   ```bash
-   swift test --verbose --filter TestClass.testMethod
-   ```
+```swift
+// Check if symbol is properly imported
+import ModuleContainingSymbol
 
-2. **Debug test failures**:
-   ```bash
-   # Run specific test suite
-   swift test --filter USBIPDCoreTests
-   
-   # Run with debugging
-   swift test --enable-test-discovery --verbose
-   ```
+// Verify symbol visibility (public/internal)
+public func symbolName() { } // Ensure it's public if used across modules
 
-3. **Check test data and mocks**:
-   - Verify test data files are included in the package
-   - Ensure mock objects are properly configured
-   - Check for hardcoded paths or assumptions
-
-4. **Fix async test issues**:
-   ```swift
-   func testAsyncOperation() async throws {
-       let expectation = XCTestExpectation(description: "Async operation")
-       
-       // Use proper async/await patterns
-       let result = await someAsyncOperation()
-       XCTAssertEqual(result, expectedValue)
-       
-       expectation.fulfill()
-       await fulfillment(of: [expectation], timeout: 5.0)
-   }
-   ```
-
-#### Issue: Test Environment Setup Failures
-```
-error: Test bundle could not be loaded
+// Check for typos in symbol names
+// Use Xcode's autocomplete to verify correct spelling
 ```
 
-**Diagnosis:**
-- Missing test dependencies
-- Incorrect test target configuration
-- Test resource loading issues
+### Swift Version Compatibility
+
+#### Deprecated API Usage
+```
+warning: 'oldAPI' is deprecated in Swift 5.9: use 'newAPI' instead
+```
 
 **Solutions:**
-1. **Verify test target configuration** in Package.swift:
-   ```swift
-   .testTarget(
-       name: "USBIPDCoreTests",
-       dependencies: ["USBIPDCore"],
-       resources: [
-           .process("TestData")  // Include test resources
-       ]
-   )
-   ```
+```swift
+// Use availability checks for gradual migration
+if #available(macOS 14.0, *) {
+    // Use new API
+    newAPI()
+} else {
+    // Use old API for backward compatibility
+    oldAPI()
+}
 
-2. **Check test resource loading**:
-   ```swift
-   // Correct way to load test resources
-   let bundle = Bundle.module
-   let testDataURL = bundle.url(forResource: "test-data", withExtension: "json")
-   ```
+// Or update to use new API directly if minimum version allows
+newAPI() // When minimum deployment target supports it
+```
 
-3. **Rebuild test targets**:
-   ```bash
-   swift package clean
-   swift build --build-tests
-   swift test
-   ```
+## Test Issues
+
+### Test Discovery Problems
+
+#### No Tests Found
+```
+error: no tests found
+```
+
+**Solutions:**
+```bash
+# Verify test target configuration in Package.swift
+.testTarget(
+    name: "YourTests",
+    dependencies: ["YourModule"]
+)
+
+# Check test file naming (must end with 'Tests')
+# Example: DeviceManagerTests.swift
+
+# Verify test class inheritance
+import XCTest
+@testable import YourModule
+
+final class YourTests: XCTestCase {
+    func testExample() {
+        // Test implementation
+    }
+}
+```
+
+### Test Execution Failures
+
+#### Timeout Issues
+```
+error: Test Case 'TestClass.testMethod' exceeded timeout of 60.0 seconds
+```
+
+**Solutions:**
+```swift
+// Add explicit timeouts for async operations
+func testAsyncOperation() async throws {
+    let expectation = XCTestExpectation(description: "Async operation")
+    
+    // Set appropriate timeout
+    await fulfillment(of: [expectation], timeout: 30.0)
+}
+
+// Use XCTAssertNoThrow for operations that might hang
+XCTAssertNoThrow(try potentiallyHangingOperation())
+```
+
+#### Memory Issues
+```
+error: Test crashed with signal SIGKILL
+```
+
+**Solutions:**
+```swift
+// Check for memory leaks in test setup/teardown
+override func tearDown() {
+    // Clean up resources
+    testObject = nil
+    super.tearDown()
+}
+
+// Use weak references to avoid retain cycles
+weak var weakDelegate = delegate
+XCTAssertNil(weakDelegate) // Verify cleanup
+```
+
+### Flaky Tests
+
+#### Race Conditions
+```
+error: Test sometimes passes, sometimes fails
+```
+
+**Solutions:**
+```swift
+// Use proper synchronization for concurrent tests
+func testConcurrentOperation() async {
+    await withTaskGroup(of: Void.self) { group in
+        for i in 0..<10 {
+            group.addTask {
+                await self.performOperation(i)
+            }
+        }
+    }
+}
+
+// Use XCTestExpectation for async operations
+let expectation = XCTestExpectation(description: "Operation completes")
+asyncOperation { result in
+    XCTAssertNotNil(result)
+    expectation.fulfill()
+}
+await fulfillment(of: [expectation], timeout: 5.0)
+```
 
 ## Integration Test Issues
 
 ### QEMU Test Server Issues
 
-#### Issue: QEMU Test Server Build Fails
+#### Permission Denied
 ```
-error: failed to build product 'QEMUTestServer'
+error: Permission denied: ./Scripts/run-qemu-tests.sh
 ```
-
-**Diagnosis:**
-- Missing QEMUTestServer target in Package.swift
-- Compilation errors in QEMU test server code
-- Missing dependencies for QEMU functionality
 
 **Solutions:**
-1. **Verify QEMUTestServer target exists** in Package.swift:
-   ```swift
-   .executableTarget(
-       name: "QEMUTestServer",
-       dependencies: ["USBIPDCore", "Common"]
-   )
-   ```
+```bash
+# Fix script permissions
+chmod +x Scripts/run-qemu-tests.sh
 
-2. **Build QEMU test server locally**:
-   ```bash
-   swift build --product QEMUTestServer
-   .build/debug/QEMUTestServer --help
-   ```
+# Verify permissions
+ls -la Scripts/run-qemu-tests.sh
 
-3. **Check QEMU test server dependencies**:
-   - Ensure all required modules are imported
-   - Verify network and system dependencies are available
-
-#### Issue: QEMU Test Script Fails
-```
-error: ./Scripts/run-qemu-tests.sh: Permission denied
+# Should show: -rwxr-xr-x (executable permissions)
 ```
 
-**Diagnosis:**
-- Script permissions not set correctly
-- Script execution errors
-- Missing script dependencies
+#### QEMU Server Build Failures
+```
+error: No such file or directory: QEMUTestServer
+```
 
 **Solutions:**
-1. **Fix script permissions**:
-   ```bash
-   chmod +x Scripts/run-qemu-tests.sh
-   ```
+```bash
+# Build QEMU test server explicitly
+swift build --product QEMUTestServer
 
-2. **Test script locally**:
-   ```bash
-   ./Scripts/run-qemu-tests.sh
-   ```
+# Verify build output
+ls -la .build/debug/QEMUTestServer
 
-3. **Debug script issues**:
-   ```bash
-   # Run with debugging
-   bash -x Scripts/run-qemu-tests.sh
-   ```
+# Check Package.swift for QEMUTestServer target
+.executableTarget(
+    name: "QEMUTestServer",
+    dependencies: ["USBIPDCore", "Common"]
+)
+```
 
-4. **Check script dependencies**:
-   - Ensure QEMU test server is built
-   - Verify network ports are available
-   - Check for required system tools
+### Network Connectivity Issues
 
-#### Issue: Integration Test Network Failures
+#### Port Conflicts
+```
+error: Address already in use (bind failed)
+```
+
+**Solutions:**
+```bash
+# Check for processes using the port
+lsof -i :3240  # Default USB/IP port
+
+# Kill conflicting processes
+sudo kill -9 <PID>
+
+# Use different port for testing
+export USBIP_TEST_PORT=3241
+./Scripts/run-qemu-tests.sh
+```
+
+#### Connection Refused
 ```
 error: Connection refused
-error: Network timeout
 ```
-
-**Diagnosis:**
-- Port conflicts on CI runner
-- Network connectivity issues
-- Timing issues in test setup
 
 **Solutions:**
-1. **Use dynamic port allocation**:
-   ```swift
-   // Use system-assigned ports instead of fixed ports
-   let server = try TCPServer(port: 0)  // 0 = system assigns port
-   let actualPort = server.localPort
-   ```
+```bash
+# Check if server is running
+ps aux | grep QEMUTestServer
 
-2. **Add proper test timeouts and retries**:
-   ```swift
-   func testNetworkConnection() async throws {
-       let maxRetries = 3
-       for attempt in 1...maxRetries {
-           do {
-               try await connectToServer()
-               break
-           } catch {
-               if attempt == maxRetries { throw error }
-               try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-           }
-       }
-   }
-   ```
+# Verify network configuration
+netstat -an | grep 3240
 
-3. **Check for port conflicts**:
-   ```bash
-   # Check if port is in use
-   lsof -i :3240
-   
-   # Use different port ranges for tests
-   ```
+# Check firewall settings
+sudo pfctl -sr | grep 3240
 
-## Environment and Version Issues
-
-### Swift Version Issues
-
-#### Issue: Swift Version Compatibility
-```
-error: package at '...' requires minimum Swift version 5.8.0
+# Test local connectivity
+telnet localhost 3240
 ```
 
-**Diagnosis:**
-- CI using older Swift version than required
-- Local development using different Swift version
-- Dependencies requiring newer Swift features
-
-**Solutions:**
-1. **Check current Swift version in CI**:
-   - Look at the "Verify Build Environment" step output
-   - Compare with local version: `swift --version`
-
-2. **Update Swift version requirement** in Package.swift:
-   ```swift
-   // swift-tools-version:5.8
-   import PackageDescription
-   
-   let package = Package(
-       name: "usbipd-mac",
-       platforms: [.macOS(.v12)],
-       // ...
-   )
-   ```
-
-3. **Use specific Swift version in CI** (if needed):
-   ```yaml
-   - name: Setup Swift Environment
-     uses: swift-actions/setup-swift@v1
-     with:
-       swift-version: '5.8'  # Specify exact version if needed
-   ```
-
-#### Issue: macOS Version Compatibility
-```
-error: 'SomeAPI' is only available in macOS 13.0 or newer
-```
-
-**Diagnosis:**
-- Using APIs not available in CI runner's macOS version
-- Minimum deployment target too low
-- Version availability checks missing
-
-**Solutions:**
-1. **Check CI runner macOS version**:
-   - Look at the environment information in job output
-   - Current CI uses `macos-latest` (typically macOS 13+)
-
-2. **Add proper availability checks**:
-   ```swift
-   @available(macOS 13.0, *)
-   func useNewerAPI() {
-       // Implementation using newer APIs
-   }
-   
-   func compatibleImplementation() {
-       if #available(macOS 13.0, *) {
-           useNewerAPI()
-       } else {
-           // Fallback for older versions
-       }
-   }
-   ```
-
-3. **Update minimum deployment target**:
-   ```swift
-   platforms: [
-       .macOS(.v13)  // Match CI runner capabilities
-   ]
-   ```
-
-### GitHub Actions Runner Issues
-
-#### Issue: Runner Out of Disk Space
-```
-error: No space left on device
-```
-
-**Diagnosis:**
-- Large build artifacts
-- Cache accumulation
-- Dependency bloat
-
-**Solutions:**
-1. **Clean up build artifacts**:
-   ```yaml
-   - name: Clean up build artifacts
-     run: |
-       swift package clean
-       rm -rf .build
-   ```
-
-2. **Optimize cache usage**:
-   ```yaml
-   - name: Cache Swift packages
-     uses: actions/cache@v3
-     with:
-       path: |
-         .build
-         ~/Library/Caches/org.swift.swiftpm
-       key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift') }}
-       restore-keys: |
-         ${{ runner.os }}-swift-
-   ```
-
-3. **Use cache cleanup**:
-   ```yaml
-   - name: Clean old caches
-     run: |
-       # Remove old cache entries if needed
-       rm -rf ~/Library/Caches/org.swift.swiftpm/repositories
-   ```
-
-## Performance and Timeout Issues
+## Performance Issues
 
 ### Slow CI Execution
 
-#### Issue: CI Takes Too Long (>10 minutes)
+#### Cache Misses
 ```
-The job running on runner GitHub Actions X has exceeded the maximum execution time of 360 minutes.
-```
-
-**Diagnosis:**
-- Inefficient dependency resolution
-- Large test suites
-- Missing cache optimization
-- Network issues
-
-**Solutions:**
-1. **Optimize dependency caching**:
-   ```yaml
-   - name: Cache Swift packages
-     uses: actions/cache@v3
-     with:
-       path: |
-         .build
-         ~/Library/Caches/org.swift.swiftpm
-         ~/Library/org.swift.swiftpm
-       key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-   ```
-
-2. **Use parallel test execution**:
-   ```bash
-   swift test --parallel --verbose
-   ```
-
-3. **Profile slow tests**:
-   ```bash
-   # Identify slow tests
-   swift test --verbose 2>&1 | grep "Test Case.*passed"
-   ```
-
-4. **Optimize build configuration**:
-   ```bash
-   # Use release mode for performance testing
-   swift build -c release
-   ```
-
-#### Issue: Network Timeouts
-```
-error: timeout while fetching repository
+warning: CI execution time exceeds 10 minutes
 ```
 
 **Diagnosis:**
-- Network connectivity issues
-- Large dependency downloads
-- GitHub API rate limiting
+```bash
+# Check cache hit rates in CI logs
+# Look for "Cache restored from key:" vs "Cache not found"
 
-**Solutions:**
-1. **Add retry logic** for network operations:
-   ```yaml
-   - name: Resolve Dependencies with Retry
-     run: |
-       for i in {1..3}; do
-         if swift package resolve; then
-           break
-         fi
-         echo "Attempt $i failed, retrying..."
-         sleep 10
-       done
-   ```
-
-2. **Use dependency caching** to reduce network usage
-
-3. **Check for large dependencies** and consider alternatives
-
-## Updating Swift and macOS Versions
-
-This section addresses requirements 4.3 and 4.4 for keeping the CI pipeline current with latest versions.
-
-### Updating to Latest Swift Version
-
-#### When to Update
-- New stable Swift version is released
-- Dependencies require newer Swift version
-- Security updates or critical bug fixes
-- Quarterly maintenance schedule
-
-#### Update Process
-
-1. **Check Swift version compatibility**:
-   ```bash
-   # Check current project Swift version requirement
-   head -1 Package.swift
-   
-   # Check available Swift versions
-   swift --version
-   ```
-
-2. **Update Package.swift**:
-   ```swift
-   // swift-tools-version:5.9  // Update to latest
-   import PackageDescription
-   
-   let package = Package(
-       name: "usbipd-mac",
-       platforms: [.macOS(.v12)],  // Update if needed
-       // ...
-   )
-   ```
-
-3. **Test locally before CI update**:
-   ```bash
-   # Clean build with new Swift version
-   swift package clean
-   swift build
-   swift test
-   ```
-
-4. **Update CI workflow** (if using specific version):
-   ```yaml
-   - name: Setup Swift Environment
-     uses: swift-actions/setup-swift@v1
-     with:
-       swift-version: 'latest'  # Or specific version like '5.9'
-   ```
-
-5. **Test CI changes**:
-   - Create a test branch
-   - Push changes and verify CI passes
-   - Check all jobs complete successfully
-
-#### Common Swift Update Issues
-
-**Issue: Deprecated API Usage**
-```
-warning: 'oldAPI' is deprecated in Swift 5.9
+# Verify cache configuration in workflow
+- uses: actions/cache@v3
+  with:
+    path: |
+      .build
+      ~/Library/Caches/org.swift.swiftpm
+    key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved') }}
 ```
 
 **Solutions:**
-1. **Update deprecated APIs**:
-   ```swift
-   // Old way
-   let result = oldAPI()
-   
-   // New way
-   let result = newAPI()
-   ```
+1. **Optimize cache keys**: Use more specific cache keys
+2. **Reduce cache size**: Exclude unnecessary files
+3. **Parallel execution**: Ensure jobs run in parallel
+4. **Incremental builds**: Use build caching effectively
 
-2. **Use compiler directives** for gradual migration:
-   ```swift
-   #if swift(>=5.9)
-   let result = newAPI()
-   #else
-   let result = oldAPI()
-   #endif
-   ```
-
-**Issue: Breaking Changes**
+#### Slow Tests
 ```
-error: cannot convert value of type 'X' to expected argument type 'Y'
+warning: Test execution takes longer than expected
 ```
 
 **Solutions:**
-1. **Review Swift migration guide** for the new version
-2. **Update code to match new requirements**
-3. **Use Swift's migration tools** when available
+```swift
+// Profile slow tests
+func testPerformance() {
+    measure {
+        // Code to measure
+        performExpensiveOperation()
+    }
+}
 
-### Updating to Latest macOS Version
+// Optimize test setup
+override func setUp() {
+    super.setUp()
+    // Move expensive setup to class-level setUp if shared
+}
 
-#### When to Update
-- New macOS version available on GitHub Actions
-- Dependencies require newer macOS APIs
-- Security updates or performance improvements
-- Bi-annual maintenance schedule
-
-#### Update Process
-
-1. **Check available macOS versions**:
-   - Visit [GitHub Actions runner images](https://github.com/actions/runner-images)
-   - Check `macos-latest` current version
-   - Review `macos-13`, `macos-14` specific versions
-
-2. **Update CI workflow**:
-   ```yaml
-   jobs:
-     lint:
-       runs-on: macos-latest  # Always use latest
-       # OR use specific version:
-       # runs-on: macos-14
-   ```
-
-3. **Update minimum deployment target** (if needed):
-   ```swift
-   platforms: [
-       .macOS(.v13)  // Update to match CI capabilities
-   ]
-   ```
-
-4. **Test compatibility**:
-   ```bash
-   # Test on local macOS version
-   swift build
-   swift test
-   ./Scripts/run-qemu-tests.sh
-   ```
-
-#### Common macOS Update Issues
-
-**Issue: API Availability Errors**
-```
-error: 'newAPI' is only available in macOS 14.0 or newer
+// Use mock objects for external dependencies
+let mockService = MockNetworkService()
+// Instead of real network calls
 ```
 
-**Solutions:**
-1. **Add availability checks**:
-   ```swift
-   @available(macOS 14.0, *)
-   func useNewAPI() {
-       // Use new API
-   }
-   
-   func compatibleImplementation() {
-       if #available(macOS 14.0, *) {
-           useNewAPI()
-       } else {
-           // Fallback implementation
-       }
-   }
-   ```
+## Swift and macOS Version Updates
 
-2. **Update deployment target**:
-   ```swift
-   platforms: [
-       .macOS(.v14)  // Require newer macOS
-   ]
-   ```
+### Swift Version Updates
 
-**Issue: Deprecated System APIs**
-```
-warning: 'oldSystemAPI' was deprecated in macOS 14.0
+#### Updating to New Swift Version
+
+1. **Update Package.swift tools version:**
+```swift
+// swift-tools-version:5.9
+// Update to new version
 ```
 
-**Solutions:**
-1. **Migrate to new system APIs**
-2. **Use feature detection** instead of version checks where possible
-3. **Maintain backward compatibility** if supporting older versions
+2. **Test locally:**
+```bash
+swift --version  # Verify new version
+swift build      # Test compilation
+swift test       # Test execution
+```
 
-### Version Update Checklist
+3. **Handle breaking changes:**
+```swift
+// Example: Concurrency changes in Swift 5.9
+@MainActor
+class ViewModelClass {
+    // Properties and methods
+}
 
-Before updating Swift or macOS versions:
+// Update async/await usage
+func updateData() async throws {
+    let data = try await fetchData()
+    await MainActor.run {
+        self.updateUI(with: data)
+    }
+}
+```
 
-- [ ] **Local Testing**: Verify project builds and tests pass locally
-- [ ] **Dependency Compatibility**: Check all dependencies support new versions
-- [ ] **API Migration**: Update any deprecated or changed APIs
-- [ ] **Documentation**: Update README and documentation with new requirements
-- [ ] **CI Testing**: Test changes on a feature branch first
-- [ ] **Rollback Plan**: Ensure you can revert if issues arise
-- [ ] **Team Communication**: Notify team of version requirements changes
+4. **Update CI if needed:**
+```yaml
+# Usually not needed as CI uses 'latest'
+- name: Setup Swift
+  uses: swift-actions/setup-swift@v1
+  with:
+    swift-version: '5.9'  # Only if specific version required
+```
 
-### Handling Version Incompatibilities
+### macOS Version Updates
 
-When new versions cause issues:
+#### Updating Minimum Deployment Target
 
-1. **Identify the specific problem**:
-   ```bash
-   # Get detailed error information
-   swift build --verbose
-   swift test --verbose
-   ```
+1. **Update Package.swift:**
+```swift
+platforms: [
+    .macOS(.v14),  // Update from .v13
+],
+```
 
-2. **Check for known issues**:
-   - Review Swift release notes
-   - Check dependency issue trackers
-   - Search GitHub Actions community discussions
+2. **Handle new APIs:**
+```swift
+// Use availability checks
+if #available(macOS 14.0, *) {
+    // Use new macOS 14 APIs
+    newAPI()
+} else {
+    // Fallback for older versions
+    legacyAPI()
+}
+```
 
-3. **Implement workarounds**:
-   ```swift
-   // Conditional compilation for version differences
-   #if swift(>=5.9)
-   // New implementation
-   #else
-   // Legacy implementation
-   #endif
-   ```
+3. **Update CI runner (if needed):**
+```yaml
+# CI automatically uses macos-latest
+# Only update if specific version required
+runs-on: macos-14  # Instead of macos-latest
+```
 
-4. **Consider pinning versions temporarily**:
-   ```yaml
-   - name: Setup Swift Environment
-     uses: swift-actions/setup-swift@v1
-     with:
-       swift-version: '5.8'  # Pin to working version temporarily
-   ```
+#### Handling Deprecated APIs
 
-5. **Plan migration strategy**:
-   - Create migration timeline
-   - Update dependencies first
-   - Migrate code incrementally
-   - Test thoroughly at each step
+```swift
+// Replace deprecated APIs
+// Old:
+let result = deprecatedFunction()
+
+// New:
+let result = newReplacementFunction()
+
+// With availability check:
+let result: ResultType
+if #available(macOS 14.0, *) {
+    result = newReplacementFunction()
+} else {
+    result = deprecatedFunction()
+}
+```
+
+### Version Compatibility Testing
+
+```bash
+# Test with multiple Swift versions (if needed)
+xcrun --toolchain swift-5.8-RELEASE swift build
+xcrun --toolchain swift-5.9-RELEASE swift build
+
+# Test deployment target compatibility
+swift build -Xswiftc -target -Xswiftc x86_64-apple-macos13.0
+```
 
 ## Cache Issues
 
 ### Cache Corruption
 
-#### Issue: Build Cache Corruption
-```
-error: corrupt cache entry
-error: failed to load cached dependencies
-```
+#### Symptoms
+- Inconsistent build results
+- "No such module" errors that resolve after clean build
+- Unexplained compilation failures
 
-**Diagnosis:**
-- Cache corruption due to interrupted builds
-- Version mismatches in cached data
-- Disk space issues during caching
+#### Solutions
+```bash
+# Clear all caches locally
+swift package clean
+rm -rf .build
+rm -rf ~/Library/Caches/org.swift.swiftpm
 
-**Solutions:**
-1. **Clear cache manually**:
-   ```yaml
-   - name: Clear corrupted cache
-     run: |
-       rm -rf .build
-       rm -rf ~/Library/Caches/org.swift.swiftpm
-   ```
+# Clear derived data (if using Xcode)
+rm -rf ~/Library/Developer/Xcode/DerivedData
 
-2. **Update cache keys** to force refresh:
-   ```yaml
-   key: ${{ runner.os }}-swift-v2-${{ hashFiles('Package.swift') }}
-   ```
-
-3. **Use cache restore fallbacks**:
-   ```yaml
-   restore-keys: |
-     ${{ runner.os }}-swift-v2-
-     ${{ runner.os }}-swift-
-   ```
-
-### Cache Performance Issues
-
-#### Issue: Cache Not Being Used
-```
-Cache not found for input keys: ...
+# In CI, cache keys can be updated to force refresh
+# Update the cache key in workflow file:
+key: ${{ runner.os }}-spm-v2-${{ hashFiles('Package.resolved') }}
+#                        ^^^ increment version
 ```
 
-**Diagnosis:**
-- Cache key changes too frequently
-- Cache size limits exceeded
-- Incorrect cache paths
+### Cache Size Issues
 
-**Solutions:**
-1. **Optimize cache keys**:
-   ```yaml
-   # Use stable cache keys
-   key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-   ```
+#### Large Cache Sizes
+```bash
+# Check cache size
+du -sh .build
+du -sh ~/Library/Caches/org.swift.swiftpm
 
-2. **Check cache paths**:
-   ```yaml
-   path: |
-     .build
-     ~/Library/Caches/org.swift.swiftpm
-     ~/Library/org.swift.swiftpm  # Include all relevant paths
-   ```
-
-3. **Monitor cache usage**:
-   - Check cache hit rates in CI logs
-   - Verify cache size limits aren't exceeded
+# Optimize cache by excluding unnecessary files
+# In workflow file:
+path: |
+  .build/checkouts
+  .build/repositories
+  ~/Library/Caches/org.swift.swiftpm
+# Exclude .build/debug and .build/release (large, rebuild quickly)
+```
 
 ## Branch Protection Issues
 
 ### Status Check Failures
 
-#### Issue: Required Checks Not Running
+#### Required Checks Not Running
 ```
-Some checks haven't run on this PR yet
+error: Required status check "lint" has not run
 ```
-
-**Diagnosis:**
-- Workflow not triggered properly
-- Branch protection rules misconfigured
-- GitHub Actions permissions issues
 
 **Solutions:**
-1. **Verify workflow triggers**:
-   ```yaml
-   on:
-     push:
-       branches: [ main ]
-     pull_request:
-       branches: [ main ]
-   ```
-
-2. **Check branch protection settings**:
-   ```bash
-   # Use provided validation script
-   ./.github/scripts/validate-branch-protection.sh
-   ```
-
-3. **Re-run failed checks**:
-   - Use "Re-run failed jobs" in GitHub UI
-   - Push new commit to trigger checks
-
-#### Issue: Checks Pass But Merge Blocked
-```
-Merging is blocked due to failing status checks
+1. **Check workflow triggers:**
+```yaml
+on:
+  pull_request:
+    branches: [ main ]  # Ensure correct branch
+  push:
+    branches: [ main ]
 ```
 
-**Diagnosis:**
-- Status check names don't match branch protection rules
-- Additional required checks configured
-- Stale branch protection settings
+2. **Verify job names match protection rules:**
+```yaml
+jobs:
+  lint:  # Must match required status check name
+    name: Code Quality (SwiftLint)
+```
 
-**Solutions:**
-1. **Check status check names** match exactly:
-   ```yaml
-   # In workflow
-   name: Code Quality (SwiftLint)
-   
-   # Must match branch protection rule exactly
-   ```
+3. **Update branch protection settings:**
+```bash
+# Use the setup script
+./.github/scripts/setup-branch-protection.sh
 
-2. **Update branch protection rules**:
-   ```bash
-   # Use setup script to reconfigure
-   ./.github/scripts/setup-branch-protection.sh
-   ```
+# Or manually update via GitHub UI:
+# Settings > Branches > Branch protection rules
+```
 
-3. **Verify all required checks** are listed in branch protection
+### Bypass Procedures
+
+#### Emergency Merges
+When CI is broken and urgent fixes are needed:
+
+1. **Document the reason:**
+   - Create issue explaining the emergency
+   - Document what checks are being bypassed
+   - Explain why the bypass is necessary
+
+2. **Get maintainer approval:**
+   - Request review from repository maintainers
+   - Explain the urgency and impact
+   - Commit to fixing CI in follow-up PR
+
+3. **Follow-up actions:**
+   - Create issue to fix CI problems
+   - Schedule fix within 24 hours
+   - Update team on resolution
+
+## Emergency Procedures
+
+### Complete CI Failure
+
+#### When All Jobs Fail
+1. **Check GitHub Actions status:**
+   - Visit https://www.githubstatus.com/
+   - Look for GitHub Actions incidents
+
+2. **Verify workflow syntax:**
+```bash
+# Use GitHub CLI to validate workflow
+gh workflow list
+gh workflow view ci.yml
+```
+
+3. **Test workflow locally:**
+```bash
+# Use act to run GitHub Actions locally
+brew install act
+act -j lint  # Test specific job
+```
+
+### Critical Security Issues
+
+#### Secrets Exposure
+If secrets are accidentally exposed:
+
+1. **Immediately revoke exposed secrets**
+2. **Update repository secrets**
+3. **Force push to remove from history (if needed)**
+4. **Audit access logs**
+
+#### Malicious Code in Dependencies
+1. **Pin dependency versions in Package.swift**
+2. **Review Package.resolved for unexpected changes**
+3. **Use dependency scanning tools**
+
+### Recovery Procedures
+
+#### Restoring from Backup
+```bash
+# If main branch is corrupted
+git checkout -b recovery-branch <last-known-good-commit>
+git push origin recovery-branch
+
+# Create PR to restore main branch
+# After review, force push to main (with team approval)
+git push --force-with-lease origin recovery-branch:main
+```
+
+#### Rebuilding CI from Scratch
+1. **Backup current workflow:**
+```bash
+cp .github/workflows/ci.yml .github/workflows/ci.yml.backup
+```
+
+2. **Start with minimal workflow:**
+```yaml
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: swift build
+```
+
+3. **Gradually add complexity:**
+   - Add linting
+   - Add testing
+   - Add caching
+   - Add parallel execution
 
 ## Getting Additional Help
 
-If these solutions don't resolve your issue:
+### Internal Resources
+1. **Check this troubleshooting guide first**
+2. **Review CI job logs for specific error messages**
+3. **Test locally using exact CI commands**
+4. **Check recent changes that might have caused issues**
 
-1. **Check CI job logs** for detailed error messages
-2. **Run the same commands locally** to reproduce the issue
-3. **Review recent changes** that might have introduced the problem
-4. **Check GitHub Actions status** for platform-wide issues
-5. **Consult project maintainers** for project-specific guidance
+### External Resources
+1. **GitHub Actions Documentation**: https://docs.github.com/en/actions
+2. **Swift Package Manager Guide**: https://swift.org/package-manager/
+3. **SwiftLint Documentation**: https://github.com/realm/SwiftLint
+4. **GitHub Actions Status**: https://www.githubstatus.com/
 
-### Useful Commands for Debugging
+### Escalation Process
+1. **Try local reproduction first**
+2. **Check this guide for solutions**
+3. **Search existing issues in the repository**
+4. **Create detailed issue with:**
+   - Error messages
+   - Steps to reproduce
+   - Local environment details
+   - CI job logs (relevant portions)
 
-```bash
-# Complete local CI simulation
-echo "=== SwiftLint Check ==="
-swiftlint lint --strict
+### Maintainer Contact
+For urgent issues or when standard troubleshooting doesn't resolve the problem:
+1. **Create GitHub issue with "urgent" label**
+2. **Include full error logs and reproduction steps**
+3. **Tag repository maintainers if critical**
+4. **Provide timeline requirements for resolution**
 
-echo "=== Build Check ==="
-swift package clean
-swift build --verbose
+---
 
-echo "=== Unit Tests ==="
-swift test --verbose --parallel
-
-echo "=== Integration Tests ==="
-swift build --product QEMUTestServer
-./Scripts/run-qemu-tests.sh
-swift test --filter IntegrationTests --verbose
-
-echo "=== Environment Info ==="
-swift --version
-sw_vers
-xcodebuild -version
-```
-
-### Emergency Procedures
-
-If CI is completely broken and blocking development:
-
-1. **Temporarily disable failing checks**:
-   - Comment out problematic jobs in workflow
-   - Reduce branch protection requirements temporarily
-
-2. **Use manual merge** (with approval):
-   - Require admin approval for emergency merges
-   - Document the bypass reason
-
-3. **Create hotfix workflow**:
-   - Simplified workflow for critical fixes
-   - Restore full CI after issue resolution
-
-Remember: Always restore full CI protection as soon as issues are resolved.
+*This guide is maintained alongside the CI workflow. When updating the workflow, please update this guide accordingly.*
