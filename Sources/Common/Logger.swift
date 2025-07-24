@@ -182,6 +182,38 @@ public final class Logger {
         log(.error, errorMessage, context: fullContext, file: file, function: function, line: line)
     }
     
+    /// Log protocol-related messages with structured formatting
+    /// - Parameters:
+    ///   - level: Log level for the message
+    ///   - protocol: Protocol name (e.g., "USB/IP", "TCP")
+    ///   - operation: Operation being performed (e.g., "device_list", "attach")
+    ///   - message: Descriptive message
+    ///   - data: Optional data payload information
+    ///   - context: Additional context information
+    public func logProtocol(
+        _ level: LogLevel,
+        protocol: String,
+        operation: String,
+        message: String,
+        data: [String: Any] = [:],
+        context: [String: Any] = [:],
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        var fullContext = context
+        fullContext["protocol"] = protocol
+        fullContext["operation"] = operation
+        
+        // Add data information if provided
+        if !data.isEmpty {
+            fullContext["data"] = data
+        }
+        
+        let protocolMessage = "[\(protocol)] \(operation): \(message)"
+        log(level, protocolMessage, context: fullContext, file: file, function: function, line: line)
+    }
+    
     // MARK: - Private Methods
     
     private func performLog(
@@ -305,6 +337,31 @@ public func logError(
     line: Int = #line
 ) {
     Logger.shared.error(error, message: message, context: context, file: file, function: function, line: line)
+}
+
+/// Global protocol logging function for structured protocol message logging
+public func logProtocol(
+    _ level: LogLevel,
+    protocol: String,
+    operation: String,
+    message: String,
+    data: [String: Any] = [:],
+    context: [String: Any] = [:],
+    file: String = #file,
+    function: String = #function,
+    line: Int = #line
+) {
+    Logger.shared.logProtocol(
+        level,
+        protocol: protocol,
+        operation: operation,
+        message: message,
+        data: data,
+        context: context,
+        file: file,
+        function: function,
+        line: line
+    )
 }
 
 // MARK: - Performance Monitoring
