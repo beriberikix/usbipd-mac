@@ -106,7 +106,7 @@
     - Verify proper reporting and blocking of merges
     - _Requirements: 1.2, 2.3, 3.2, 6.1_
   
-  - [ ] 9.2 Test workflow with valid changes
+  - [-] 9.2 Test workflow with valid changes
     - Create test PR with valid code changes
     - Verify successful execution of all checks
     - Verify merge is allowed when all checks pass
