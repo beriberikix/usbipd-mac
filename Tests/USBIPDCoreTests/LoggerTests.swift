@@ -164,4 +164,80 @@ final class LoggerTests: XCTestCase {
         XCTAssertTrue(formatted.contains(":"))
         XCTAssertTrue(formatted.contains("."))
     }
+    
+    // MARK: - Performance Monitoring Tests
+    
+    func testPerformanceTimerInitialization() {
+        let timer = PerformanceTimer(operation: "test_operation")
+        XCTAssertNotNil(timer)
+        
+        // Complete the timer to avoid memory leaks
+        timer.complete()
+    }
+    
+    func testPerformanceTimerWithCustomLogger() {
+        let config = LoggerConfig(level: .debug)
+        let logger = Logger(config: config)
+        let timer = PerformanceTimer(operation: "custom_operation", logger: logger)
+        
+        XCTAssertNotNil(timer)
+        timer.complete()
+    }
+    
+    func testPerformanceTimerCompletion() {
+        let timer = PerformanceTimer(operation: "completion_test")
+        
+        // Add a small delay to ensure measurable time
+        Thread.sleep(forTimeInterval: 0.01)
+        
+        // Should not crash when completing
+        timer.complete()
+    }
+    
+    func testMeasurePerformanceFunction() {
+        let result = measurePerformance("test_block") {
+            return "test_result"
+        }
+        
+        XCTAssertEqual(result, "test_result")
+    }
+    
+    func testMeasurePerformanceWithThrowingBlock() {
+        enum TestError: Error {
+            case testError
+        }
+        
+        // Test that errors are properly propagated
+        XCTAssertThrowsError(try measurePerformance("throwing_block") {
+            throw TestError.testError
+        }) { error in
+            XCTAssertTrue(error is TestError)
+        }
+    }
+    
+    func testMeasurePerformanceWithComplexOperation() {
+        let result = measurePerformance("complex_operation") {
+            // Simulate some work
+            var sum = 0
+            for i in 1...1000 {
+                sum += i
+            }
+            return sum
+        }
+        
+        XCTAssertEqual(result, 500500) // Sum of 1 to 1000
+    }
+    
+    func testPerformanceTimerMultipleOperations() {
+        let timer1 = PerformanceTimer(operation: "operation_1")
+        let timer2 = PerformanceTimer(operation: "operation_2")
+        
+        Thread.sleep(forTimeInterval: 0.005)
+        timer1.complete()
+        
+        Thread.sleep(forTimeInterval: 0.005)
+        timer2.complete()
+        
+        // Both timers should complete without issues
+    }
 }

@@ -306,3 +306,43 @@ public func logError(
 ) {
     Logger.shared.error(error, message: message, context: context, file: file, function: function, line: line)
 }
+
+// MARK: - Performance Monitoring
+
+/// Performance timer for measuring operation duration
+public final class PerformanceTimer {
+    private let startTime: CFAbsoluteTime
+    private let operation: String
+    private let logger: Logger
+    
+    /// Initialize a performance timer
+    /// - Parameters:
+    ///   - operation: Name of the operation being timed
+    ///   - logger: Logger instance to use (defaults to shared)
+    public init(operation: String, logger: Logger = Logger.shared) {
+        self.operation = operation
+        self.logger = logger
+        self.startTime = CFAbsoluteTimeGetCurrent()
+        logger.debug("Started operation: \(operation)")
+    }
+    
+    /// Complete the timer and log the duration
+    public func complete() {
+        let duration = CFAbsoluteTimeGetCurrent() - startTime
+        logger.info("Completed operation: \(operation)", context: ["duration_ms": String(format: "%.2f", duration * 1000)])
+    }
+}
+
+/// Global function to measure performance of a block
+/// - Parameters:
+///   - operation: Name of the operation
+///   - block: Block to execute and measure
+/// - Returns: Result of the block execution
+public func measurePerformance<T>(
+    _ operation: String,
+    _ block: () throws -> T
+) rethrows -> T {
+    let timer = PerformanceTimer(operation: operation)
+    defer { timer.complete() }
+    return try block()
+}
