@@ -10,7 +10,6 @@ import Network
 @testable import Common
 
 final class NetworkUtilitiesTests: XCTestCase {
-    
     // MARK: - IPv4 Address Validation Tests
     
     func testValidIPv4Addresses() {

@@ -10,7 +10,6 @@ import Network
 
 /// Network utility functions for USB/IP server operations
 public enum NetworkUtilities {
-    
     /// Validates if a given string is a valid IPv4 address
     /// - Parameter address: The IP address string to validate
     /// - Returns: True if the address is a valid IPv4 address
