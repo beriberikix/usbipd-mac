@@ -121,6 +121,16 @@ public enum NetworkUtilities {
             return nil
         }
     }
+    
+    /// Validates if a given port string can be converted to a valid port number
+    /// - Parameter portString: The port string to validate
+    /// - Returns: The port number if valid, nil otherwise
+    public static func parsePort(_ portString: String) -> Int? {
+        guard let port = Int(portString), isValidPort(port) else {
+            return nil
+        }
+        return port
+    }
 }
 
 /// Extension to provide convenient network validation for common USB/IP operations

@@ -266,4 +266,47 @@ final class NetworkUtilitiesTests: XCTestCase {
         XCTAssertFalse(" ".isValidIPAddress)
         XCTAssertFalse("  127.0.0.1  ".isValidIPv4Address) // Leading/trailing whitespace should fail
     }
+    
+    // MARK: - Port Parsing Tests
+    
+    func testParseValidPortStrings() {
+        let validPortStrings = [
+            ("1", 1),
+            ("80", 80),
+            ("443", 443),
+            ("3240", 3240),
+            ("65535", 65535)
+        ]
+        
+        for (portString, expectedPort) in validPortStrings {
+            let parsedPort = NetworkUtilities.parsePort(portString)
+            XCTAssertEqual(
+                parsedPort,
+                expectedPort,
+                "Expected '\(portString)' to parse to \(expectedPort)"
+            )
+        }
+    }
+    
+    func testParseInvalidPortStrings() {
+        let invalidPortStrings = [
+            "0",        // Invalid port number
+            "-1",       // Negative number
+            "65536",    // Too large
+            "abc",      // Non-numeric
+            "",         // Empty string
+            " ",        // Whitespace
+            "80.5",     // Decimal
+            "80a",      // Mixed alphanumeric
+            "999999"    // Way too large
+        ]
+        
+        for portString in invalidPortStrings {
+            let parsedPort = NetworkUtilities.parsePort(portString)
+            XCTAssertNil(
+                parsedPort,
+                "Expected '\(portString)' to fail parsing"
+            )
+        }
+    }
 }
