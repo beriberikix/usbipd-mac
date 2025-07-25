@@ -150,6 +150,7 @@ The CI pipeline is optimized for fast feedback:
 - **Dependency Caching**: Swift packages and SwiftLint are cached between runs
 - **Incremental Builds**: Build artifacts are cached when possible
 - **Target Execution Time**: Complete pipeline typically runs under 10 minutes
+- **Smart Caching**: Cache keys are based on dependency files for optimal reuse
 
 ### Branch Protection
 
