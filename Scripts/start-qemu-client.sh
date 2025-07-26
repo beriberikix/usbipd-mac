@@ -29,6 +29,12 @@ readonly GUEST_USBIP_PORT="3240"
 # Boot and timeout configuration
 readonly BOOT_TIMEOUT="60"
 readonly SHUTDOWN_TIMEOUT="30"
+readonly NETWORK_TIMEOUT="10"
+readonly RETRY_ATTEMPTS="3"
+readonly RETRY_DELAY="5"
+readonly MAX_BOOT_RETRIES="2"
+readonly NETWORK_RETRY_ATTEMPTS="3"
+readonly NETWORK_RETRY_DELAY="2"
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -83,6 +89,10 @@ cleanup() {
     
     if [[ $exit_code -ne 0 ]]; then
         log_error "Script failed with exit code $exit_code"
+        log_structured "SCRIPT_FAILURE" "Exit code: $exit_code"
+        
+        # Generate diagnostic information
+        generate_failure_diagnostics "$exit_code"
     fi
     
     # Clean up QEMU process if running
@@ -98,6 +108,75 @@ cleanup() {
     fi
     
     exit $exit_code
+}
+
+# Generate diagnostic information for failures
+generate_failure_diagnostics() {
+    local exit_code="$1"
+    
+    log_info "Generating failure diagnostics..."
+    
+    # Create diagnostics file
+    local diagnostics_file="${LOG_DIR}/diagnostics-${INSTANCE_ID:-unknown}.log"
+    
+    {
+        echo "QEMU USB/IP Test Tool - Failure Diagnostics"
+        echo "============================================"
+        echo "Timestamp: $(date)"
+        echo "Exit Code: $exit_code"
+        echo "Instance ID: ${INSTANCE_ID:-unknown}"
+        echo "QEMU PID: ${QEMU_PID:-none}"
+        echo ""
+        
+        # System information
+        echo "System Information:"
+        echo "  OS: $(uname -s)"
+        echo "  Architecture: $(uname -m)"
+        echo "  Kernel: $(uname -r)"
+        echo ""
+        
+        # QEMU information
+        if command -v qemu-system-x86_64 &> /dev/null; then
+            echo "QEMU Information:"
+            qemu-system-x86_64 --version | head -n1
+            echo ""
+        fi
+        
+        # Network port status
+        echo "Network Port Status:"
+        echo "  SSH port $HOST_SSH_PORT: $(lsof -i ":$HOST_SSH_PORT" >/dev/null 2>&1 && echo "OCCUPIED" || echo "FREE")"
+        echo "  USB/IP port $HOST_USBIP_PORT: $(lsof -i ":$HOST_USBIP_PORT" >/dev/null 2>&1 && echo "OCCUPIED" || echo "FREE")"
+        echo ""
+        
+        # Disk space
+        echo "Disk Space:"
+        df -h "$BUILD_DIR" 2>/dev/null || echo "  Unable to check disk space"
+        echo ""
+        
+        # Recent console log (if available)
+        if [[ -f "${CONSOLE_LOG:-}" ]]; then
+            echo "Recent Console Log (last 20 lines):"
+            tail -n20 "$CONSOLE_LOG"
+            echo ""
+        fi
+        
+        # Process information
+        echo "Process Information:"
+        if [[ -n "${QEMU_PID:-}" ]]; then
+            if kill -0 "$QEMU_PID" 2>/dev/null; then
+                echo "  QEMU process $QEMU_PID is running"
+                ps -p "$QEMU_PID" -o pid,ppid,state,time,command 2>/dev/null || true
+            else
+                echo "  QEMU process $QEMU_PID is not running"
+            fi
+        else
+            echo "  No QEMU PID available"
+        fi
+        
+    } > "$diagnostics_file"
+    
+    log_info "Diagnostics written to: $(basename "$diagnostics_file")"
+    log_structured "DIAGNOSTICS_GENERATED" "$diagnostics_file"
 }
 
 trap cleanup EXIT INT TERM
@@ -118,6 +197,235 @@ check_command() {
         fi
         return 1
     fi
+    return 0
+}
+
+# Enhanced error handling functions
+retry_with_backoff() {
+    local max_attempts="$1"
+    local delay="$2"
+    local description="$3"
+    shift 3
+    local command=("$@")
+    
+    local attempt=1
+    while [[ $attempt -le $max_attempts ]]; do
+        log_info "Attempting $description (attempt $attempt/$max_attempts)"
+        
+        if "${command[@]}"; then
+            log_success "$description succeeded on attempt $attempt"
+            return 0
+        else
+            local exit_code=$?
+            log_warning "$description failed on attempt $attempt (exit code: $exit_code)"
+            
+            if [[ $attempt -lt $max_attempts ]]; then
+                log_info "Retrying in ${delay}s..."
+                sleep "$delay"
+                # Exponential backoff
+                delay=$((delay * 2))
+            fi
+        fi
+        
+        attempt=$((attempt + 1))
+    done
+    
+    log_error "$description failed after $max_attempts attempts"
+    return 1
+}
+
+handle_boot_timeout() {
+    local timeout_reason="$1"
+    
+    log_error "Boot timeout occurred: $timeout_reason"
+    log_structured "BOOT_TIMEOUT" "$timeout_reason"
+    
+    # Generate detailed diagnostics for boot timeout
+    local boot_diagnostics="${LOG_DIR}/boot-timeout-${INSTANCE_ID}.log"
+    {
+        echo "Boot Timeout Diagnostics - $(date)"
+        echo "=================================="
+        echo "Timeout Reason: $timeout_reason"
+        echo "Boot Timeout: ${BOOT_TIMEOUT}s"
+        echo "Instance ID: $INSTANCE_ID"
+        echo ""
+        
+        # Check QEMU process status
+        if [[ -n "$QEMU_PID" ]]; then
+            if kill -0 "$QEMU_PID" 2>/dev/null; then
+                echo "QEMU Process Status: RUNNING (PID: $QEMU_PID)"
+                ps -p "$QEMU_PID" -o pid,ppid,state,time,command 2>/dev/null || true
+            else
+                echo "QEMU Process Status: NOT RUNNING"
+            fi
+        fi
+        echo ""
+        
+        # Check console log for boot progress
+        if [[ -f "$CONSOLE_LOG" ]]; then
+            echo "Console Log Analysis:"
+            echo "  Total lines: $(wc -l < "$CONSOLE_LOG")"
+            echo "  Last 10 lines:"
+            tail -n10 "$CONSOLE_LOG" | sed 's/^/    /'
+            echo ""
+            
+            # Look for specific boot indicators
+            echo "Boot Progress Indicators:"
+            if grep -q "kernel" "$CONSOLE_LOG" 2>/dev/null; then
+                echo "  ✓ Kernel messages found"
+            else
+                echo "  ✗ No kernel messages found"
+            fi
+            
+            if grep -q "cloud-init" "$CONSOLE_LOG" 2>/dev/null; then
+                echo "  ✓ Cloud-init messages found"
+            else
+                echo "  ✗ No cloud-init messages found"
+            fi
+            
+            if grep -q "login:" "$CONSOLE_LOG" 2>/dev/null; then
+                echo "  ✓ Login prompt reached"
+            else
+                echo "  ✗ Login prompt not reached"
+            fi
+            
+            if grep -q "USBIP" "$CONSOLE_LOG" 2>/dev/null; then
+                echo "  ✓ USB/IP messages found"
+            else
+                echo "  ✗ No USB/IP messages found"
+            fi
+        fi
+        
+    } > "$boot_diagnostics"
+    
+    log_info "Boot timeout diagnostics written to: $(basename "$boot_diagnostics")"
+    return 1
+}
+
+handle_network_failure() {
+    local failure_type="$1"
+    local details="${2:-}"
+    
+    log_error "Network configuration failure: $failure_type"
+    if [[ -n "$details" ]]; then
+        log_error "Details: $details"
+    fi
+    log_structured "NETWORK_FAILURE" "$failure_type: $details"
+    
+    # Generate network diagnostics
+    local network_diagnostics="${LOG_DIR}/network-failure-${INSTANCE_ID}.log"
+    {
+        echo "Network Failure Diagnostics - $(date)"
+        echo "====================================="
+        echo "Failure Type: $failure_type"
+        echo "Details: $details"
+        echo "Instance ID: $INSTANCE_ID"
+        echo ""
+        
+        # Check port availability
+        echo "Port Status:"
+        echo "  SSH port $HOST_SSH_PORT: $(lsof -i ":$HOST_SSH_PORT" >/dev/null 2>&1 && echo "OCCUPIED" || echo "FREE")"
+        echo "  USB/IP port $HOST_USBIP_PORT: $(lsof -i ":$HOST_USBIP_PORT" >/dev/null 2>&1 && echo "OCCUPIED" || echo "FREE")"
+        echo ""
+        
+        # Check network interfaces
+        echo "Network Interfaces:"
+        ifconfig 2>/dev/null | grep -E "^[a-z]|inet " | sed 's/^/  /' || echo "  Unable to get interface information"
+        echo ""
+        
+        # Check for QEMU network configuration in console log
+        if [[ -f "$CONSOLE_LOG" ]]; then
+            echo "QEMU Network Messages:"
+            grep -i "network\|eth\|dhcp" "$CONSOLE_LOG" 2>/dev/null | tail -n5 | sed 's/^/  /' || echo "  No network messages found"
+        fi
+        
+    } > "$network_diagnostics"
+    
+    log_info "Network failure diagnostics written to: $(basename "$network_diagnostics")"
+    return 1
+}
+
+handle_qemu_crash() {
+    local crash_reason="$1"
+    
+    log_error "QEMU process crashed: $crash_reason"
+    log_structured "QEMU_CRASH" "$crash_reason"
+    
+    # Generate crash diagnostics
+    local crash_diagnostics="${LOG_DIR}/qemu-crash-${INSTANCE_ID}.log"
+    {
+        echo "QEMU Crash Diagnostics - $(date)"
+        echo "==============================="
+        echo "Crash Reason: $crash_reason"
+        echo "Instance ID: $INSTANCE_ID"
+        echo "QEMU PID: ${QEMU_PID:-unknown}"
+        echo ""
+        
+        # System resource information
+        echo "System Resources:"
+        echo "  Memory usage:"
+        vm_stat 2>/dev/null | head -n10 | sed 's/^/    /' || echo "    Unable to get memory stats"
+        echo "  Disk space:"
+        df -h "$BUILD_DIR" 2>/dev/null | sed 's/^/    /' || echo "    Unable to get disk space"
+        echo ""
+        
+        # QEMU command that was used
+        if [[ -f "${PID_DIR}/${INSTANCE_ID}-command.log" ]]; then
+            echo "QEMU Command:"
+            cat "${PID_DIR}/${INSTANCE_ID}-command.log" | sed 's/^/  /'
+            echo ""
+        fi
+        
+        # Console log analysis
+        if [[ -f "$CONSOLE_LOG" ]]; then
+            echo "Console Log (last 20 lines):"
+            tail -n20 "$CONSOLE_LOG" | sed 's/^/  /'
+            echo ""
+            
+            # Look for error patterns
+            echo "Error Patterns Found:"
+            grep -i "error\|fail\|panic\|segfault\|abort" "$CONSOLE_LOG" 2>/dev/null | tail -n5 | sed 's/^/  /' || echo "  No obvious error patterns found"
+        fi
+        
+    } > "$crash_diagnostics"
+    
+    log_info "QEMU crash diagnostics written to: $(basename "$crash_diagnostics")"
+    return 1
+}
+
+detect_common_failures() {
+    local console_log="$1"
+    
+    if [[ ! -f "$console_log" ]]; then
+        return 0
+    fi
+    
+    # Check for common failure patterns
+    if grep -q "No space left on device" "$console_log" 2>/dev/null; then
+        handle_qemu_crash "Disk space exhausted"
+        return 1
+    fi
+    
+    if grep -q "Permission denied" "$console_log" 2>/dev/null; then
+        handle_qemu_crash "Permission denied - check file permissions"
+        return 1
+    fi
+    
+    if grep -q "Address already in use" "$console_log" 2>/dev/null; then
+        handle_network_failure "Port conflict" "Network ports already in use"
+        return 1
+    fi
+    
+    if grep -q "Kernel panic" "$console_log" 2>/dev/null; then
+        handle_qemu_crash "Guest kernel panic"
+        return 1
+    fi
+    
+    if grep -q "Out of memory" "$console_log" 2>/dev/null; then
+        handle_qemu_crash "Guest out of memory"
+        return 1
+    fi
+    
     return 0
 }
 
@@ -182,17 +490,45 @@ validate_image_availability() {
 validate_network_ports() {
     log_info "Validating network port availability..."
     
-    # Check if SSH port is available
-    if lsof -i ":${HOST_SSH_PORT}" >/dev/null 2>&1; then
-        log_error "Host SSH port ${HOST_SSH_PORT} is already in use"
+    # Check if SSH port is available with retry
+    local ssh_port_attempts=0
+    while [[ $ssh_port_attempts -lt $NETWORK_RETRY_ATTEMPTS ]]; do
+        if ! lsof -i ":${HOST_SSH_PORT}" >/dev/null 2>&1; then
+            break
+        fi
+        
+        ssh_port_attempts=$((ssh_port_attempts + 1))
+        if [[ $ssh_port_attempts -lt $NETWORK_RETRY_ATTEMPTS ]]; then
+            log_warning "Host SSH port ${HOST_SSH_PORT} is in use, retrying in ${NETWORK_RETRY_DELAY}s (attempt $ssh_port_attempts/$NETWORK_RETRY_ATTEMPTS)"
+            sleep "$NETWORK_RETRY_DELAY"
+        fi
+    done
+    
+    if [[ $ssh_port_attempts -eq $NETWORK_RETRY_ATTEMPTS ]]; then
+        log_error "Host SSH port ${HOST_SSH_PORT} is persistently in use"
         log_info "Another QEMU instance may be running, or port is occupied"
+        handle_network_failure "SSH port conflict" "Port ${HOST_SSH_PORT} occupied after $NETWORK_RETRY_ATTEMPTS attempts"
         return 1
     fi
     
-    # Check if USB/IP port is available
-    if lsof -i ":${HOST_USBIP_PORT}" >/dev/null 2>&1; then
-        log_error "Host USB/IP port ${HOST_USBIP_PORT} is already in use"
+    # Check if USB/IP port is available with retry
+    local usbip_port_attempts=0
+    while [[ $usbip_port_attempts -lt $NETWORK_RETRY_ATTEMPTS ]]; do
+        if ! lsof -i ":${HOST_USBIP_PORT}" >/dev/null 2>&1; then
+            break
+        fi
+        
+        usbip_port_attempts=$((usbip_port_attempts + 1))
+        if [[ $usbip_port_attempts -lt $NETWORK_RETRY_ATTEMPTS ]]; then
+            log_warning "Host USB/IP port ${HOST_USBIP_PORT} is in use, retrying in ${NETWORK_RETRY_DELAY}s (attempt $usbip_port_attempts/$NETWORK_RETRY_ATTEMPTS)"
+            sleep "$NETWORK_RETRY_DELAY"
+        fi
+    done
+    
+    if [[ $usbip_port_attempts -eq $NETWORK_RETRY_ATTEMPTS ]]; then
+        log_error "Host USB/IP port ${HOST_USBIP_PORT} is persistently in use"
         log_info "USB/IP server may be running, or port is occupied"
+        handle_network_failure "USB/IP port conflict" "Port ${HOST_USBIP_PORT} occupied after $NETWORK_RETRY_ATTEMPTS attempts"
         return 1
     fi
     
@@ -321,13 +657,49 @@ start_qemu_instance() {
     
     log_info "QEMU command: $qemu_command"
     
+    # Save command for diagnostics
+    echo "$qemu_command" > "${PID_DIR}/${INSTANCE_ID}-command.log"
+    
     # Initialize console log
     echo "QEMU Console Log - Instance: ${INSTANCE_ID} - $(date)" > "$CONSOLE_LOG"
     echo "========================================" >> "$CONSOLE_LOG"
     
-    # Start QEMU in background
-    eval "$qemu_command" &
+    # Pre-flight checks before starting QEMU
+    log_info "Performing pre-flight checks..."
+    
+    # Check disk space
+    local available_space
+    available_space=$(df "$BUILD_DIR" | awk 'NR==2 {print $4}')
+    if [[ $available_space -lt 100000 ]]; then  # Less than ~100MB
+        log_error "Insufficient disk space: ${available_space}KB available"
+        handle_qemu_crash "Insufficient disk space"
+        return 1
+    fi
+    
+    # Check memory availability (basic check)
+    local memory_pressure
+    memory_pressure=$(vm_stat | grep "Pages free" | awk '{print $3}' | sed 's/\.//')
+    if [[ -n "$memory_pressure" && $memory_pressure -lt 10000 ]]; then  # Less than ~40MB free pages
+        log_warning "Low memory available, QEMU may fail to start"
+    fi
+    
+    # Start QEMU in background with error handling
+    log_info "Launching QEMU process..."
+    if ! eval "$qemu_command" & then
+        log_error "Failed to start QEMU process"
+        handle_qemu_crash "QEMU launch failed"
+        return 1
+    fi
+    
     QEMU_PID=$!
+    
+    # Verify QEMU process started successfully
+    sleep 1
+    if ! kill -0 "$QEMU_PID" 2>/dev/null; then
+        log_error "QEMU process died immediately after startup"
+        handle_qemu_crash "Immediate process death"
+        return 1
+    fi
     
     # Save PID to file
     echo "$QEMU_PID" > "${PID_DIR}/${INSTANCE_ID}.pid"
@@ -335,6 +707,7 @@ start_qemu_instance() {
     log_info "QEMU started with PID: $QEMU_PID"
     log_info "Console output: $CONSOLE_LOG"
     log_info "Monitor socket: $MONITOR_SOCKET"
+    log_structured "QEMU_STARTED" "PID: $QEMU_PID"
     
     return 0
 }
@@ -344,16 +717,44 @@ wait_for_boot() {
     
     local elapsed=0
     local boot_complete=false
+    local last_log_size=0
+    local stall_count=0
+    local max_stalls=3
     
     while [[ $elapsed -lt $BOOT_TIMEOUT ]]; do
         # Check if QEMU process is still running
         if ! kill -0 "$QEMU_PID" 2>/dev/null; then
             log_error "QEMU process died during boot"
+            handle_qemu_crash "Process died during boot"
+            return 1
+        fi
+        
+        # Check for common failure patterns
+        if [[ -f "$CONSOLE_LOG" ]] && ! detect_common_failures "$CONSOLE_LOG"; then
             return 1
         fi
         
         # Check console log for boot completion indicators
         if [[ -f "$CONSOLE_LOG" ]]; then
+            # Monitor log growth to detect stalls
+            local current_log_size
+            current_log_size=$(wc -l < "$CONSOLE_LOG" 2>/dev/null || echo "0")
+            
+            if [[ $current_log_size -eq $last_log_size ]]; then
+                stall_count=$((stall_count + 1))
+                if [[ $stall_count -ge $max_stalls && $elapsed -gt 30 ]]; then
+                    log_warning "Boot appears to be stalled (no log activity for $((stall_count * 2))s)"
+                    # Try sending a key to wake up the system
+                    if [[ -S "$MONITOR_SOCKET" ]]; then
+                        echo "sendkey ret" | socat - "UNIX-CONNECT:$MONITOR_SOCKET" 2>/dev/null || true
+                    fi
+                    stall_count=0
+                fi
+            else
+                stall_count=0
+                last_log_size=$current_log_size
+            fi
+            
             # Look for USB/IP client readiness indicators
             if grep -q "USBIP_CLIENT_READY" "$CONSOLE_LOG" 2>/dev/null; then
                 boot_complete=true
@@ -369,22 +770,51 @@ wait_for_boot() {
             # Check for login prompt as fallback
             if grep -q "login:" "$CONSOLE_LOG" 2>/dev/null; then
                 log_warning "Login prompt detected, but USB/IP readiness not confirmed"
-                boot_complete=true
+                # Give it a few more seconds to complete USB/IP setup
+                local extra_wait=10
+                local extra_elapsed=0
+                while [[ $extra_elapsed -lt $extra_wait ]]; do
+                    if grep -q "USBIP_CLIENT_READY" "$CONSOLE_LOG" 2>/dev/null; then
+                        boot_complete=true
+                        break
+                    fi
+                    sleep 1
+                    extra_elapsed=$((extra_elapsed + 1))
+                done
+                
+                if [[ "$boot_complete" != "true" ]]; then
+                    log_warning "USB/IP readiness not confirmed, but login available"
+                    boot_complete=true
+                fi
                 break
+            fi
+            
+            # Check for error conditions that indicate boot failure
+            if grep -q "Kernel panic\|Out of memory\|segfault" "$CONSOLE_LOG" 2>/dev/null; then
+                log_error "Critical boot error detected in console log"
+                handle_boot_timeout "Critical boot error"
+                return 1
             fi
         fi
         
         sleep 2
         elapsed=$((elapsed + 2))
         
-        # Progress indicator
+        # Progress indicator with more detail
         if [[ $((elapsed % 10)) -eq 0 ]]; then
-            log_info "Boot progress: ${elapsed}/${BOOT_TIMEOUT}s"
+            local progress_info="Boot progress: ${elapsed}/${BOOT_TIMEOUT}s"
+            if [[ -f "$CONSOLE_LOG" ]]; then
+                local log_lines
+                log_lines=$(wc -l < "$CONSOLE_LOG" 2>/dev/null || echo "0")
+                progress_info="$progress_info (console: ${log_lines} lines)"
+            fi
+            log_info "$progress_info"
         fi
     done
     
     if [[ "$boot_complete" == "true" ]]; then
         log_success "QEMU instance boot completed"
+        log_structured "BOOT_COMPLETE" "Boot time: ${elapsed}s"
         
         # Display boot summary from console log
         if [[ -f "$CONSOLE_LOG" ]]; then
@@ -400,12 +830,17 @@ wait_for_boot() {
                 version_line=$(grep "USBIP_VERSION" "$CONSOLE_LOG" | tail -n1)
                 log_info "  ✓ ${version_line##*USBIP_VERSION: }"
             fi
+            
+            # Log total boot time and console activity
+            local total_lines
+            total_lines=$(wc -l < "$CONSOLE_LOG" 2>/dev/null || echo "0")
+            log_info "  ✓ Boot completed in ${elapsed}s with ${total_lines} console messages"
         fi
         
         return 0
     else
         log_error "QEMU instance failed to boot within ${BOOT_TIMEOUT} seconds"
-        log_info "Check console log for details: $CONSOLE_LOG"
+        handle_boot_timeout "Boot timeout exceeded"
         return 1
     fi
 }
@@ -780,29 +1215,82 @@ cmd_start() {
         return 1
     fi
     
-    # Create overlay image
-    if ! create_overlay_image; then
-        log_error "Overlay image creation failed"
+    # Create overlay image with retry
+    if ! retry_with_backoff 2 2 "overlay image creation" create_overlay_image; then
+        log_error "Overlay image creation failed after retries"
         return 1
     fi
     
-    # Start QEMU instance
-    if ! start_qemu_instance; then
-        log_error "Failed to start QEMU instance"
-        return 1
-    fi
+    # Attempt to start QEMU with retries for transient failures
+    local boot_attempt=1
+    local boot_success=false
     
-    # Wait for boot completion
-    if ! wait_for_boot; then
-        log_error "QEMU instance failed to boot properly"
-        stop_qemu_instance
-        return 1
-    fi
+    while [[ $boot_attempt -le $MAX_BOOT_RETRIES ]] && [[ "$boot_success" != "true" ]]; do
+        log_info "Boot attempt $boot_attempt/$MAX_BOOT_RETRIES"
+        
+        # Clean up any previous attempt
+        if [[ -n "$QEMU_PID" ]] && kill -0 "$QEMU_PID" 2>/dev/null; then
+            log_info "Cleaning up previous QEMU instance"
+            stop_qemu_instance
+            sleep 2
+        fi
+        
+        # Recreate overlay image for retry attempts
+        if [[ $boot_attempt -gt 1 ]]; then
+            log_info "Recreating overlay image for retry attempt"
+            if [[ -f "$QEMU_OVERLAY_IMAGE" ]]; then
+                rm -f "$QEMU_OVERLAY_IMAGE"
+            fi
+            if ! create_overlay_image; then
+                log_error "Failed to recreate overlay image for retry"
+                boot_attempt=$((boot_attempt + 1))
+                continue
+            fi
+        fi
+        
+        # Start QEMU instance
+        if ! start_qemu_instance; then
+            log_error "Failed to start QEMU instance (attempt $boot_attempt)"
+            boot_attempt=$((boot_attempt + 1))
+            if [[ $boot_attempt -le $MAX_BOOT_RETRIES ]]; then
+                log_info "Retrying QEMU startup in ${RETRY_DELAY}s..."
+                sleep "$RETRY_DELAY"
+            fi
+            continue
+        fi
+        
+        # Wait for boot completion
+        if ! wait_for_boot; then
+            log_error "QEMU instance failed to boot properly (attempt $boot_attempt)"
+            stop_qemu_instance
+            boot_attempt=$((boot_attempt + 1))
+            if [[ $boot_attempt -le $MAX_BOOT_RETRIES ]]; then
+                log_info "Retrying boot in ${RETRY_DELAY}s..."
+                sleep "$RETRY_DELAY"
+            fi
+            continue
+        fi
+        
+        # Test functionality
+        if ! test_qemu_functionality; then
+            log_error "QEMU functionality test failed (attempt $boot_attempt)"
+            stop_qemu_instance
+            boot_attempt=$((boot_attempt + 1))
+            if [[ $boot_attempt -le $MAX_BOOT_RETRIES ]]; then
+                log_info "Retrying due to functionality test failure in ${RETRY_DELAY}s..."
+                sleep "$RETRY_DELAY"
+            fi
+            continue
+        fi
+        
+        # Success!
+        boot_success=true
+        break
+    done
     
-    # Test functionality
-    if ! test_qemu_functionality; then
-        log_error "QEMU functionality test failed"
-        stop_qemu_instance
+    if [[ "$boot_success" != "true" ]]; then
+        log_error "Failed to start QEMU instance after $MAX_BOOT_RETRIES attempts"
+        log_structured "STARTUP_FAILED" "All retry attempts exhausted"
         return 1
     fi
     
@@ -811,6 +1299,7 @@ cmd_start() {
     
     log_success "QEMU USB/IP client instance started successfully"
     log_info "Instance is ready for USB/IP testing"
+    log_structured "STARTUP_SUCCESS" "Boot attempt: $boot_attempt"
     
     return 0
 }

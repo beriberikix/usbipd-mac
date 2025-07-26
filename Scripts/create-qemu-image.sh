@@ -180,29 +180,67 @@ setup_build_environment() {
     log_success "Build environment ready at: ${BUILD_DIR}"
 }
 
+# Enhanced error handling functions
+retry_download() {
+    local url="$1"
+    local output_file="$2"
+    local max_attempts="${3:-3}"
+    local delay="${4:-5}"
+    
+    local attempt=1
+    while [[ $attempt -le $max_attempts ]]; do
+        log_info "Downloading: $(basename "$output_file") (attempt $attempt/$max_attempts)"
+        
+        # Remove partial download if it exists
+        if [[ -f "$output_file" ]]; then
+            rm -f "$output_file"
+        fi
+        
+        local download_success=false
+        if command -v wget &> /dev/null; then
+            if wget -q --show-progress --timeout=30 --tries=1 -O "$output_file" "$url"; then
+                download_success=true
+            fi
+        elif command -v curl &> /dev/null; then
+            if curl -L --progress-bar --max-time 60 --retry 0 -o "$output_file" "$url"; then
+                download_success=true
+            fi
+        else
+            log_error "No download tool available"
+            return 1
+        fi
+        
+        if [[ "$download_success" == "true" && -f "$output_file" && -s "$output_file" ]]; then
+            log_success "Downloaded: $(basename "$output_file")"
+            return 0
+        else
+            log_warning "Download failed on attempt $attempt"
+            if [[ -f "$output_file" ]]; then
+                rm -f "$output_file"
+            fi
+            
+            if [[ $attempt -lt $max_attempts ]]; then
+                log_info "Retrying in ${delay}s..."
+                sleep "$delay"
+                # Exponential backoff
+                delay=$((delay * 2))
+            fi
+        fi
+        
+        attempt=$((attempt + 1))
+    done
+    
+    log_error "Download failed after $max_attempts attempts: $(basename "$output_file")"
+    return 1
+}
+
 # Download functions
 download_file() {
     local url="$1"
     local output_file="$2"
     
-    log_info "Downloading: $(basename "$output_file")"
-    
-    if command -v wget &> /dev/null; then
-        wget -q --show-progress -O "$output_file" "$url"
-    elif command -v curl &> /dev/null; then
-        curl -L --progress-bar -o "$output_file" "$url"
-    else
-        log_error "No download tool available"
-        return 1
-    fi
-    
-    if [[ ! -f "$output_file" ]]; then
-        log_error "Download failed: $output_file not created"
-        return 1
-    fi
-    
-    log_success "Downloaded: $(basename "$output_file")"
-    return 0
+    # Use retry mechanism for downloads
+    retry_download "$url" "$output_file" 3 5
 }
 
 validate_checksum() {
@@ -235,10 +273,10 @@ download_alpine_linux() {
     if [[ -f "$iso_path" ]]; then
         log_info "Alpine ISO already exists, checking validity..."
         
-        # Download checksums to validate existing ISO
+        # Download checksums to validate existing ISO (with retry)
         if download_file "$ALPINE_CHECKSUMS_URL" "$checksums_path"; then
             local expected_checksum
-            expected_checksum=$(cut -d' ' -f1 "$checksums_path")
+            expected_checksum=$(cut -d' ' -f1 "$checksums_path" 2>/dev/null)
             
             if [[ -n "$expected_checksum" ]] && validate_checksum "$iso_path" "$expected_checksum"; then
                 log_success "Existing Alpine ISO is valid"
@@ -247,16 +285,14 @@ download_alpine_linux() {
                 log_warning "Existing Alpine ISO is invalid, re-downloading..."
                 rm -f "$iso_path"
             fi
+        else
+            log_warning "Could not download checksums to validate existing ISO, re-downloading..."
+            rm -f "$iso_path"
         fi
     fi
     
-    # Download Alpine ISO
-    if ! download_file "$ALPINE_URL" "$iso_path"; then
-        log_error "Failed to download Alpine Linux ISO"
-        return 1
-    fi
-    
-    # Download and validate checksums
+    # Download checksums first (for better error handling)
+    log_info "Downloading Alpine Linux checksums..."
     if ! download_file "$ALPINE_CHECKSUMS_URL" "$checksums_path"; then
         log_error "Failed to download Alpine Linux checksums"
         return 1
@@ -264,20 +300,78 @@ download_alpine_linux() {
     
     # Extract expected checksum from the checksum file
     local expected_checksum
-    expected_checksum=$(cut -d' ' -f1 "$checksums_path")
+    expected_checksum=$(cut -d' ' -f1 "$checksums_path" 2>/dev/null)
     
     if [[ -z "$expected_checksum" ]]; then
         log_error "Could not extract checksum from checksums file"
+        log_info "Checksums file content:"
+        head -n5 "$checksums_path" | sed 's/^/  /' || true
         return 1
     fi
     
-    # Validate downloaded ISO
-    if ! validate_checksum "$iso_path" "$expected_checksum"; then
-        log_error "Alpine Linux ISO checksum validation failed"
+    log_info "Expected checksum: $expected_checksum"
+    
+    # Download Alpine ISO with enhanced error handling
+    local download_attempts=0
+    local max_download_attempts=3
+    local download_success=false
+    
+    while [[ $download_attempts -lt $max_download_attempts ]] && [[ "$download_success" != "true" ]]; do
+        download_attempts=$((download_attempts + 1))
+        log_info "Downloading Alpine ISO (attempt $download_attempts/$max_download_attempts)..."
+        
+        if download_file "$ALPINE_URL" "$iso_path"; then
+            # Validate downloaded ISO immediately
+            if validate_checksum "$iso_path" "$expected_checksum"; then
+                download_success=true
+                break
+            else
+                log_warning "Downloaded ISO failed checksum validation (attempt $download_attempts)"
+                rm -f "$iso_path"
+                
+                if [[ $download_attempts -lt $max_download_attempts ]]; then
+                    log_info "Retrying download in 5s..."
+                    sleep 5
+                fi
+            fi
+        else
+            log_warning "ISO download failed (attempt $download_attempts)"
+            if [[ $download_attempts -lt $max_download_attempts ]]; then
+                log_info "Retrying download in 5s..."
+                sleep 5
+            fi
+        fi
+    done
+    
+    if [[ "$download_success" != "true" ]]; then
+        log_error "Failed to download and validate Alpine Linux ISO after $max_download_attempts attempts"
+        
+        # Provide troubleshooting information
+        log_info "Troubleshooting information:"
+        log_info "  Alpine URL: $ALPINE_URL"
+        log_info "  Checksums URL: $ALPINE_CHECKSUMS_URL"
+        log_info "  Expected checksum: $expected_checksum"
+        
+        # Check if partial file exists
+        if [[ -f "$iso_path" ]]; then
+            local partial_size
+            partial_size=$(ls -lh "$iso_path" | awk '{print $5}')
+            log_info "  Partial download size: $partial_size"
+            rm -f "$iso_path"
+        fi
+        
         return 1
     fi
     
     log_success "Alpine Linux ISO downloaded and validated successfully"
+    
+    # Additional verification - check ISO file properties
+    local iso_size
+    iso_size=$(ls -lh "$iso_path" | awk '{print $5}')
+    log_info "Alpine ISO properties:"
+    log_info "  File size: $iso_size"
+    log_info "  Checksum: verified"
+    
     return 0
 }
 
@@ -285,25 +379,88 @@ download_alpine_linux() {
 create_disk_image() {
     log_info "Creating QEMU disk image..."
     
+    # Check available disk space before creating image
+    local available_space
+    available_space=$(df "$BUILD_DIR" | awk 'NR==2 {print $4}')
+    local required_space=524288  # 512MB in KB
+    
+    if [[ $available_space -lt $required_space ]]; then
+        log_error "Insufficient disk space: ${available_space}KB available, ${required_space}KB required"
+        return 1
+    fi
+    
     # Remove existing image if present
     if [[ -f "$DISK_IMAGE" ]]; then
         log_info "Removing existing disk image"
-        rm -f "$DISK_IMAGE"
+        if ! rm -f "$DISK_IMAGE"; then
+            log_error "Failed to remove existing disk image"
+            return 1
+        fi
     fi
     
-    # Create new qcow2 disk image
-    if ! qemu-img create -f qcow2 "$DISK_IMAGE" "$DISK_SIZE" >> "$LOG_FILE" 2>&1; then
-        log_error "Failed to create disk image"
-        return 1
-    fi
+    # Create new qcow2 disk image with error handling
+    log_info "Creating qcow2 disk image (${DISK_SIZE})"
+    local create_attempts=0
+    local max_create_attempts=3
     
-    log_success "Created disk image: $(basename "$DISK_IMAGE") (${DISK_SIZE})"
+    while [[ $create_attempts -lt $max_create_attempts ]]; do
+        create_attempts=$((create_attempts + 1))
+        
+        if qemu-img create -f qcow2 "$DISK_IMAGE" "$DISK_SIZE" >> "$LOG_FILE" 2>&1; then
+            log_success "Created disk image: $(basename "$DISK_IMAGE") (${DISK_SIZE})"
+            break
+        else
+            log_warning "Disk image creation failed (attempt $create_attempts/$max_create_attempts)"
+            
+            # Clean up partial image
+            if [[ -f "$DISK_IMAGE" ]]; then
+                rm -f "$DISK_IMAGE"
+            fi
+            
+            if [[ $create_attempts -lt $max_create_attempts ]]; then
+                log_info "Retrying disk image creation in 2s..."
+                sleep 2
+            else
+                log_error "Failed to create disk image after $max_create_attempts attempts"
+                return 1
+            fi
+        fi
+    done
     
     # Verify image was created successfully
+    log_info "Verifying disk image integrity..."
     if ! qemu-img info "$DISK_IMAGE" >> "$LOG_FILE" 2>&1; then
         log_error "Created disk image appears to be invalid"
+        
+        # Try to get more information about the failure
+        if [[ -f "$DISK_IMAGE" ]]; then
+            local file_size
+            file_size=$(ls -lh "$DISK_IMAGE" | awk '{print $5}')
+            log_error "Image file size: $file_size"
+            
+            # Check if file is corrupted
+            if ! qemu-img check "$DISK_IMAGE" >> "$LOG_FILE" 2>&1; then
+                log_error "Disk image is corrupted"
+            fi
+        fi
+        
         return 1
     fi
+    
+    # Additional verification - check image format and virtual size
+    local image_format
+    image_format=$(qemu-img info "$DISK_IMAGE" | grep "file format" | awk '{print $3}')
+    local virtual_size
+    virtual_size=$(qemu-img info "$DISK_IMAGE" | grep "virtual size" | awk '{print $3}')
+    
+    if [[ "$image_format" != "qcow2" ]]; then
+        log_error "Unexpected image format: $image_format (expected qcow2)"
+        return 1
+    fi
+    
+    log_success "Disk image verification passed:"
+    log_info "  Format: $image_format"
+    log_info "  Virtual size: $virtual_size"
     
     return 0
 }
