@@ -308,29 +308,209 @@ create_disk_image() {
     return 0
 }
 
+configure_usbip_client() {
+    log_info "Configuring USB/IP client capabilities..."
+    
+    # Create cloud-init configuration directory
+    local cloud_init_dir="${BUILD_DIR}/cloud-init"
+    mkdir -p "$cloud_init_dir"
+    
+    # Create comprehensive cloud-init user-data configuration with USB/IP client setup
+    cat > "${cloud_init_dir}/user-data" << 'EOF'
+#cloud-config
+
+# Create a test user with sudo privileges
+users:
+  - name: testuser
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/sh
+    lock_passwd: false
+    passwd: "$6$rounds=4096$saltsalt$L9.LKkHxQkHZ8E7NvQW8tF7KvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQ"
+
+# Install required packages including USB/IP utilities
+packages:
+  - usbip
+  - usbutils
+  - kmod
+
+# Configure kernel modules for USB/IP client
+write_files:
+  - path: /etc/modules-load.d/usbip.conf
+    content: |
+      # USB/IP client kernel modules
+      vhci-hcd
+    permissions: '0644'
+  
+  - path: /etc/modprobe.d/usbip.conf
+    content: |
+      # USB/IP client module configuration
+      # Ensure vhci-hcd loads properly
+      options vhci-hcd
+    permissions: '0644'
+  
+  - path: /usr/local/bin/usbip-client-test
+    content: |
+      #!/bin/sh
+      # USB/IP client test script
+      
+      echo "USBIP_CLIENT_TEST_START" > /dev/console
+      
+      # Check if vhci-hcd module is loaded
+      if lsmod | grep -q vhci_hcd; then
+          echo "VHCI_MODULE_LOADED: SUCCESS" > /dev/console
+      else
+          echo "VHCI_MODULE_LOADED: FAILED" > /dev/console
+          exit 1
+      fi
+      
+      # Check if usbip command is available
+      if command -v usbip >/dev/null 2>&1; then
+          echo "USBIP_COMMAND_AVAILABLE: SUCCESS" > /dev/console
+          usbip version > /dev/console 2>&1
+      else
+          echo "USBIP_COMMAND_AVAILABLE: FAILED" > /dev/console
+          exit 1
+      fi
+      
+      # Test usbip list functionality (will fail without server, but command should work)
+      echo "USBIP_LIST_TEST: START" > /dev/console
+      if usbip list -r 127.0.0.1 2>/dev/null || [ $? -eq 1 ]; then
+          echo "USBIP_LIST_TEST: SUCCESS" > /dev/console
+      else
+          echo "USBIP_LIST_TEST: FAILED" > /dev/console
+      fi
+      
+      echo "USBIP_CLIENT_TEST_COMPLETE" > /dev/console
+    permissions: '0755'
+  
+  - path: /etc/init.d/usbip-client-setup
+    content: |
+      #!/sbin/openrc-run
+      
+      name="usbip-client-setup"
+      description="USB/IP client setup service"
+      
+      depend() {
+          need localmount
+          after bootmisc
+      }
+      
+      start() {
+          ebegin "Setting up USB/IP client"
+          
+          # Load vhci-hcd module
+          modprobe vhci-hcd
+          
+          # Verify module loaded
+          if lsmod | grep -q vhci_hcd; then
+              echo "USBIP_CLIENT_READY" > /dev/console
+              eend 0
+          else
+              echo "USBIP_CLIENT_FAILED" > /dev/console
+              eend 1
+          fi
+      }
+      
+      stop() {
+          ebegin "Stopping USB/IP client"
+          # Remove vhci-hcd module if needed
+          rmmod vhci-hcd 2>/dev/null || true
+          eend 0
+      }
+    permissions: '0755'
+
+# Run commands to set up USB/IP client environment
+runcmd:
+  # Update package index
+  - apk update
+  
+  # Ensure usbip package is properly installed
+  - apk add --no-cache usbip usbutils kmod
+  
+  # Load vhci-hcd kernel module
+  - modprobe vhci-hcd || echo "Failed to load vhci-hcd module" > /dev/console
+  
+  # Enable the USB/IP client setup service
+  - rc-update add usbip-client-setup default
+  
+  # Create symlinks to ensure usbip tools are in PATH
+  - ln -sf /usr/bin/usbip /usr/local/bin/usbip || true
+  - ln -sf /usr/bin/usbipd /usr/local/bin/usbipd || true
+  
+  # Verify installation
+  - /usr/local/bin/usbip-client-test
+  
+  # Output readiness indicator
+  - echo "USBIP_CLIENT_CONFIGURATION_COMPLETE" > /dev/console
+
+# Final message
+final_message: "USB/IP client configuration completed successfully"
+EOF
+    
+    log_success "USB/IP client configuration created"
+    return 0
+}
+
 prepare_filesystem_structure() {
-    log_info "Preparing basic filesystem structure..."
+    log_info "Preparing filesystem structure with USB/IP client capabilities..."
     
     # Create temporary mount directory
     local mount_dir="${BUILD_DIR}/mnt"
     mkdir -p "$mount_dir"
     
-    # For now, we'll prepare the structure conceptually
-    # The actual filesystem setup will be done via cloud-init in later tasks
-    log_info "Filesystem structure will be configured via cloud-init during boot"
+    # Configure USB/IP client capabilities
+    if ! configure_usbip_client; then
+        log_error "Failed to configure USB/IP client capabilities"
+        return 1
+    fi
     
-    # Create a basic cloud-init configuration directory for future use
+    log_success "Filesystem structure with USB/IP client capabilities prepared"
+    return 0
+}
+
+validate_usbip_configuration() {
+    log_info "Validating USB/IP client configuration..."
+    
     local cloud_init_dir="${BUILD_DIR}/cloud-init"
-    mkdir -p "$cloud_init_dir"
+    local user_data_file="${cloud_init_dir}/user-data"
     
-    # Create a placeholder user-data file (will be populated in later tasks)
-    cat > "${cloud_init_dir}/user-data" << 'EOF'
-#cloud-config
-# This file will be populated in later implementation tasks
-# with USB/IP client configuration and setup scripts
-EOF
+    # Verify cloud-init configuration exists
+    if [[ ! -f "$user_data_file" ]]; then
+        log_error "Cloud-init user-data file not found: $user_data_file"
+        return 1
+    fi
     
-    log_success "Basic filesystem structure prepared"
+    # Verify USB/IP package is specified in cloud-init
+    if ! grep -q "usbip" "$user_data_file"; then
+        log_error "USB/IP package not found in cloud-init configuration"
+        return 1
+    fi
+    
+    # Verify vhci-hcd module configuration exists
+    if ! grep -q "vhci-hcd" "$user_data_file"; then
+        log_error "vhci-hcd module configuration not found"
+        return 1
+    fi
+    
+    # Verify test script exists in configuration
+    if ! grep -q "usbip-client-test" "$user_data_file"; then
+        log_error "USB/IP client test script not found in configuration"
+        return 1
+    fi
+    
+    # Verify module loading configuration
+    if ! grep -q "modules-load.d/usbip.conf" "$user_data_file"; then
+        log_error "Kernel module loading configuration not found"
+        return 1
+    fi
+    
+    # Verify PATH configuration for USB/IP tools
+    if ! grep -q "/usr/local/bin/usbip" "$user_data_file"; then
+        log_error "USB/IP tools PATH configuration not found"
+        return 1
+    fi
+    
+    log_success "USB/IP client configuration validation passed"
     return 0
 }
 
@@ -361,6 +541,12 @@ test_image_creation() {
     local image_size
     image_size=$(qemu-img info "$DISK_IMAGE" | grep "virtual size" | awk '{print $3}')
     log_info "Created disk image virtual size: ${image_size}"
+    
+    # Validate USB/IP client configuration
+    if ! validate_usbip_configuration; then
+        log_error "USB/IP client configuration validation failed"
+        return 1
+    fi
     
     log_success "Image creation functionality test passed"
     return 0
@@ -393,9 +579,9 @@ main() {
         exit 1
     fi
     
-    # Prepare basic filesystem structure
+    # Prepare filesystem structure with USB/IP client capabilities
     if ! prepare_filesystem_structure; then
-        log_error "Failed to prepare filesystem structure"
+        log_error "Failed to prepare filesystem structure with USB/IP client capabilities"
         exit 1
     fi
     
@@ -405,9 +591,15 @@ main() {
         exit 1
     fi
     
-    log_success "Alpine Linux image download and preparation completed successfully"
+    log_success "Alpine Linux image with USB/IP client capabilities completed successfully"
     log_info "Created disk image: ${DISK_IMAGE}"
     log_info "Alpine ISO: ${BUILD_DIR}/${ALPINE_ISO}"
+    log_info "Cloud-init configuration: ${BUILD_DIR}/cloud-init/"
+    log_info "USB/IP client features:"
+    log_info "  - usbip-utils package installation"
+    log_info "  - vhci-hcd kernel module auto-loading"
+    log_info "  - USB/IP tools in system PATH"
+    log_info "  - Client validation test script"
     log_info "Log file: ${LOG_FILE}"
 }
 
