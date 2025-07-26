@@ -63,8 +63,6 @@ public class CommandLineParser {
         registerCommands()
     }
     
-
-    
     /// Register all available commands
     private func registerCommands() {
         let outputFormatter = LinuxCompatibleOutputFormatter()
