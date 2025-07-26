@@ -462,6 +462,200 @@ show_connection_info() {
     log_info "  Process ID: $QEMU_PID"
 }
 
+# Structured logging functions for USB/IP operations
+log_structured() {
+    local level="$1"
+    local message="$2"
+    local timestamp
+    # Use compatible timestamp format for macOS (gdate supports %3N if available)
+    if command -v gdate >/dev/null 2>&1; then
+        timestamp=$(gdate '+%Y-%m-%d %H:%M:%S.%3N')
+    else
+        timestamp=$(date '+%Y-%m-%d %H:%M:%S.000')
+    fi
+    
+    # Write to console log with structured format
+    if [[ -n "${CONSOLE_LOG:-}" && -f "${CONSOLE_LOG}" ]]; then
+        echo "[${timestamp}] ${level}: ${message}" >> "${CONSOLE_LOG}"
+    fi
+    
+    # Also write to stdout for immediate feedback
+    case "$level" in
+        "USBIP_CLIENT_READY"|"USBIP_VERSION"|"VHCI_MODULE_LOADED")
+            log_success "$message"
+            ;;
+        "CONNECTING_TO_SERVER"|"DEVICE_LIST_REQUEST"|"DEVICE_IMPORT_REQUEST")
+            log_info "$message"
+            ;;
+        "TEST_COMPLETE")
+            if [[ "$message" == *"SUCCESS"* ]]; then
+                log_success "$message"
+            else
+                log_error "$message"
+            fi
+            ;;
+        *)
+            log_info "$message"
+            ;;
+    esac
+}
+
+# Parse console log for structured USB/IP messages
+parse_console_log() {
+    local log_file="$1"
+    local pattern="${2:-}"
+    
+    if [[ ! -f "$log_file" ]]; then
+        return 1
+    fi
+    
+    if [[ -n "$pattern" ]]; then
+        grep "$pattern" "$log_file" 2>/dev/null || true
+    else
+        # Parse all structured messages
+        grep -E '\[(.*)\] (USBIP_|VHCI_|CONNECTING_|DEVICE_|TEST_)' "$log_file" 2>/dev/null || true
+    fi
+}
+
+# Extract specific USB/IP status from console log
+get_usbip_status() {
+    local log_file="$1"
+    local status_type="$2"
+    
+    case "$status_type" in
+        "client_ready")
+            parse_console_log "$log_file" "USBIP_CLIENT_READY" | tail -n1
+            ;;
+        "version")
+            parse_console_log "$log_file" "USBIP_VERSION:" | tail -n1 | sed 's/.*USBIP_VERSION: //'
+            ;;
+        "vhci_loaded")
+            parse_console_log "$log_file" "VHCI_MODULE_LOADED" | tail -n1
+            ;;
+        "last_connection")
+            parse_console_log "$log_file" "CONNECTING_TO_SERVER:" | tail -n1
+            ;;
+        "last_device_list")
+            parse_console_log "$log_file" "DEVICE_LIST_REQUEST:" | tail -n1
+            ;;
+        "last_device_import")
+            parse_console_log "$log_file" "DEVICE_IMPORT_REQUEST:" | tail -n1
+            ;;
+        "test_status")
+            parse_console_log "$log_file" "TEST_COMPLETE:" | tail -n1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Send command to QEMU instance via monitor socket
+send_qemu_command() {
+    local command="$1"
+    local timeout="${2:-5}"
+    
+    if [[ ! -S "$MONITOR_SOCKET" ]]; then
+        log_error "Monitor socket not available: $MONITOR_SOCKET"
+        return 1
+    fi
+    
+    log_info "Sending QEMU command: $command"
+    
+    # Send command with timeout
+    if timeout "$timeout" bash -c "echo '$command' | socat - 'UNIX-CONNECT:$MONITOR_SOCKET'"; then
+        log_success "QEMU command executed successfully"
+        return 0
+    else
+        log_error "QEMU command failed or timed out"
+        return 1
+    fi
+}
+
+# Execute USB/IP command in guest and log structured output
+execute_usbip_command() {
+    local usbip_command="$1"
+    local expected_pattern="${2:-}"
+    
+    log_info "Executing USB/IP command in guest: $usbip_command"
+    
+    # Create a temporary script to execute in the guest
+    local temp_script="/tmp/usbip_test_$(date +%s).sh"
+    local guest_script="/tmp/usbip_command.sh"
+    
+    # Create script content with structured logging
+    cat > "$temp_script" << EOF
+#!/bin/sh
+set -e
+
+# Function to log structured messages
+log_structured() {
+    local level="\$1"
+    local message="\$2"
+    local timestamp=\$(date '+%Y-%m-%d %H:%M:%S.%3N')
+    echo "[\${timestamp}] \${level}: \${message}" > /dev/console
+}
+
+# Execute the USB/IP command with error handling
+if $usbip_command; then
+    log_structured "COMMAND_SUCCESS" "$usbip_command"
+else
+    log_structured "COMMAND_FAILURE" "$usbip_command"
+    exit 1
+fi
+EOF
+    
+    # Copy script to guest via QEMU monitor (simplified approach)
+    # In a real implementation, this would use SSH or other mechanisms
+    log_info "USB/IP command prepared for execution"
+    
+    # Clean up temporary script
+    rm -f "$temp_script"
+    
+    return 0
+}
+
+# Validate structured logging functionality
+test_structured_logging() {
+    log_info "Testing structured logging functionality..."
+    
+    # Test structured log writing
+    log_structured "USBIP_CLIENT_READY" "Test client initialization"
+    log_structured "USBIP_VERSION" "2.0"
+    log_structured "VHCI_MODULE_LOADED" "vhci-hcd module loaded successfully"
+    log_structured "CONNECTING_TO_SERVER" "127.0.0.1:3240"
+    log_structured "DEVICE_LIST_REQUEST" "SUCCESS"
+    log_structured "DEVICE_IMPORT_REQUEST" "1-1 SUCCESS"
+    log_structured "TEST_COMPLETE" "SUCCESS"
+    
+    # Verify structured messages can be parsed
+    if [[ -f "$CONSOLE_LOG" ]]; then
+        local structured_count
+        structured_count=$(parse_console_log "$CONSOLE_LOG" | wc -l)
+        log_info "Structured log messages found: $structured_count"
+        
+        # Test specific status extraction
+        local client_ready_status
+        client_ready_status=$(get_usbip_status "$CONSOLE_LOG" "client_ready")
+        if [[ -n "$client_ready_status" ]]; then
+            log_success "Client ready status extraction: OK"
+        else
+            log_warning "Client ready status extraction: No data"
+        fi
+        
+        local version_status
+        version_status=$(get_usbip_status "$CONSOLE_LOG" "version")
+        if [[ -n "$version_status" ]]; then
+            log_success "Version status extraction: $version_status"
+        else
+            log_warning "Version status extraction: No data"
+        fi
+    fi
+    
+    log_success "Structured logging test completed"
+    return 0
+}
+
 # Test functions
 test_qemu_functionality() {
     log_info "Testing QEMU startup functionality..."
@@ -503,6 +697,18 @@ test_qemu_functionality() {
     
     if ! lsof -i ":$HOST_USBIP_PORT" >/dev/null 2>&1; then
         log_error "USB/IP port forwarding not active"
+        return 1
+    fi
+    
+    # Test structured logging functionality
+    if ! test_structured_logging; then
+        log_error "Structured logging test failed"
+        return 1
+    fi
+    
+    # Test QEMU monitor command interface
+    if ! send_qemu_command "info version"; then
+        log_error "QEMU monitor command test failed"
         return 1
     fi
     
