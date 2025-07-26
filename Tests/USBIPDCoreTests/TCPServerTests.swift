@@ -26,8 +26,9 @@ final class TCPServerTests: XCTestCase {
         // Test initial state
         XCTAssertFalse(server.isRunning())
         
-        // Test starting server
-        try server.start(port: 3240)
+        // Test starting server with random port to avoid conflicts
+        let port = UInt16.random(in: 8000...9000)
+        try server.start(port: port)
         XCTAssertTrue(server.isRunning())
         
         // Test stopping server
@@ -36,10 +37,11 @@ final class TCPServerTests: XCTestCase {
     }
     
     func testServerAlreadyRunningError() throws {
-        try server.start(port: 3240)
+        let port = UInt16.random(in: 8000...9000)
+        try server.start(port: port)
         
         // Should throw error when trying to start again
-        XCTAssertThrowsError(try server.start(port: 3240)) { error in
+        XCTAssertThrowsError(try server.start(port: port)) { error in
             XCTAssertTrue(error is ServerError)
             if case ServerError.alreadyRunning = error {
                 // Expected error
@@ -81,10 +83,11 @@ final class TCPServerTests: XCTestCase {
             expectation.fulfill()
         }
         
-        try server.start(port: 3241) // Use different port to avoid conflicts
+        let port = UInt16.random(in: 8000...9000)
+        try server.start(port: port)
         
         // Create a test client connection
-        let connection = NWConnection(host: "127.0.0.1", port: 3241, using: .tcp)
+        let connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: port), using: .tcp)
         connection.start(queue: DispatchQueue.global())
         
         wait(for: [expectation], timeout: 2.0)
@@ -108,10 +111,11 @@ final class TCPServerTests: XCTestCase {
             disconnectionExpectation.fulfill()
         }
         
-        try server.start(port: 3242)
+        let port = UInt16.random(in: 8000...9000)
+        try server.start(port: port)
         
         // Create a test client connection
-        let connection = NWConnection(host: "127.0.0.1", port: 3242, using: .tcp)
+        let connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: port), using: .tcp)
         connection.start(queue: DispatchQueue.global())
         
         wait(for: [connectionExpectation], timeout: 2.0)
@@ -139,10 +143,11 @@ final class TCPServerTests: XCTestCase {
             connectionExpectation.fulfill()
         }
         
-        try server.start(port: 3243)
+        let port = UInt16.random(in: 8000...9000)
+        try server.start(port: port)
         
         // Create a test client connection
-        let connection = NWConnection(host: "127.0.0.1", port: 3243, using: .tcp)
+        let connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: port), using: .tcp)
         connection.start(queue: DispatchQueue.global())
         
         wait(for: [connectionExpectation], timeout: 2.0)
@@ -167,10 +172,11 @@ final class TCPServerTests: XCTestCase {
             connectionExpectation.fulfill()
         }
         
-        try server.start(port: 3244)
+        let port = UInt16.random(in: 8000...9000)
+        try server.start(port: port)
         
         // Create a test client connection
-        let connection = NWConnection(host: "127.0.0.1", port: 3244, using: .tcp)
+        let connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: port), using: .tcp)
         connection.start(queue: DispatchQueue.global())
         
         wait(for: [connectionExpectation], timeout: 2.0)
