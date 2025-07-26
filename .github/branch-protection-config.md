@@ -1,130 +1,90 @@
 # Branch Protection Configuration
 
-This document outlines the required GitHub repository settings to implement branch protection and approval requirements for bypassing CI checks.
+This document outlines the required GitHub repository settings for branch protection and status checks to ensure code quality and prevent broken code from being merged to the main branch.
 
-## Required Branch Protection Settings
+## Required Branch Protection Rules
 
-The following settings must be configured for the `main` branch through GitHub's repository settings:
+The following branch protection rules must be configured for the `main` branch in the GitHub repository settings:
 
-### Branch Protection Rules for `main`
+### 1. Require Status Checks to Pass Before Merging
 
-1. **Require a pull request before merging**
-   - ✅ Enable this setting
-   - Require approvals: 1 (minimum)
-   - Dismiss stale PR approvals when new commits are pushed: ✅ Recommended
+Enable the following required status checks:
+- `Code Quality (SwiftLint)` - Ensures code style compliance
+- `Build Validation` - Validates project compilation
+- `Unit Tests` - Ensures all unit tests pass
+- `Integration Tests (QEMU)` - Validates end-to-end functionality
 
-2. **Require status checks to pass before merging**
-   - ✅ Enable this setting
-   - Require branches to be up to date before merging: ✅ Enable
-   - Required status checks:
-     - `Code Quality (SwiftLint)`
-     - `Build Validation`
-     - `Unit Tests`
-     - `Integration Tests (QEMU)`
+### 2. Require Branches to be Up to Date Before Merging
 
-3. **Require conversation resolution before merging**
-   - ✅ Enable this setting (recommended)
+This ensures that pull requests are tested against the latest version of the main branch.
 
-4. **Require signed commits**
-   - ⚠️ Optional (based on project security requirements)
+### 3. Require Pull Request Reviews Before Merging
 
-5. **Require linear history**
-   - ⚠️ Optional (based on project workflow preferences)
+Configure the following review requirements:
+- **Required number of reviewers**: 1
+- **Dismiss stale reviews when new commits are pushed**: Enabled
+- **Require review from code owners**: Enabled (if CODEOWNERS file exists)
 
-6. **Allow force pushes**
-   - ❌ Disable this setting
+### 4. Restrict Pushes that Create Files
 
-7. **Allow deletions**
-   - ❌ Disable this setting
+- **Restrict pushes that create files**: Enabled
+- This prevents direct pushes to main branch
 
-### Administrator Override Settings
+### 5. Allow Force Pushes
 
-To satisfy requirement 6.4 (maintainer approval for bypassing checks):
+- **Allow force pushes**: Disabled
+- This prevents force pushes that could overwrite history
 
-1. **Do not allow bypassing the above settings**
-   - ❌ Disable this setting to prevent administrators from bypassing protection rules
-   - This ensures that even maintainers must follow the same rules
+### 6. Allow Deletions
 
-2. **Restrict pushes that create files**
-   - ⚠️ Optional additional security measure
+- **Allow deletions**: Disabled
+- This prevents accidental branch deletion
 
-## Implementation Steps
+### 7. Bypass Settings for Administrators
 
-### Via GitHub Web Interface
+Configure bypass permissions for repository administrators:
+- **Allow administrators to bypass these settings**: Enabled
+- **Require administrator approval for bypassing**: Enabled
 
-1. Navigate to repository Settings → Branches
-2. Click "Add rule" or edit existing rule for `main` branch
-3. Configure the settings as outlined above
-4. Save the branch protection rule
+This ensures that even administrators need explicit approval to bypass protection rules, maintaining code quality standards while allowing emergency fixes when necessary.
 
-### Via GitHub CLI (Alternative)
+## Manual Configuration Steps
 
-```bash
-# Enable branch protection with required status checks
-gh api repos/:owner/:repo/branches/main/protection \
-  --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["Code Quality (SwiftLint)","Build Validation","Unit Tests","Integration Tests (QEMU)"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true}' \
-  --field restrictions=null
-```
+To configure these settings manually in GitHub:
 
-### Via GitHub API (Alternative)
+1. Navigate to your repository on GitHub
+2. Go to **Settings** → **Branches**
+3. Click **Add rule** or edit existing rule for `main` branch
+4. Configure the settings as outlined above
+5. Save the branch protection rule
+
+## Automated Configuration
+
+Use the provided script to configure branch protection rules automatically:
 
 ```bash
-curl -X PUT \
-  -H "Accept: application/vnd.github.v3+json" \
-  -H "Authorization: token YOUR_TOKEN" \
-  https://api.github.com/repos/OWNER/REPO/branches/main/protection \
-  -d '{
-    "required_status_checks": {
-      "strict": true,
-      "contexts": [
-        "Code Quality (SwiftLint)",
-        "Build Validation", 
-        "Unit Tests",
-        "Integration Tests (QEMU)"
-      ]
-    },
-    "enforce_admins": true,
-    "required_pull_request_reviews": {
-      "required_approving_review_count": 1,
-      "dismiss_stale_reviews": true
-    },
-    "restrictions": null
-  }'
+# Make the script executable
+chmod +x .github/scripts/configure-branch-protection.sh
+
+# Run the configuration script
+./.github/scripts/configure-branch-protection.sh
 ```
 
 ## Verification
 
-After applying these settings, verify the configuration by:
+After configuration, verify the settings by:
 
-1. Creating a test pull request
-2. Confirming that the PR cannot be merged without:
-   - All status checks passing
-   - At least one approval from a maintainer
-3. Verifying that administrators cannot bypass these requirements
+1. Creating a test pull request with failing checks
+2. Confirming that merge is blocked until checks pass
+3. Verifying that administrator approval is required for bypassing checks
+4. Testing that all required status checks are enforced
 
 ## Status Check Names
 
-The following status check names must match exactly with the job names in `.github/workflows/ci.yml`:
+The following status check names should be configured as required:
+- `Code Quality (SwiftLint)`
+- `Build Validation`
+- `Unit Tests`
+- `Integration Tests (QEMU)`
 
-- `Code Quality (SwiftLint)` - Maps to the `lint` job
-- `Build Validation` - Maps to the `build` job  
-- `Unit Tests` - Maps to the `test` job
-- `Integration Tests (QEMU)` - Maps to the `integration-test` job
-
-## Maintainer Approval Process
-
-When checks fail or need to be bypassed:
-
-1. **Normal Process**: Fix the failing checks and push new commits
-2. **Emergency Bypass**: 
-   - Requires explicit approval from repository maintainers
-   - Maintainer must review the specific reason for bypass
-   - Approval must be documented in PR comments
-   - Follow-up issue should be created to address the underlying problem
-
-This configuration ensures compliance with requirement 6.4: "IF checks are skipped or bypassed THEN the system SHALL require explicit approval from maintainers"
-</text>
-</invoke>
+These names correspond to the job names defined in the CI workflow (`.github/workflows/ci.yml`).
