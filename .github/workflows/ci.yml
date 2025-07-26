@@ -104,11 +104,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: 🛠️ Setup Swift Environment
-        uses: swift-actions/setup-swift@v1
-        with:
-          swift-version: 'latest'
-      
       - name: 📋 Verify Build Environment
         run: |
           echo "::group::Build Environment Information"
@@ -206,11 +201,6 @@ jobs:
       
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: 🛠️ Setup Swift Environment
-        uses: swift-actions/setup-swift@v1
-        with:
-          swift-version: 'latest'
       
       - name: 📋 Verify Test Environment
         run: |
@@ -312,11 +302,6 @@ jobs:
       
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: 🛠️ Setup Swift Environment
-        uses: swift-actions/setup-swift@v1
-        with:
-          swift-version: 'latest'
       
       - name: 📋 Verify Integration Test Environment
         run: |
