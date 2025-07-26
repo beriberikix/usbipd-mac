@@ -319,21 +319,25 @@ configure_usbip_client() {
     cat > "${cloud_init_dir}/user-data" << 'EOF'
 #cloud-config
 
-# Create a test user with sudo privileges
+# Automatic user creation with sudo access
 users:
   - name: testuser
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/sh
     lock_passwd: false
+    # Default password: testpass (for testing purposes only)
     passwd: "$6$rounds=4096$saltsalt$L9.LKkHxQkHZ8E7NvQW8tF7KvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQvQN5fKjHQ"
+    groups: [wheel, adm]
+    ssh_authorized_keys: []
 
 # Install required packages including USB/IP utilities
 packages:
   - usbip
   - usbutils
   - kmod
+  - util-linux
 
-# Configure kernel modules for USB/IP client
+# Configure kernel modules and startup scripts for USB/IP client
 write_files:
   - path: /etc/modules-load.d/usbip.conf
     content: |
@@ -348,39 +352,124 @@ write_files:
       options vhci-hcd
     permissions: '0644'
   
-  - path: /usr/local/bin/usbip-client-test
+  - path: /usr/local/bin/usbip-startup
     content: |
       #!/bin/sh
-      # USB/IP client test script
+      # USB/IP client startup script
       
-      echo "USBIP_CLIENT_TEST_START" > /dev/console
+      echo "[$(date)] USBIP_STARTUP_BEGIN" > /dev/console
       
-      # Check if vhci-hcd module is loaded
-      if lsmod | grep -q vhci_hcd; then
-          echo "VHCI_MODULE_LOADED: SUCCESS" > /dev/console
+      # Load vhci-hcd kernel module
+      if modprobe vhci-hcd; then
+          echo "[$(date)] VHCI_MODULE_LOADED: SUCCESS" > /dev/console
       else
-          echo "VHCI_MODULE_LOADED: FAILED" > /dev/console
+          echo "[$(date)] VHCI_MODULE_LOADED: FAILED" > /dev/console
+          exit 1
+      fi
+      
+      # Verify module is loaded
+      if lsmod | grep -q vhci_hcd; then
+          echo "[$(date)] VHCI_MODULE_VERIFIED: SUCCESS" > /dev/console
+      else
+          echo "[$(date)] VHCI_MODULE_VERIFIED: FAILED" > /dev/console
           exit 1
       fi
       
       # Check if usbip command is available
       if command -v usbip >/dev/null 2>&1; then
-          echo "USBIP_COMMAND_AVAILABLE: SUCCESS" > /dev/console
-          usbip version > /dev/console 2>&1
+          echo "[$(date)] USBIP_COMMAND_AVAILABLE: SUCCESS" > /dev/console
+          usbip version 2>&1 | sed 's/^/['"$(date)"'] USBIP_VERSION: /' > /dev/console
       else
-          echo "USBIP_COMMAND_AVAILABLE: FAILED" > /dev/console
+          echo "[$(date)] USBIP_COMMAND_AVAILABLE: FAILED" > /dev/console
           exit 1
       fi
       
-      # Test usbip list functionality (will fail without server, but command should work)
-      echo "USBIP_LIST_TEST: START" > /dev/console
-      if usbip list -r 127.0.0.1 2>/dev/null || [ $? -eq 1 ]; then
-          echo "USBIP_LIST_TEST: SUCCESS" > /dev/console
-      else
-          echo "USBIP_LIST_TEST: FAILED" > /dev/console
+      # Signal that USB/IP client is ready
+      echo "[$(date)] USBIP_CLIENT_READY" > /dev/console
+      echo "[$(date)] USBIP_STARTUP_COMPLETE" > /dev/console
+    permissions: '0755'
+  
+  - path: /usr/local/bin/usbip-readiness-check
+    content: |
+      #!/bin/sh
+      # USB/IP client readiness reporting script
+      
+      echo "[$(date)] READINESS_CHECK_START" > /dev/console
+      
+      # Check system readiness
+      READY=true
+      
+      # Check if vhci-hcd module is loaded
+      if ! lsmod | grep -q vhci_hcd; then
+          echo "[$(date)] READINESS_CHECK: vhci-hcd module not loaded" > /dev/console
+          READY=false
       fi
       
-      echo "USBIP_CLIENT_TEST_COMPLETE" > /dev/console
+      # Check if usbip command is available
+      if ! command -v usbip >/dev/null 2>&1; then
+          echo "[$(date)] READINESS_CHECK: usbip command not available" > /dev/console
+          READY=false
+      fi
+      
+      # Check if we can create USB/IP connections (basic functionality test)
+      if ! usbip list -l >/dev/null 2>&1; then
+          echo "[$(date)] READINESS_CHECK: usbip list command failed" > /dev/console
+          READY=false
+      fi
+      
+      if [ "$READY" = "true" ]; then
+          echo "[$(date)] USBIP_CLIENT_READINESS: READY" > /dev/console
+          echo "[$(date)] READINESS_CHECK_COMPLETE: SUCCESS" > /dev/console
+          exit 0
+      else
+          echo "[$(date)] USBIP_CLIENT_READINESS: NOT_READY" > /dev/console
+          echo "[$(date)] READINESS_CHECK_COMPLETE: FAILED" > /dev/console
+          exit 1
+      fi
+    permissions: '0755'
+  
+  - path: /usr/local/bin/usbip-client-test
+    content: |
+      #!/bin/sh
+      # USB/IP client comprehensive test script
+      
+      echo "[$(date)] USBIP_CLIENT_TEST_START" > /dev/console
+      
+      # Run startup sequence
+      if /usr/local/bin/usbip-startup; then
+          echo "[$(date)] USBIP_STARTUP_TEST: SUCCESS" > /dev/console
+      else
+          echo "[$(date)] USBIP_STARTUP_TEST: FAILED" > /dev/console
+          exit 1
+      fi
+      
+      # Run readiness check
+      if /usr/local/bin/usbip-readiness-check; then
+          echo "[$(date)] USBIP_READINESS_TEST: SUCCESS" > /dev/console
+      else
+          echo "[$(date)] USBIP_READINESS_TEST: FAILED" > /dev/console
+          exit 1
+      fi
+      
+      # Test basic usbip functionality
+      echo "[$(date)] USBIP_FUNCTIONALITY_TEST: START" > /dev/console
+      
+      # Test local device listing
+      if usbip list -l >/dev/null 2>&1; then
+          echo "[$(date)] USBIP_LIST_LOCAL: SUCCESS" > /dev/console
+      else
+          echo "[$(date)] USBIP_LIST_LOCAL: FAILED" > /dev/console
+      fi
+      
+      # Test remote listing (expected to fail without server, but command should work)
+      if usbip list -r 127.0.0.1 2>/dev/null || [ $? -eq 1 ]; then
+          echo "[$(date)] USBIP_LIST_REMOTE: SUCCESS" > /dev/console
+      else
+          echo "[$(date)] USBIP_LIST_REMOTE: FAILED" > /dev/console
+      fi
+      
+      echo "[$(date)] USBIP_FUNCTIONALITY_TEST: COMPLETE" > /dev/console
+      echo "[$(date)] USBIP_CLIENT_TEST_COMPLETE" > /dev/console
     permissions: '0755'
   
   - path: /etc/init.d/usbip-client-setup
@@ -388,33 +477,38 @@ write_files:
       #!/sbin/openrc-run
       
       name="usbip-client-setup"
-      description="USB/IP client setup service"
+      description="USB/IP client setup and readiness service"
       
       depend() {
           need localmount
           after bootmisc
+          before local
       }
       
       start() {
           ebegin "Setting up USB/IP client"
           
-          # Load vhci-hcd module
-          modprobe vhci-hcd
-          
-          # Verify module loaded
-          if lsmod | grep -q vhci_hcd; then
-              echo "USBIP_CLIENT_READY" > /dev/console
-              eend 0
+          # Run the startup script
+          if /usr/local/bin/usbip-startup; then
+              # Run readiness check
+              if /usr/local/bin/usbip-readiness-check; then
+                  echo "[$(date)] USBIP_SERVICE_READY" > /dev/console
+                  eend 0
+              else
+                  echo "[$(date)] USBIP_SERVICE_NOT_READY" > /dev/console
+                  eend 1
+              fi
           else
-              echo "USBIP_CLIENT_FAILED" > /dev/console
+              echo "[$(date)] USBIP_SERVICE_STARTUP_FAILED" > /dev/console
               eend 1
           fi
       }
       
       stop() {
           ebegin "Stopping USB/IP client"
-          # Remove vhci-hcd module if needed
+          # Clean shutdown - remove vhci-hcd module if needed
           rmmod vhci-hcd 2>/dev/null || true
+          echo "[$(date)] USBIP_SERVICE_STOPPED" > /dev/console
           eend 0
       }
     permissions: '0755'
@@ -424,30 +518,58 @@ runcmd:
   # Update package index
   - apk update
   
-  # Ensure usbip package is properly installed
-  - apk add --no-cache usbip usbutils kmod
+  # Ensure all required packages are installed
+  - apk add --no-cache usbip usbutils kmod util-linux
   
-  # Load vhci-hcd kernel module
-  - modprobe vhci-hcd || echo "Failed to load vhci-hcd module" > /dev/console
+  # Load vhci-hcd kernel module immediately
+  - modprobe vhci-hcd || echo "[$(date)] Failed to load vhci-hcd module during setup" > /dev/console
   
-  # Enable the USB/IP client setup service
+  # Enable the USB/IP client setup service for automatic startup
   - rc-update add usbip-client-setup default
   
   # Create symlinks to ensure usbip tools are in PATH
   - ln -sf /usr/bin/usbip /usr/local/bin/usbip || true
   - ln -sf /usr/bin/usbipd /usr/local/bin/usbipd || true
   
-  # Verify installation
+  # Run comprehensive test to verify installation
   - /usr/local/bin/usbip-client-test
   
-  # Output readiness indicator
-  - echo "USBIP_CLIENT_CONFIGURATION_COMPLETE" > /dev/console
+  # Final readiness signal
+  - echo "[$(date)] USBIP_CLIENT_CONFIGURATION_COMPLETE" > /dev/console
+  - echo "[$(date)] CLOUD_INIT_COMPLETE" > /dev/console
 
-# Final message
-final_message: "USB/IP client configuration completed successfully"
+# Power state and final message
+power_state:
+  mode: reboot
+  delay: "+1"
+  message: "USB/IP client setup complete, rebooting..."
+
+final_message: "USB/IP client configuration with cloud-init completed successfully"
 EOF
     
-    log_success "USB/IP client configuration created"
+    # Create cloud-init meta-data file
+    cat > "${cloud_init_dir}/meta-data" << 'EOF'
+instance-id: usbip-client-001
+local-hostname: usbip-client
+EOF
+    
+    # Create cloud-init network configuration (optional)
+    cat > "${cloud_init_dir}/network-config" << 'EOF'
+version: 1
+config:
+  - type: physical
+    name: eth0
+    subnets:
+      - type: dhcp
+EOF
+    
+    log_success "Enhanced cloud-init configuration created with:"
+    log_info "  - Automatic user creation with sudo access"
+    log_info "  - USB/IP module loading startup scripts"
+    log_info "  - Comprehensive readiness reporting"
+    log_info "  - Structured logging with timestamps"
+    log_info "  - Service-based startup management"
+    
     return 0
 }
 
@@ -469,14 +591,37 @@ prepare_filesystem_structure() {
 }
 
 validate_usbip_configuration() {
-    log_info "Validating USB/IP client configuration..."
+    log_info "Validating enhanced USB/IP client configuration..."
     
     local cloud_init_dir="${BUILD_DIR}/cloud-init"
     local user_data_file="${cloud_init_dir}/user-data"
+    local meta_data_file="${cloud_init_dir}/meta-data"
+    local network_config_file="${cloud_init_dir}/network-config"
     
-    # Verify cloud-init configuration exists
+    # Verify cloud-init configuration files exist
     if [[ ! -f "$user_data_file" ]]; then
         log_error "Cloud-init user-data file not found: $user_data_file"
+        return 1
+    fi
+    
+    if [[ ! -f "$meta_data_file" ]]; then
+        log_error "Cloud-init meta-data file not found: $meta_data_file"
+        return 1
+    fi
+    
+    if [[ ! -f "$network_config_file" ]]; then
+        log_error "Cloud-init network-config file not found: $network_config_file"
+        return 1
+    fi
+    
+    # Verify user creation configuration
+    if ! grep -q "name: testuser" "$user_data_file"; then
+        log_error "User creation configuration not found in cloud-init"
+        return 1
+    fi
+    
+    if ! grep -q "sudo: ALL=(ALL) NOPASSWD:ALL" "$user_data_file"; then
+        log_error "Sudo access configuration not found in cloud-init"
         return 1
     fi
     
@@ -492,7 +637,17 @@ validate_usbip_configuration() {
         return 1
     fi
     
-    # Verify test script exists in configuration
+    # Verify startup scripts exist in configuration
+    if ! grep -q "usbip-startup" "$user_data_file"; then
+        log_error "USB/IP startup script not found in configuration"
+        return 1
+    fi
+    
+    if ! grep -q "usbip-readiness-check" "$user_data_file"; then
+        log_error "USB/IP readiness check script not found in configuration"
+        return 1
+    fi
+    
     if ! grep -q "usbip-client-test" "$user_data_file"; then
         log_error "USB/IP client test script not found in configuration"
         return 1
@@ -504,13 +659,44 @@ validate_usbip_configuration() {
         return 1
     fi
     
+    # Verify service configuration
+    if ! grep -q "usbip-client-setup" "$user_data_file"; then
+        log_error "USB/IP client service configuration not found"
+        return 1
+    fi
+    
+    # Verify readiness reporting features
+    if ! grep -q "USBIP_CLIENT_READY" "$user_data_file"; then
+        log_error "USB/IP client readiness reporting not found"
+        return 1
+    fi
+    
+    if ! grep -q "READINESS_CHECK" "$user_data_file"; then
+        log_error "Readiness check functionality not found"
+        return 1
+    fi
+    
     # Verify PATH configuration for USB/IP tools
     if ! grep -q "/usr/local/bin/usbip" "$user_data_file"; then
         log_error "USB/IP tools PATH configuration not found"
         return 1
     fi
     
-    log_success "USB/IP client configuration validation passed"
+    # Verify structured logging with timestamps
+    if ! grep -q '\[$(date)\]' "$user_data_file"; then
+        log_error "Structured logging with timestamps not found"
+        return 1
+    fi
+    
+    log_success "Enhanced USB/IP client configuration validation passed"
+    log_info "Validated features:"
+    log_info "  ✓ Automatic user creation with sudo access"
+    log_info "  ✓ USB/IP module loading startup scripts"
+    log_info "  ✓ Comprehensive readiness reporting"
+    log_info "  ✓ Structured logging with timestamps"
+    log_info "  ✓ Service-based startup management"
+    log_info "  ✓ Complete cloud-init configuration files"
+    
     return 0
 }
 
