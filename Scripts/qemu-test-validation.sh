@@ -688,45 +688,45 @@ main() {
                 log_error "Usage: $0 wait-readiness <log_file> [timeout]"
                 exit 1
             fi
-            if ! wait_for_usbip_readiness "$2" "${3:-$DEFAULT_READINESS_TIMEOUT}"; then
-                exit 1
-            fi
+            wait_for_usbip_readiness "$2" "${3:-$DEFAULT_READINESS_TIMEOUT}"
+            exit_code=$?
+            exit $exit_code
             ;;
         "validate-test")
             if [[ $# -lt 2 ]]; then
                 log_error "Usage: $0 validate-test <log_file>"
                 exit 1
             fi
-            if ! validate_test_completion "$2"; then
-                exit 1
-            fi
+            validate_test_completion "$2"
+            exit_code=$?
+            exit $exit_code
             ;;
         "generate-report")
             if [[ $# -lt 2 ]]; then
                 log_error "Usage: $0 generate-report <log_file> [output]"
                 exit 1
             fi
-            if ! generate_test_report "$2" "${3:-}"; then
-                exit 1
-            fi
+            generate_test_report "$2" "${3:-}"
+            exit_code=$?
+            exit $exit_code
             ;;
         "check-server")
             if [[ $# -lt 2 ]]; then
                 log_error "Usage: $0 check-server <host> [port]"
                 exit 1
             fi
-            if ! check_usbip_server_connectivity "$2" "${3:-3240}"; then
-                exit 1
-            fi
+            check_usbip_server_connectivity "$2" "${3:-3240}"
+            exit_code=$?
+            exit $exit_code
             ;;
         "test-server")
             if [[ $# -lt 2 ]]; then
                 log_error "Usage: $0 test-server <host> [port]"
                 exit 1
             fi
-            if ! test_usbip_server_response "$2" "${3:-3240}"; then
-                exit 1
-            fi
+            test_usbip_server_response "$2" "${3:-3240}"
+            exit_code=$?
+            exit $exit_code
             ;;
         "monitor-connection")
             if [[ $# -lt 3 ]]; then
