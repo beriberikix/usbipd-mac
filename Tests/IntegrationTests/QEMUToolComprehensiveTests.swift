@@ -97,8 +97,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         let result = runScript("create-qemu-image.sh", arguments: ["--help"], timeout: shortTimeout)
         
         // Script should provide help information
-        XCTAssertTrue(result.output.contains("Usage") || result.output.contains("QEMU"), 
-                     "Script should provide usage information")
+        XCTAssertTrue(result.output.contains("Usage") || result.output.contains("QEMU"),
+                      "Script should provide usage information")
     }
     
     func testStartupScriptValidation() {
@@ -106,7 +106,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Script should provide help information or handle help flag gracefully
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("Usage") || result.output.contains("QEMU"),
-                     "Script should handle help flag gracefully")
+                      "Script should handle help flag gracefully")
     }
     
     func testValidationScriptFunctions() {
@@ -122,7 +122,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
             } else {
                 // Other commands should show usage when called without required arguments
                 XCTAssertTrue(result.output.contains("Usage") || result.exitCode != 0,
-                             "Command \(command) should show usage or fail gracefully")
+                              "Command \(command) should show usage or fail gracefully")
             }
         }
     }
@@ -140,9 +140,9 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         createTestFile(path: testLogPath, content: logContent)
         
         // Test parsing all messages
-        let parseResult = runScript("qemu-test-validation.sh", 
-                                   arguments: ["parse-log", testLogPath], 
-                                   timeout: shortTimeout)
+        let parseResult = runScript("qemu-test-validation.sh",
+                                    arguments: ["parse-log", testLogPath],
+                                    timeout: shortTimeout)
         
         XCTAssertEqual(parseResult.exitCode, 0, "Log parsing should succeed")
         XCTAssertTrue(parseResult.output.contains("USBIP_STARTUP_BEGIN"), "Should contain startup message")
@@ -150,8 +150,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Test parsing specific message type
         let specificResult = runScript("qemu-test-validation.sh",
-                                      arguments: ["parse-log", testLogPath, "USBIP_CLIENT_READY"],
-                                      timeout: shortTimeout)
+                                       arguments: ["parse-log", testLogPath, "USBIP_CLIENT_READY"],
+                                       timeout: shortTimeout)
         
         XCTAssertEqual(specificResult.exitCode, 0, "Specific message parsing should succeed")
         XCTAssertTrue(specificResult.output.contains("USBIP_CLIENT_READY"), "Should contain specific message")
@@ -170,8 +170,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         createTestFile(path: readyLogPath, content: readyContent)
         
         let readyResult = runScript("qemu-test-validation.sh",
-                                   arguments: ["check-readiness", readyLogPath],
-                                   timeout: shortTimeout)
+                                    arguments: ["check-readiness", readyLogPath],
+                                    timeout: shortTimeout)
         
         XCTAssertEqual(readyResult.exitCode, 0, "Ready client should be detected")
         XCTAssertTrue(readyResult.output.contains("ready"), "Output should indicate readiness")
@@ -186,8 +186,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         createTestFile(path: notReadyLogPath, content: notReadyContent)
         
         let notReadyResult = runScript("qemu-test-validation.sh",
-                                      arguments: ["check-readiness", notReadyLogPath],
-                                      timeout: shortTimeout)
+                                       arguments: ["check-readiness", notReadyLogPath],
+                                       timeout: shortTimeout)
         
         XCTAssertNotEqual(notReadyResult.exitCode, 0, "Not ready client should not be detected as ready")
     }
@@ -204,8 +204,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         createTestFile(path: successLogPath, content: successContent)
         
         let successResult = runScript("qemu-test-validation.sh",
-                                     arguments: ["validate-test", successLogPath],
-                                     timeout: shortTimeout)
+                                      arguments: ["validate-test", successLogPath],
+                                      timeout: shortTimeout)
         
         XCTAssertEqual(successResult.exitCode, 0, "Successful test should validate")
         
@@ -220,8 +220,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         createTestFile(path: failedLogPath, content: failedContent)
         
         let failedResult = runScript("qemu-test-validation.sh",
-                                    arguments: ["validate-test", failedLogPath],
-                                    timeout: shortTimeout)
+                                     arguments: ["validate-test", failedLogPath],
+                                     timeout: shortTimeout)
         
         XCTAssertNotEqual(failedResult.exitCode, 0, "Failed test should not validate")
     }
@@ -240,7 +240,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Should provide usage information or handle help gracefully
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("Usage") || result.output.contains("QEMU"),
-                     "Image creation script should be functional")
+                      "Image creation script should be functional")
     }
     
     func testQEMUStartupWorkflow() {
@@ -249,7 +249,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Should handle help or provide information about the script
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("Usage") || result.output.contains("QEMU"),
-                     "Startup script should be functional")
+                      "Startup script should be functional")
     }
     
     func testEndToEndValidationWorkflow() {
@@ -277,8 +277,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         for (command, description) in steps {
             let result = runScript("qemu-test-validation.sh",
-                                  arguments: [command, workflowLogPath],
-                                  timeout: shortTimeout)
+                                   arguments: [command, workflowLogPath],
+                                   timeout: shortTimeout)
             
             XCTAssertEqual(result.exitCode, 0, description)
         }
@@ -286,8 +286,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         // Test report generation
         let reportPath = "\(testDataDir)/workflow-report.txt"
         let reportResult = runScript("qemu-test-validation.sh",
-                                    arguments: ["generate-report", workflowLogPath, reportPath],
-                                    timeout: shortTimeout)
+                                     arguments: ["generate-report", workflowLogPath, reportPath],
+                                     timeout: shortTimeout)
         
         XCTAssertEqual(reportResult.exitCode, 0, "Report generation should succeed")
         XCTAssertTrue(fileExists(reportPath), "Report file should be created")
@@ -309,7 +309,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // The script should be available and functional
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("cloud-init") || result.output.contains("QEMU"),
-                     "Image creation script should handle cloud-init configuration")
+                      "Image creation script should handle cloud-init configuration")
     }
     
     func testCloudInitUserDataValidation() {
@@ -379,8 +379,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         let startTime = CFAbsoluteTimeGetCurrent()
         
         let result = runScript("qemu-test-validation.sh",
-                              arguments: ["parse-log", testLogPath, "USBIP_CLIENT_READY"],
-                              timeout: shortTimeout)
+                               arguments: ["parse-log", testLogPath, "USBIP_CLIENT_READY"],
+                               timeout: shortTimeout)
         
         let executionTime = CFAbsoluteTimeGetCurrent() - startTime
         
@@ -398,7 +398,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Should complete successfully or provide meaningful output
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("resource") || result.output.contains("optimization"),
-                     "Resource optimization test should be functional")
+                      "Resource optimization test should be functional")
     }
     
     func testConcurrentExecutionCapability() {
@@ -407,7 +407,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Should provide help or handle the request gracefully
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("Usage") || result.output.contains("concurrent"),
-                     "Concurrent execution test should be functional")
+                      "Concurrent execution test should be functional")
     }
     
     func testStartupTimeValidation() {
@@ -423,7 +423,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
             
             XCTAssertLessThan(executionTime, 5.0, "Script \(script) should start within 5 seconds")
             XCTAssertTrue(result.exitCode == 0 || result.output.contains("Usage") || !result.output.isEmpty,
-                         "Script \(script) should provide meaningful output")
+                          "Script \(script) should provide meaningful output")
         }
     }
     
@@ -435,7 +435,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Should complete successfully or provide test results
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("test") || result.output.contains("error"),
-                     "Error handling test should be functional")
+                      "Error handling test should be functional")
     }
     
     func testLoggingFunctionality() {
@@ -444,7 +444,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         // Should complete successfully or provide test results
         XCTAssertTrue(result.exitCode == 0 || result.output.contains("test") || result.output.contains("log"),
-                     "Logging functionality test should be functional")
+                      "Logging functionality test should be functional")
     }
     
     func testInvalidInputHandling() {
@@ -572,8 +572,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         
         for (command, description) in validationSteps {
             let result = runScript("qemu-test-validation.sh",
-                                  arguments: [command, testLogPath],
-                                  timeout: shortTimeout)
+                                   arguments: [command, testLogPath],
+                                   timeout: shortTimeout)
             
             XCTAssertEqual(result.exitCode, 0, description)
         }
@@ -581,8 +581,8 @@ final class QEMUToolComprehensiveTests: XCTestCase {
         // 4. Generate final report
         let finalReportPath = "\(testDataDir)/final-workflow-report.txt"
         let reportResult = runScript("qemu-test-validation.sh",
-                                    arguments: ["generate-report", testLogPath, finalReportPath],
-                                    timeout: shortTimeout)
+                                     arguments: ["generate-report", testLogPath, finalReportPath],
+                                     timeout: shortTimeout)
         
         XCTAssertEqual(reportResult.exitCode, 0, "Final report generation should succeed")
         XCTAssertTrue(fileExists(finalReportPath), "Final report should be created")
