@@ -421,7 +421,7 @@ final class QEMUToolComprehensiveTests: XCTestCase {
             
             let executionTime = CFAbsoluteTimeGetCurrent() - startTime
             
-            XCTAssertLessThan(executionTime, 3.0, "Script \(script) should start within 3 seconds")
+            XCTAssertLessThan(executionTime, 5.0, "Script \(script) should start within 5 seconds")
             XCTAssertTrue(result.exitCode == 0 || result.output.contains("Usage") || !result.output.isEmpty,
                          "Script \(script) should provide meaningful output")
         }

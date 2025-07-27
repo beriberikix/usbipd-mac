@@ -190,7 +190,7 @@ run_concurrent_client_test() {
     done
     
     # Wait for all clients to become ready
-    for pid in "${client_pids[@]}"; do
+    for pid in "${client_pids[@]:-}"; do
         local console_log="${PROJECT_ROOT}/.build/qemu/logs/${pid}-console.log"
         
         if "${SCRIPTS_DIR}/qemu-test-validation.sh" wait-readiness "${console_log}" 90; then
@@ -201,13 +201,13 @@ run_concurrent_client_test() {
         fi
     done
     
-    log_info "${success_count}/${#client_pids[@]} clients became ready"
+    log_info "${success_count}/${#client_pids[@]:-0} clients became ready"
     
     # Test concurrent operations
     if [[ ${success_count} -gt 0 ]]; then
         log_info "Testing concurrent server connections..."
         
-        for pid in "${client_pids[@]}"; do
+        for pid in "${client_pids[@]:-}"; do
             local console_log="${PROJECT_ROOT}/.build/qemu/logs/${pid}-console.log"
             
             # Test server connectivity in background
@@ -221,7 +221,7 @@ run_concurrent_client_test() {
     fi
     
     # Generate reports for each client
-    for pid in "${client_pids[@]}"; do
+    for pid in "${client_pids[@]:-}"; do
         local console_log="${PROJECT_ROOT}/.build/qemu/logs/${pid}-console.log"
         "${SCRIPTS_DIR}/qemu-test-validation.sh" generate-report "${console_log}" "${results_dir}/concurrent-client-${pid}-report.txt" || true
     done

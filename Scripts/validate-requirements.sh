@@ -521,8 +521,12 @@ validate_minimal_memory_allocation() {
     # Extract numeric value (remove 'M' suffix)
     local memory_mb=${memory_config%M}
     
-    # Should be 256MB or less
-    [[ ${memory_mb} -le 256 ]] || return 1
+    # Should be 256MB or less (handle non-numeric values)
+    if [[ "${memory_mb}" =~ ^[0-9]+$ ]]; then
+        [[ ${memory_mb} -le 256 ]] || return 1
+    else
+        return 1
+    fi
     
     return 0
 }

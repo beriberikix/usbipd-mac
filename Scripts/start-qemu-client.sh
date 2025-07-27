@@ -470,7 +470,7 @@ cleanup_processes() {
     log_info "Cleaning up processes..."
     
     local cleaned_count=0
-    for pid in "${CLEANUP_PROCESSES[@]}"; do
+    for pid in "${CLEANUP_PROCESSES[@]:-}"; do
         if kill -0 "$pid" 2>/dev/null; then
             if kill -TERM "$pid" 2>/dev/null; then
                 log_info "Terminated process: $pid"
