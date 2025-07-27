@@ -14,17 +14,31 @@ readonly DISK_IMAGE="${BUILD_DIR}/${IMAGE_NAME}.qcow2"
 readonly LOG_DIR="${BUILD_DIR}/logs"
 readonly PID_DIR="${BUILD_DIR}/pids"
 
-# QEMU configuration (minimal resource allocation)
-readonly QEMU_MEMORY="256M"
-readonly QEMU_CPU_COUNT="1"
+# QEMU configuration (dynamic resource allocation)
+readonly DEFAULT_QEMU_MEMORY="256M"
+readonly DEFAULT_QEMU_CPU_COUNT="1"
 readonly QEMU_MACHINE="q35"
 readonly QEMU_ACCEL="hvf"  # Hardware acceleration on macOS
 
-# Network configuration (user mode networking)
-readonly HOST_SSH_PORT="2222"
-readonly HOST_USBIP_PORT="3240"
+# Dynamic resource allocation limits
+readonly MIN_MEMORY_MB=128
+readonly MAX_MEMORY_MB=1024
+readonly MIN_CPU_COUNT=1
+readonly MAX_CPU_COUNT=4
+
+# Network configuration (dynamic port allocation)
+readonly DEFAULT_HOST_SSH_PORT="2222"
+readonly DEFAULT_HOST_USBIP_PORT="3240"
 readonly GUEST_SSH_PORT="22"
 readonly GUEST_USBIP_PORT="3240"
+readonly PORT_RANGE_START=2200
+readonly PORT_RANGE_END=2299
+
+# Resource allocation variables (will be set dynamically)
+QEMU_MEMORY=""
+QEMU_CPU_COUNT=""
+HOST_SSH_PORT=""
+HOST_USBIP_PORT=""
 
 # Boot and timeout configuration
 readonly BOOT_TIMEOUT="60"
@@ -49,6 +63,9 @@ INSTANCE_ID=""
 CONSOLE_LOG=""
 MONITOR_SOCKET=""
 QEMU_OVERLAY_IMAGE=""
+CLEANUP_FILES=()
+CLEANUP_PROCESSES=()
+ALLOCATED_PORTS=()
 
 # Logging functions
 log_info() {
@@ -98,14 +115,12 @@ cleanup() {
     # Clean up QEMU process if running
     if [[ -n "${QEMU_PID}" ]] && kill -0 "${QEMU_PID}" 2>/dev/null; then
         log_info "Cleaning up QEMU process (PID: ${QEMU_PID})"
+        register_cleanup_process "$QEMU_PID"
         stop_qemu_instance
     fi
     
-    # Clean up overlay image
-    if [[ -n "${QEMU_OVERLAY_IMAGE}" && -f "${QEMU_OVERLAY_IMAGE}" ]]; then
-        log_info "Cleaning up overlay image: $(basename "${QEMU_OVERLAY_IMAGE}")"
-        rm -f "${QEMU_OVERLAY_IMAGE}"
-    fi
+    # Perform comprehensive cleanup
+    perform_comprehensive_cleanup
     
     exit $exit_code
 }
@@ -181,9 +196,430 @@ generate_failure_diagnostics() {
 
 trap cleanup EXIT INT TERM
 
+# ============================================================================
+# DYNAMIC RESOURCE ALLOCATION FUNCTIONS
+# ============================================================================
+
+# Detect host system capabilities
+detect_host_capabilities() {
+    log_info "Detecting host system capabilities..."
+    
+    # Get total system memory in MB
+    local total_memory_mb
+    if command -v sysctl &> /dev/null; then
+        # macOS
+        local total_memory_bytes
+        total_memory_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+        total_memory_mb=$((total_memory_bytes / 1024 / 1024))
+    else
+        # Linux fallback
+        total_memory_mb=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print int($2/1024)}' || echo "2048")
+    fi
+    
+    # Get CPU core count
+    local cpu_cores
+    if command -v sysctl &> /dev/null; then
+        # macOS
+        cpu_cores=$(sysctl -n hw.ncpu 2>/dev/null || echo "2")
+    else
+        # Linux fallback
+        cpu_cores=$(nproc 2>/dev/null || echo "2")
+    fi
+    
+    # Get available memory (rough estimate)
+    local available_memory_mb
+    if command -v vm_stat &> /dev/null; then
+        # macOS - get free pages and convert to MB
+        local free_pages
+        free_pages=$(vm_stat | grep "Pages free" | awk '{print $3}' | sed 's/\.//' || echo "0")
+        local page_size
+        page_size=$(vm_stat | grep "page size" | awk '{print $8}' || echo "4096")
+        available_memory_mb=$(((free_pages * page_size) / 1024 / 1024))
+    else
+        # Conservative estimate: 50% of total memory
+        available_memory_mb=$((total_memory_mb / 2))
+    fi
+    
+    log_info "Host capabilities detected:"
+    log_info "  Total memory: ${total_memory_mb}MB"
+    log_info "  Available memory: ${available_memory_mb}MB"
+    log_info "  CPU cores: ${cpu_cores}"
+    
+    # Store in global variables for use by allocation functions
+    HOST_TOTAL_MEMORY_MB=$total_memory_mb
+    HOST_AVAILABLE_MEMORY_MB=$available_memory_mb
+    HOST_CPU_CORES=$cpu_cores
+}
+
+# Calculate optimal memory allocation
+calculate_memory_allocation() {
+    local requested_memory="${1:-$DEFAULT_QEMU_MEMORY}"
+    
+    # Convert requested memory to MB if it has suffix
+    local requested_mb
+    if [[ "$requested_memory" =~ ^([0-9]+)M$ ]]; then
+        requested_mb="${BASH_REMATCH[1]}"
+    elif [[ "$requested_memory" =~ ^([0-9]+)G$ ]]; then
+        requested_mb=$((${BASH_REMATCH[1]} * 1024))
+    else
+        # Assume MB if no suffix
+        requested_mb="$requested_memory"
+    fi
+    
+    # Ensure we have host capabilities
+    if [[ -z "${HOST_AVAILABLE_MEMORY_MB:-}" ]]; then
+        detect_host_capabilities
+    fi
+    
+    # Calculate allocation based on available memory
+    local allocated_mb
+    
+    # Use requested amount if reasonable, otherwise calculate based on available memory
+    if [[ $requested_mb -ge $MIN_MEMORY_MB && $requested_mb -le $MAX_MEMORY_MB ]]; then
+        # Check if requested amount is available (leave 25% buffer)
+        local max_usable_mb=$((HOST_AVAILABLE_MEMORY_MB * 75 / 100))
+        if [[ $requested_mb -le $max_usable_mb ]]; then
+            allocated_mb=$requested_mb
+        else
+            # Scale down to fit available memory
+            allocated_mb=$max_usable_mb
+            if [[ $allocated_mb -lt $MIN_MEMORY_MB ]]; then
+                allocated_mb=$MIN_MEMORY_MB
+            fi
+        fi
+    else
+        # Calculate based on available memory (use up to 25% of available)
+        allocated_mb=$((HOST_AVAILABLE_MEMORY_MB / 4))
+        
+        # Clamp to min/max bounds
+        if [[ $allocated_mb -lt $MIN_MEMORY_MB ]]; then
+            allocated_mb=$MIN_MEMORY_MB
+        elif [[ $allocated_mb -gt $MAX_MEMORY_MB ]]; then
+            allocated_mb=$MAX_MEMORY_MB
+        fi
+    fi
+    
+    echo "${allocated_mb}M"
+}
+
+# Calculate optimal CPU allocation
+calculate_cpu_allocation() {
+    local requested_cpus="${1:-$DEFAULT_QEMU_CPU_COUNT}"
+    
+    # Ensure we have host capabilities
+    if [[ -z "${HOST_CPU_CORES:-}" ]]; then
+        detect_host_capabilities
+    fi
+    
+    local allocated_cpus
+    
+    # Use requested amount if reasonable
+    if [[ $requested_cpus -ge $MIN_CPU_COUNT && $requested_cpus -le $MAX_CPU_COUNT ]]; then
+        # Don't allocate more CPUs than available (leave at least 1 for host)
+        local max_usable_cpus=$((HOST_CPU_CORES - 1))
+        if [[ $max_usable_cpus -lt 1 ]]; then
+            max_usable_cpus=1
+        fi
+        
+        if [[ $requested_cpus -le $max_usable_cpus ]]; then
+            allocated_cpus=$requested_cpus
+        else
+            allocated_cpus=$max_usable_cpus
+        fi
+    else
+        # Calculate based on available CPUs (use up to 50% of cores)
+        allocated_cpus=$((HOST_CPU_CORES / 2))
+        
+        # Clamp to min/max bounds
+        if [[ $allocated_cpus -lt $MIN_CPU_COUNT ]]; then
+            allocated_cpus=$MIN_CPU_COUNT
+        elif [[ $allocated_cpus -gt $MAX_CPU_COUNT ]]; then
+            allocated_cpus=$MAX_CPU_COUNT
+        fi
+    fi
+    
+    echo "$allocated_cpus"
+}
+
+# Find available network ports
+find_available_port() {
+    local start_port="${1:-$PORT_RANGE_START}"
+    local end_port="${2:-$PORT_RANGE_END}"
+    
+    for ((port=start_port; port<=end_port; port++)); do
+        if ! lsof -i ":$port" >/dev/null 2>&1; then
+            echo "$port"
+            return 0
+        fi
+    done
+    
+    # If no port found in range, return error
+    return 1
+}
+
+# Allocate network ports for instance
+allocate_network_ports() {
+    log_info "Allocating network ports for instance..."
+    
+    # Find available SSH port
+    local ssh_port
+    if ! ssh_port=$(find_available_port $PORT_RANGE_START $PORT_RANGE_END); then
+        log_error "No available ports found for SSH in range ${PORT_RANGE_START}-${PORT_RANGE_END}"
+        return 1
+    fi
+    
+    # Find available USB/IP port (different from SSH port)
+    local usbip_port
+    local usbip_start=$((ssh_port + 1))
+    if [[ $usbip_start -gt $PORT_RANGE_END ]]; then
+        usbip_start=$PORT_RANGE_START
+    fi
+    
+    if ! usbip_port=$(find_available_port $usbip_start $PORT_RANGE_END); then
+        # Try from the beginning if we wrapped around
+        if ! usbip_port=$(find_available_port $PORT_RANGE_START $((ssh_port - 1))); then
+            log_error "No available ports found for USB/IP"
+            return 1
+        fi
+    fi
+    
+    # Ensure ports are different
+    if [[ $ssh_port -eq $usbip_port ]]; then
+        log_error "Port allocation conflict: SSH and USB/IP ports are the same"
+        return 1
+    fi
+    
+    HOST_SSH_PORT=$ssh_port
+    HOST_USBIP_PORT=$usbip_port
+    ALLOCATED_PORTS=($ssh_port $usbip_port)
+    
+    log_info "Allocated network ports:"
+    log_info "  SSH: $HOST_SSH_PORT"
+    log_info "  USB/IP: $HOST_USBIP_PORT"
+    
+    return 0
+}
+
+# Perform dynamic resource allocation
+perform_resource_allocation() {
+    local requested_memory="${1:-$DEFAULT_QEMU_MEMORY}"
+    local requested_cpus="${2:-$DEFAULT_QEMU_CPU_COUNT}"
+    
+    log_info "Performing dynamic resource allocation..."
+    
+    # Detect host capabilities
+    detect_host_capabilities
+    
+    # Calculate optimal allocations
+    QEMU_MEMORY=$(calculate_memory_allocation "$requested_memory")
+    QEMU_CPU_COUNT=$(calculate_cpu_allocation "$requested_cpus")
+    
+    # Allocate network ports
+    if ! allocate_network_ports; then
+        return 1
+    fi
+    
+    log_success "Resource allocation completed:"
+    log_info "  Memory: $QEMU_MEMORY"
+    log_info "  CPUs: $QEMU_CPU_COUNT"
+    log_info "  SSH port: $HOST_SSH_PORT"
+    log_info "  USB/IP port: $HOST_USBIP_PORT"
+    
+    return 0
+}
+
+# ============================================================================
+# CLEANUP MECHANISMS
+# ============================================================================
+
+# Register file for cleanup
+register_cleanup_file() {
+    local file_path="$1"
+    CLEANUP_FILES+=("$file_path")
+}
+
+# Register process for cleanup
+register_cleanup_process() {
+    local pid="$1"
+    CLEANUP_PROCESSES+=("$pid")
+}
+
+# Clean up temporary files
+cleanup_temporary_files() {
+    log_info "Cleaning up temporary files..."
+    
+    local cleaned_count=0
+    for file_path in "${CLEANUP_FILES[@]}"; do
+        if [[ -f "$file_path" ]]; then
+            if rm -f "$file_path" 2>/dev/null; then
+                log_info "Cleaned up: $(basename "$file_path")"
+                cleaned_count=$((cleaned_count + 1))
+            else
+                log_warning "Failed to clean up: $(basename "$file_path")"
+            fi
+        fi
+    done
+    
+    if [[ $cleaned_count -gt 0 ]]; then
+        log_success "Cleaned up $cleaned_count temporary files"
+    fi
+}
+
+# Clean up processes
+cleanup_processes() {
+    log_info "Cleaning up processes..."
+    
+    local cleaned_count=0
+    for pid in "${CLEANUP_PROCESSES[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            if kill -TERM "$pid" 2>/dev/null; then
+                log_info "Terminated process: $pid"
+                cleaned_count=$((cleaned_count + 1))
+                
+                # Wait briefly for graceful shutdown
+                sleep 1
+                
+                # Force kill if still running
+                if kill -0 "$pid" 2>/dev/null; then
+                    kill -KILL "$pid" 2>/dev/null || true
+                fi
+            else
+                log_warning "Failed to terminate process: $pid"
+            fi
+        fi
+    done
+    
+    if [[ $cleaned_count -gt 0 ]]; then
+        log_success "Cleaned up $cleaned_count processes"
+    fi
+}
+
+# Clean up allocated ports (informational)
+cleanup_allocated_ports() {
+    if [[ ${#ALLOCATED_PORTS[@]} -gt 0 ]]; then
+        log_info "Released allocated ports: ${ALLOCATED_PORTS[*]}"
+        ALLOCATED_PORTS=()
+    fi
+}
+
+# Comprehensive cleanup function
+perform_comprehensive_cleanup() {
+    log_info "Performing comprehensive cleanup..."
+    
+    cleanup_processes
+    cleanup_temporary_files
+    cleanup_allocated_ports
+    
+    log_success "Comprehensive cleanup completed"
+}
+
+# ============================================================================
+# CONCURRENT EXECUTION SUPPORT
+# ============================================================================
+
+# Check for running instances
+check_running_instances() {
+    log_info "Checking for running QEMU instances..."
+    
+    local running_instances=()
+    
+    # Check PID directory for active instances
+    if [[ -d "$PID_DIR" ]]; then
+        for pid_file in "$PID_DIR"/*.pid; do
+            if [[ -f "$pid_file" ]]; then
+                local pid
+                pid=$(cat "$pid_file" 2>/dev/null || echo "")
+                if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+                    local instance_name
+                    instance_name=$(basename "$pid_file" .pid)
+                    running_instances+=("$instance_name (PID: $pid)")
+                else
+                    # Clean up stale PID file
+                    rm -f "$pid_file" 2>/dev/null || true
+                fi
+            fi
+        done
+    fi
+    
+    if [[ ${#running_instances[@]} -gt 0 ]]; then
+        log_info "Found ${#running_instances[@]} running instances:"
+        for instance in "${running_instances[@]}"; do
+            log_info "  - $instance"
+        done
+    else
+        log_info "No running instances found"
+    fi
+    
+    return ${#running_instances[@]}
+}
+
+# Generate unique instance identifier
+generate_unique_instance_id() {
+    local base_id="qemu-usbip-$(date +%s)"
+    local counter=1
+    local instance_id="$base_id"
+    
+    # Ensure uniqueness by checking existing PID files
+    while [[ -f "${PID_DIR}/${instance_id}.pid" ]]; do
+        instance_id="${base_id}-${counter}"
+        counter=$((counter + 1))
+    done
+    
+    echo "$instance_id"
+}
+
+# Create instance-specific overlay image
+create_instance_overlay() {
+    local instance_id="$1"
+    
+    log_info "Creating instance-specific overlay image..."
+    
+    # Create overlay image path
+    QEMU_OVERLAY_IMAGE="${BUILD_DIR}/${instance_id}-overlay.qcow2"
+    
+    # Register for cleanup
+    register_cleanup_file "$QEMU_OVERLAY_IMAGE"
+    
+    # Create overlay image based on the main disk image
+    if ! qemu-img create -f qcow2 -b "$DISK_IMAGE" -F qcow2 "$QEMU_OVERLAY_IMAGE" >/dev/null 2>&1; then
+        log_error "Failed to create instance overlay image"
+        return 1
+    fi
+    
+    # Verify overlay image
+    if ! qemu-img info "$QEMU_OVERLAY_IMAGE" >/dev/null 2>&1; then
+        log_error "Created overlay image appears to be invalid"
+        return 1
+    fi
+    
+    log_success "Instance overlay image created: $(basename "$QEMU_OVERLAY_IMAGE")"
+    return 0
+}
+
+# Set up instance-specific logging
+setup_instance_logging() {
+    local instance_id="$1"
+    
+    # Create instance-specific log files
+    CONSOLE_LOG="${LOG_DIR}/${instance_id}-console.log"
+    MONITOR_SOCKET="${PID_DIR}/${instance_id}-monitor.sock"
+    
+    # Register console log for cleanup
+    register_cleanup_file "$CONSOLE_LOG"
+    register_cleanup_file "$MONITOR_SOCKET"
+    
+    # Initialize console log
+    echo "QEMU Console Log - Instance: ${instance_id} - $(date)" > "$CONSOLE_LOG"
+    echo "========================================" >> "$CONSOLE_LOG"
+    
+    log_info "Instance logging configured:"
+    log_info "  Console log: $(basename "$CONSOLE_LOG")"
+    log_info "  Monitor socket: $(basename "$MONITOR_SOCKET")"
+}
+
 # Utility functions
 generate_instance_id() {
-    echo "qemu-usbip-$(date +%s)-$$"
+    generate_unique_instance_id
 }
 
 check_command() {
@@ -540,6 +976,9 @@ validate_network_ports() {
 setup_runtime_environment() {
     log_info "Setting up QEMU runtime environment..."
     
+    # Check for running instances
+    check_running_instances
+    
     # Generate unique instance ID
     INSTANCE_ID=$(generate_instance_id)
     
@@ -547,39 +986,32 @@ setup_runtime_environment() {
     mkdir -p "$LOG_DIR"
     mkdir -p "$PID_DIR"
     
-    # Set up logging paths
-    CONSOLE_LOG="${LOG_DIR}/${INSTANCE_ID}-console.log"
-    MONITOR_SOCKET="${PID_DIR}/${INSTANCE_ID}-monitor.sock"
+    # Perform dynamic resource allocation
+    if ! perform_resource_allocation; then
+        log_error "Resource allocation failed"
+        return 1
+    fi
     
-    # Create overlay image for this instance (copy-on-write)
-    QEMU_OVERLAY_IMAGE="${BUILD_DIR}/${INSTANCE_ID}-overlay.qcow2"
+    # Set up instance-specific logging
+    setup_instance_logging "$INSTANCE_ID"
     
-    log_info "Instance ID: ${INSTANCE_ID}"
-    log_info "Console log: $(basename "${CONSOLE_LOG}")"
-    log_info "Monitor socket: $(basename "${MONITOR_SOCKET}")"
-    log_info "Overlay image: $(basename "${QEMU_OVERLAY_IMAGE}")"
+    # Create instance-specific overlay image
+    if ! create_instance_overlay "$INSTANCE_ID"; then
+        log_error "Failed to create instance overlay"
+        return 1
+    fi
+    
+    log_info "Runtime environment setup completed:"
+    log_info "  Instance ID: ${INSTANCE_ID}"
+    log_info "  Memory: $QEMU_MEMORY"
+    log_info "  CPUs: $QEMU_CPU_COUNT"
+    log_info "  SSH port: $HOST_SSH_PORT"
+    log_info "  USB/IP port: $HOST_USBIP_PORT"
     
     return 0
 }
 
-create_overlay_image() {
-    log_info "Creating overlay image for instance..."
-    
-    # Create overlay image based on the main disk image
-    if ! qemu-img create -f qcow2 -b "$DISK_IMAGE" -F qcow2 "$QEMU_OVERLAY_IMAGE" >/dev/null 2>&1; then
-        log_error "Failed to create overlay image"
-        return 1
-    fi
-    
-    # Verify overlay image
-    if ! qemu-img info "$QEMU_OVERLAY_IMAGE" >/dev/null 2>&1; then
-        log_error "Created overlay image appears to be invalid"
-        return 1
-    fi
-    
-    log_success "Overlay image created successfully"
-    return 0
-}
+
 
 # QEMU management functions
 build_qemu_command() {
@@ -693,6 +1125,9 @@ start_qemu_instance() {
     
     QEMU_PID=$!
     
+    # Register QEMU process for cleanup
+    register_cleanup_process "$QEMU_PID"
+    
     # Verify QEMU process started successfully
     sleep 1
     if ! kill -0 "$QEMU_PID" 2>/dev/null; then
@@ -703,6 +1138,7 @@ start_qemu_instance() {
     
     # Save PID to file
     echo "$QEMU_PID" > "${PID_DIR}/${INSTANCE_ID}.pid"
+    register_cleanup_file "${PID_DIR}/${INSTANCE_ID}.pid"
     
     log_info "QEMU started with PID: $QEMU_PID"
     log_info "Console output: $CONSOLE_LOG"
@@ -902,6 +1338,16 @@ log_structured() {
     local level="$1"
     local message="$2"
     local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+    
+    # Write structured message to console log if available
+    if [[ -n "${CONSOLE_LOG:-}" && -f "${CONSOLE_LOG}" ]]; then
+        echo "[$timestamp] $level: $message" >> "$CONSOLE_LOG"
+    fi
+    
+    # Also log to stdout for immediate feedback
+    log_info "[$level] $message"
+    local timestamp
     # Use compatible timestamp format for macOS (gdate supports %3N if available)
     if command -v gdate >/dev/null 2>&1; then
         timestamp=$(gdate '+%Y-%m-%d %H:%M:%S.%3N')
@@ -1023,10 +1469,7 @@ execute_usbip_command() {
 #!/bin/sh
 set -e
 
-# Function to log structured messages
-log_structured() {
-    local level="\$1"
-    local message="\$2"
+
     local timestamp=\$(date '+%Y-%m-%d %H:%M:%S.%3N')
     echo "[\${timestamp}] \${level}: \${message}" > /dev/console
 }
@@ -1215,11 +1658,8 @@ cmd_start() {
         return 1
     fi
     
-    # Create overlay image with retry
-    if ! retry_with_backoff 2 2 "overlay image creation" create_overlay_image; then
-        log_error "Overlay image creation failed after retries"
-        return 1
-    fi
+    # Overlay image is already created in setup_runtime_environment
+    log_info "Using instance overlay image: $(basename "$QEMU_OVERLAY_IMAGE")"
     
     # Attempt to start QEMU with retries for transient failures
     local boot_attempt=1
@@ -1241,7 +1681,7 @@ cmd_start() {
             if [[ -f "$QEMU_OVERLAY_IMAGE" ]]; then
                 rm -f "$QEMU_OVERLAY_IMAGE"
             fi
-            if ! create_overlay_image; then
+            if ! create_instance_overlay "$INSTANCE_ID"; then
                 log_error "Failed to recreate overlay image for retry"
                 boot_attempt=$((boot_attempt + 1))
                 continue
