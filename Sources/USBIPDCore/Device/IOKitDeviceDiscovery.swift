@@ -166,13 +166,34 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     public func getDevice(busID: String, deviceID: String) throws -> USBDevice? {
         return queue.sync {
-            logger.debug("Looking for specific device", context: ["busID": busID, "deviceID": deviceID])
+            logger.debug("Starting device lookup", context: [
+                "busID": busID, 
+                "deviceID": deviceID,
+                "operation": "getDevice"
+            ])
+            
+            // Validate input parameters before proceeding
+            guard !busID.isEmpty && !deviceID.isEmpty else {
+                logger.warning("Invalid device lookup parameters", context: [
+                    "busID": busID.isEmpty ? "empty" : busID,
+                    "deviceID": deviceID.isEmpty ? "empty" : deviceID,
+                    "result": "nil"
+                ])
+                return nil
+            }
             
             // Handle IOKit errors gracefully by catching them and returning nil
             // This satisfies requirement 4.5: handle IOKit errors gracefully and return nil
             do {
+                logger.debug("Discovering devices for lookup operation")
+                
                 // Discover devices directly without calling the public method to avoid queue deadlock
                 let devices = try discoverDevicesInternal()
+                
+                logger.debug("Device discovery completed for lookup", context: [
+                    "totalDevicesFound": devices.count,
+                    "searchingFor": "\(busID):\(deviceID)"
+                ])
                 
                 // Find device matching the specified bus and device IDs
                 // This satisfies requirement 4.4: return only the device matching the specified IDs
@@ -181,29 +202,99 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                 }
                 
                 if let device = device {
-                    logger.debug("Found requested device", context: [
+                    logger.info("Device lookup successful", context: [
                         "busID": device.busID,
                         "deviceID": device.deviceID,
                         "vendorID": String(format: "0x%04x", device.vendorID),
                         "productID": String(format: "0x%04x", device.productID),
-                        "product": device.productString ?? "Unknown"
+                        "product": device.productString ?? "Unknown",
+                        "manufacturer": device.manufacturerString ?? "Unknown",
+                        "operation": "getDevice",
+                        "result": "found"
                     ])
                     return device
                 } else {
                     // This satisfies requirements 4.2 and 4.3: return nil for invalid IDs or disconnected devices
-                    logger.warning("Device not found", context: [
+                    logger.warning("Device lookup failed - device not found", context: [
                         "busID": busID, 
                         "deviceID": deviceID,
-                        "totalDevicesFound": devices.count
+                        "totalDevicesFound": devices.count,
+                        "availableDevices": devices.map { "\($0.busID):\($0.deviceID)" },
+                        "operation": "getDevice",
+                        "result": "nil"
                     ])
                     return nil
                 }
+            } catch let error as DeviceDiscoveryError {
+                // Handle specific DeviceDiscoveryError types with detailed logging
+                switch error {
+                case .ioKitError(let code, let message):
+                    logger.error("IOKit error during device lookup", context: [
+                        "busID": busID,
+                        "deviceID": deviceID,
+                        "ioKitCode": code,
+                        "ioKitMessage": message,
+                        "operation": "getDevice",
+                        "result": "nil"
+                    ])
+                case .failedToCreateMatchingDictionary:
+                    logger.error("Failed to create IOKit matching dictionary during lookup", context: [
+                        "busID": busID,
+                        "deviceID": deviceID,
+                        "operation": "getDevice",
+                        "result": "nil"
+                    ])
+                case .failedToGetMatchingServices(let code):
+                    logger.error("Failed to get matching services during lookup", context: [
+                        "busID": busID,
+                        "deviceID": deviceID,
+                        "serviceCode": code,
+                        "operation": "getDevice",
+                        "result": "nil"
+                    ])
+                case .missingProperty(let property):
+                    logger.error("Missing device property during lookup", context: [
+                        "busID": busID,
+                        "deviceID": deviceID,
+                        "missingProperty": property,
+                        "operation": "getDevice",
+                        "result": "nil"
+                    ])
+                case .invalidPropertyType(let property):
+                    logger.error("Invalid property type during lookup", context: [
+                        "busID": busID,
+                        "deviceID": deviceID,
+                        "invalidProperty": property,
+                        "operation": "getDevice",
+                        "result": "nil"
+                    ])
+                case .accessDenied(let message):
+                    logger.error("Access denied during device lookup", context: [
+                        "busID": busID,
+                        "deviceID": deviceID,
+                        "accessMessage": message,
+                        "operation": "getDevice",
+                        "result": "nil"
+                    ])
+                default:
+                    logger.error("Device discovery error during lookup", context: [
+                        "busID": busID,
+                        "deviceID": deviceID,
+                        "error": error.localizedDescription,
+                        "operation": "getDevice",
+                        "result": "nil"
+                    ])
+                }
+                return nil
             } catch {
-                // This satisfies requirement 4.5: handle IOKit errors gracefully and return nil
-                logger.error("IOKit error during device lookup, returning nil", context: [
+                // Handle any other unexpected errors gracefully
+                logger.error("Unexpected error during device lookup", context: [
                     "busID": busID,
                     "deviceID": deviceID,
-                    "error": error.localizedDescription
+                    "error": error.localizedDescription,
+                    "errorType": String(describing: type(of: error)),
+                    "operation": "getDevice",
+                    "result": "nil"
                 ])
                 return nil
             }
