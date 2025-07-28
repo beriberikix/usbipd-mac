@@ -6,7 +6,7 @@
 - Open a pull request when the implementation is complete for code review
 - Follow conventional commit format: `feat(device): add IOKit device enumeration`
 
-- [-] 1. Set up IOKit integration foundation
+- [x] 1. Set up IOKit integration foundation
   - Create IOKit import and basic class structure for IOKitDeviceDiscovery
   - Implement proper initialization with logging and dispatch queue setup
   - Add IOKit memory management utilities and error handling helpers
@@ -14,7 +14,7 @@
   - _Requirements: 5.1, 5.4, 6.3_
 
 - [ ] 2. Implement core device enumeration functionality
-  - [ ] 2.1 Create device discovery method with IOKit service matching
+  - [x] 2.1 Create device discovery method with IOKit service matching
     - Implement discoverDevices() method using IOServiceMatching for USB devices
     - Create IOKit service iterator and enumerate all connected USB devices
     - Add proper error handling for IOKit service access failures
