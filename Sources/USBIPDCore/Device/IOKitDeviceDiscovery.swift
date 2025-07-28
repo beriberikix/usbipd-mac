@@ -506,6 +506,8 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return try safeIOKitOperation("device discovery") {
             logger.debug("Starting USB device discovery")
             var devices: [USBDevice] = []
+            var skippedDevices = 0
+            let unsupportedDevices = 0
             
             // Create matching dictionary for USB devices
             guard let matchingDict = IOServiceMatching(kIOUSBDeviceClassName) else {
@@ -513,38 +515,112 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                 throw DeviceDiscoveryError.failedToCreateMatchingDictionary
             }
             
+            logger.debug("Created IOKit matching dictionary for USB devices", context: [
+                "className": kIOUSBDeviceClassName
+            ])
+            
             var iterator: io_iterator_t = 0
             let result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
             
             guard result == KERN_SUCCESS else {
                 throw handleServiceAccessError(result, operation: "IOServiceGetMatchingServices")
             }
+            
+            logger.debug("Successfully obtained IOKit service iterator", context: [
+                "iterator": iterator
+            ])
         
-        return try withIOKitObject(iterator) { iterator in
+        return withIOKitObject(iterator) { iterator in
             logger.debug("Iterating through discovered USB devices")
             var deviceCount = 0
             var service: io_service_t = IOIteratorNext(iterator)
             
             while service != 0 {
-                let device = try withIOKitObject(service) { service in
-                    return try createUSBDeviceFromService(service)
+                do {
+                    let device = try withIOKitObject(service) { service in
+                        return try createUSBDeviceFromService(service)
+                    }
+                    
+                    devices.append(device)
+                    deviceCount += 1
+                    
+                    logger.debug("Successfully enumerated USB device", context: [
+                        "deviceIndex": deviceCount,
+                        "busID": device.busID,
+                        "deviceID": device.deviceID,
+                        "vendorID": String(format: "0x%04x", device.vendorID),
+                        "productID": String(format: "0x%04x", device.productID),
+                        "deviceClass": String(format: "0x%02x", device.deviceClass),
+                        "deviceSubClass": String(format: "0x%02x", device.deviceSubClass),
+                        "deviceProtocol": String(format: "0x%02x", device.deviceProtocol),
+                        "speed": device.speed.rawValue,
+                        "product": device.productString ?? "Unknown",
+                        "manufacturer": device.manufacturerString ?? "Unknown",
+                        "hasSerial": device.serialNumberString != nil
+                    ])
+                    
+                } catch let error as DeviceDiscoveryError {
+                    // Handle device enumeration errors gracefully - continue with other devices
+                    switch error {
+                    case .missingProperty(let property):
+                        logger.warning("Skipping device due to missing required property", context: [
+                            "missingProperty": property,
+                            "deviceIndex": deviceCount + 1,
+                            "action": "skipped"
+                        ])
+                        skippedDevices += 1
+                    case .invalidPropertyType(let property):
+                        logger.warning("Skipping device due to invalid property type", context: [
+                            "invalidProperty": property,
+                            "deviceIndex": deviceCount + 1,
+                            "action": "skipped"
+                        ])
+                        skippedDevices += 1
+                    case .ioKitError(let code, let message):
+                        logger.warning("Skipping device due to IOKit error", context: [
+                            "ioKitCode": code,
+                            "ioKitMessage": message,
+                            "deviceIndex": deviceCount + 1,
+                            "action": "skipped"
+                        ])
+                        skippedDevices += 1
+                    default:
+                        logger.warning("Skipping device due to unexpected error", context: [
+                            "error": error.localizedDescription,
+                            "deviceIndex": deviceCount + 1,
+                            "action": "skipped"
+                        ])
+                        skippedDevices += 1
+                    }
+                } catch {
+                    logger.warning("Skipping device due to unexpected error", context: [
+                        "error": error.localizedDescription,
+                        "errorType": String(describing: type(of: error)),
+                        "deviceIndex": deviceCount + 1,
+                        "action": "skipped"
+                    ])
+                    skippedDevices += 1
                 }
-                
-                devices.append(device)
-                deviceCount += 1
-                
-                logger.debug("Found USB device", context: [
-                    "busID": device.busID,
-                    "deviceID": device.deviceID,
-                    "vendorID": String(format: "0x%04x", device.vendorID),
-                    "productID": String(format: "0x%04x", device.productID),
-                    "product": device.productString ?? "Unknown"
-                ])
                 
                 service = IOIteratorNext(iterator)
             }
             
-            logger.info("Discovered \(deviceCount) USB devices")
+            // Log comprehensive discovery summary
+            logger.info("USB device discovery completed", context: [
+                "successfulDevices": deviceCount,
+                "skippedDevices": skippedDevices,
+                "unsupportedDevices": unsupportedDevices,
+                "totalProcessed": deviceCount + skippedDevices + unsupportedDevices
+            ])
+            
+            if skippedDevices > 0 {
+                logger.warning("Some devices were skipped during enumeration", context: [
+                    "skippedCount": skippedDevices,
+                    "successfulCount": deviceCount,
+                    "recommendation": "Check device permissions and IOKit access"
+                ])
+            }
+            
             return devices
         }
         }
@@ -720,32 +796,61 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     /// Maps IOKit property keys to USBDevice struct fields with graceful error handling
     private func extractDeviceProperties(from service: io_service_t) throws -> DeviceProperties {
         return try safeIOKitOperation("device property extraction") {
-            logger.debug("Extracting device properties from IOKit service")
+            logger.debug("Starting device property extraction from IOKit service")
             
-            // Extract required properties with error handling
+            // Extract required properties with detailed logging
+            logger.debug("Extracting required device properties")
             let vendorID = try extractVendorID(from: service)
             let productID = try extractProductID(from: service)
+            
+            logger.debug("Extracting device class information")
             let deviceClass = extractDeviceClass(from: service)
             let deviceSubClass = extractDeviceSubClass(from: service)
             let deviceProtocol = extractDeviceProtocol(from: service)
+            
+            logger.debug("Extracting device speed information")
             let speed = extractUSBSpeed(from: service)
         
-        // Extract optional string descriptors
-        let manufacturerString = extractManufacturerString(from: service)
-        let productString = extractProductString(from: service)
-        let serialNumberString = extractSerialNumberString(from: service)
-        
-        logger.debug("Successfully extracted device properties", context: [
-            "vendorID": String(format: "0x%04x", vendorID),
-            "productID": String(format: "0x%04x", productID),
-            "deviceClass": String(format: "0x%02x", deviceClass),
-            "deviceSubClass": String(format: "0x%02x", deviceSubClass),
-            "deviceProtocol": String(format: "0x%02x", deviceProtocol),
-            "speed": speed.rawValue,
-            "hasManufacturer": manufacturerString != nil,
-            "hasProduct": productString != nil,
-            "hasSerial": serialNumberString != nil
-        ])
+            // Extract optional string descriptors with detailed logging
+            logger.debug("Extracting optional string descriptors")
+            let manufacturerString = extractManufacturerString(from: service)
+            let productString = extractProductString(from: service)
+            let serialNumberString = extractSerialNumberString(from: service)
+            
+            // Log missing optional properties as warnings
+            var missingProperties: [String] = []
+            if manufacturerString == nil {
+                missingProperties.append("manufacturer")
+            }
+            if productString == nil {
+                missingProperties.append("product")
+            }
+            if serialNumberString == nil {
+                missingProperties.append("serial")
+            }
+            
+            if !missingProperties.isEmpty {
+                logger.warning("Some optional device properties are missing", context: [
+                    "vendorID": String(format: "0x%04x", vendorID),
+                    "productID": String(format: "0x%04x", productID),
+                    "missingProperties": missingProperties.joined(separator: ", "),
+                    "impact": "Device identification may be limited"
+                ])
+            }
+            
+            logger.debug("Successfully extracted device properties", context: [
+                "vendorID": String(format: "0x%04x", vendorID),
+                "productID": String(format: "0x%04x", productID),
+                "deviceClass": String(format: "0x%02x", deviceClass),
+                "deviceSubClass": String(format: "0x%02x", deviceSubClass),
+                "deviceProtocol": String(format: "0x%02x", deviceProtocol),
+                "speed": speed.rawValue,
+                "hasManufacturer": manufacturerString != nil,
+                "hasProduct": productString != nil,
+                "hasSerial": serialNumberString != nil,
+                "manufacturerString": manufacturerString ?? "N/A",
+                "productString": productString ?? "N/A"
+            ])
         
             return DeviceProperties(
                 vendorID: vendorID,
@@ -765,32 +870,62 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Extract vendor ID (VID) from IOKit properties
     private func extractVendorID(from service: io_service_t) throws -> UInt16 {
+        logger.debug("Extracting vendor ID from device properties")
         do {
-            return try getUInt16Property(from: service, key: kUSBVendorID)
+            let vendorID = try getUInt16Property(from: service, key: kUSBVendorID)
+            logger.debug("Successfully extracted vendor ID", context: [
+                "vendorID": String(format: "0x%04x", vendorID),
+                "property": kUSBVendorID
+            ])
+            return vendorID
         } catch {
-            logger.error("Failed to extract vendor ID", context: ["error": error.localizedDescription])
+            logger.error("Failed to extract vendor ID - this is a critical property", context: [
+                "error": error.localizedDescription,
+                "property": kUSBVendorID,
+                "impact": "Device cannot be properly identified"
+            ])
             throw DeviceDiscoveryError.missingProperty(kUSBVendorID)
         }
     }
     
     /// Extract product ID (PID) from IOKit properties
     private func extractProductID(from service: io_service_t) throws -> UInt16 {
+        logger.debug("Extracting product ID from device properties")
         do {
-            return try getUInt16Property(from: service, key: kUSBProductID)
+            let productID = try getUInt16Property(from: service, key: kUSBProductID)
+            logger.debug("Successfully extracted product ID", context: [
+                "productID": String(format: "0x%04x", productID),
+                "property": kUSBProductID
+            ])
+            return productID
         } catch {
-            logger.error("Failed to extract product ID", context: ["error": error.localizedDescription])
+            logger.error("Failed to extract product ID - this is a critical property", context: [
+                "error": error.localizedDescription,
+                "property": kUSBProductID,
+                "impact": "Device cannot be properly identified"
+            ])
             throw DeviceDiscoveryError.missingProperty(kUSBProductID)
         }
     }
     
     /// Extract device class with graceful fallback to default value
     private func extractDeviceClass(from service: io_service_t) -> UInt8 {
+        logger.debug("Extracting device class from properties")
         do {
-            return try getUInt8Property(from: service, key: kUSBDeviceClass)
+            let deviceClass = try getUInt8Property(from: service, key: kUSBDeviceClass)
+            logger.debug("Successfully extracted device class", context: [
+                "deviceClass": String(format: "0x%02x", deviceClass),
+                "property": kUSBDeviceClass,
+                "classDescription": getUSBClassDescription(deviceClass)
+            ])
+            return deviceClass
         } catch {
             logger.warning("Failed to extract device class, using default", context: [
                 "error": error.localizedDescription,
-                "default": "0x00"
+                "property": kUSBDeviceClass,
+                "default": "0x00",
+                "defaultDescription": "Unspecified class",
+                "impact": "Device class information will be incomplete"
             ])
             return 0x00 // Default to unspecified class
         }
@@ -798,12 +933,21 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Extract device subclass with graceful fallback to default value
     private func extractDeviceSubClass(from service: io_service_t) -> UInt8 {
+        logger.debug("Extracting device subclass from properties")
         do {
-            return try getUInt8Property(from: service, key: kUSBDeviceSubClass)
+            let deviceSubClass = try getUInt8Property(from: service, key: kUSBDeviceSubClass)
+            logger.debug("Successfully extracted device subclass", context: [
+                "deviceSubClass": String(format: "0x%02x", deviceSubClass),
+                "property": kUSBDeviceSubClass
+            ])
+            return deviceSubClass
         } catch {
             logger.warning("Failed to extract device subclass, using default", context: [
                 "error": error.localizedDescription,
-                "default": "0x00"
+                "property": kUSBDeviceSubClass,
+                "default": "0x00",
+                "defaultDescription": "Unspecified subclass",
+                "impact": "Device subclass information will be incomplete"
             ])
             return 0x00 // Default to unspecified subclass
         }
@@ -811,12 +955,21 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Extract device protocol with graceful fallback to default value
     private func extractDeviceProtocol(from service: io_service_t) -> UInt8 {
+        logger.debug("Extracting device protocol from properties")
         do {
-            return try getUInt8Property(from: service, key: kUSBDeviceProtocol)
+            let deviceProtocol = try getUInt8Property(from: service, key: kUSBDeviceProtocol)
+            logger.debug("Successfully extracted device protocol", context: [
+                "deviceProtocol": String(format: "0x%02x", deviceProtocol),
+                "property": kUSBDeviceProtocol
+            ])
+            return deviceProtocol
         } catch {
             logger.warning("Failed to extract device protocol, using default", context: [
                 "error": error.localizedDescription,
-                "default": "0x00"
+                "property": kUSBDeviceProtocol,
+                "default": "0x00",
+                "defaultDescription": "Unspecified protocol",
+                "impact": "Device protocol information will be incomplete"
             ])
             return 0x00 // Default to unspecified protocol
         }
@@ -824,20 +977,35 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Extract USB speed with graceful fallback to unknown
     private func extractUSBSpeed(from service: io_service_t) -> USBSpeed {
+        logger.debug("Extracting USB speed from device properties")
+        
         // Try multiple possible property keys for speed information
         let speedKeys = ["Speed", "Device Speed"]
         
         for key in speedKeys {
+            logger.debug("Attempting to extract speed from property", context: [
+                "property": key
+            ])
+            
             if let speed = tryExtractSpeed(from: service, key: key) {
                 logger.debug("Successfully extracted USB speed", context: [
-                    "key": key,
-                    "speed": speed.rawValue
+                    "property": key,
+                    "speed": speed.rawValue,
+                    "speedDescription": getUSBSpeedDescription(speed)
                 ])
                 return speed
+            } else {
+                logger.debug("Speed property not found or invalid", context: [
+                    "property": key
+                ])
             }
         }
         
-        logger.warning("Could not determine USB speed, using unknown")
+        logger.warning("Could not determine USB speed from any known property", context: [
+            "attemptedProperties": speedKeys.joined(separator: ", "),
+            "fallback": "unknown",
+            "impact": "Speed information will be unavailable for this device"
+        ])
         return .unknown
     }
     
@@ -868,111 +1036,189 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Extract manufacturer string descriptor with graceful handling
     private func extractManufacturerString(from service: io_service_t) -> String? {
+        logger.debug("Extracting manufacturer string descriptor")
+        
         // Try multiple possible property keys for manufacturer string
         let manufacturerKeys = ["USB Vendor Name", "Manufacturer"]
         
         for key in manufacturerKeys {
+            logger.debug("Attempting to extract manufacturer from property", context: [
+                "property": key
+            ])
+            
             if let manufacturer = getStringProperty(from: service, key: key) {
-                logger.debug("Found manufacturer string", context: [
-                    "key": key,
-                    "manufacturer": manufacturer
+                logger.debug("Successfully found manufacturer string", context: [
+                    "property": key,
+                    "manufacturer": manufacturer,
+                    "length": manufacturer.count
                 ])
                 return manufacturer
             }
         }
         
-        logger.debug("No manufacturer string found")
+        logger.debug("No manufacturer string found in any property", context: [
+            "attemptedProperties": manufacturerKeys.joined(separator: ", "),
+            "result": "nil"
+        ])
         return nil
     }
     
     /// Extract product string descriptor with graceful handling
     private func extractProductString(from service: io_service_t) -> String? {
+        logger.debug("Extracting product string descriptor")
+        
         // Try multiple possible property keys for product string
         let productKeys = ["USB Product Name", "Product"]
         
         for key in productKeys {
+            logger.debug("Attempting to extract product from property", context: [
+                "property": key
+            ])
+            
             if let product = getStringProperty(from: service, key: key) {
-                logger.debug("Found product string", context: [
-                    "key": key,
-                    "product": product
+                logger.debug("Successfully found product string", context: [
+                    "property": key,
+                    "product": product,
+                    "length": product.count
                 ])
                 return product
             }
         }
         
-        logger.debug("No product string found")
+        logger.debug("No product string found in any property", context: [
+            "attemptedProperties": productKeys.joined(separator: ", "),
+            "result": "nil"
+        ])
         return nil
     }
     
     /// Extract serial number string descriptor with graceful handling
     private func extractSerialNumberString(from service: io_service_t) -> String? {
+        logger.debug("Extracting serial number string descriptor")
+        
         // Try multiple possible property keys for serial number string
         let serialKeys = ["USB Serial Number", "Serial Number"]
         
         for key in serialKeys {
+            logger.debug("Attempting to extract serial from property", context: [
+                "property": key
+            ])
+            
             if let serial = getStringProperty(from: service, key: key) {
-                logger.debug("Found serial number string", context: [
-                    "key": key,
-                    "serial": serial
+                logger.debug("Successfully found serial number string", context: [
+                    "property": key,
+                    "serial": serial,
+                    "length": serial.count
                 ])
                 return serial
             }
         }
         
-        logger.debug("No serial number string found")
+        logger.debug("No serial number string found in any property", context: [
+            "attemptedProperties": serialKeys.joined(separator: ", "),
+            "result": "nil"
+        ])
         return nil
     }
     
     private func getUInt16Property(from service: io_service_t, key: String) throws -> UInt16 {
+        logger.debug("Attempting to extract UInt16 property", context: [
+            "property": key
+        ])
+        
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
-            logger.warning("Missing required property", context: [
-                "key": key,
-                "error_type": "missing_property"
+            logger.warning("Missing required UInt16 property", context: [
+                "property": key,
+                "error_type": "missing_property",
+                "impact": "Property extraction will fail"
             ])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
-            logger.warning("Invalid property type", context: [
-                "key": key,
-                "property_type": String(describing: type(of: property)),
-                "expected_type": "NSNumber",
-                "error_type": "invalid_property_type"
+            logger.warning("Invalid property type for UInt16 property", context: [
+                "property": key,
+                "actualType": String(describing: type(of: property)),
+                "expectedType": "NSNumber",
+                "error_type": "invalid_property_type",
+                "impact": "Property extraction will fail"
             ])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
-        return number.uint16Value
+        let value = number.uint16Value
+        logger.debug("Successfully extracted UInt16 property", context: [
+            "property": key,
+            "value": String(format: "0x%04x", value)
+        ])
+        
+        return value
     }
     
     private func getUInt8Property(from service: io_service_t, key: String) throws -> UInt8 {
+        logger.debug("Attempting to extract UInt8 property", context: [
+            "property": key
+        ])
+        
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
-            logger.warning("Missing required property", context: [
-                "key": key,
-                "error_type": "missing_property"
+            logger.warning("Missing required UInt8 property", context: [
+                "property": key,
+                "error_type": "missing_property",
+                "impact": "Property extraction will fail"
             ])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
-            logger.warning("Invalid property type", context: [
-                "key": key,
-                "property_type": String(describing: type(of: property)),
-                "expected_type": "NSNumber",
-                "error_type": "invalid_property_type"
+            logger.warning("Invalid property type for UInt8 property", context: [
+                "property": key,
+                "actualType": String(describing: type(of: property)),
+                "expectedType": "NSNumber",
+                "error_type": "invalid_property_type",
+                "impact": "Property extraction will fail"
             ])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
-        return number.uint8Value
+        let value = number.uint8Value
+        logger.debug("Successfully extracted UInt8 property", context: [
+            "property": key,
+            "value": String(format: "0x%02x", value)
+        ])
+        
+        return value
     }
     
     private func getStringProperty(from service: io_service_t, key: String) -> String? {
+        logger.debug("Attempting to extract string property", context: [
+            "property": key
+        ])
+        
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+            logger.debug("String property not found", context: [
+                "property": key,
+                "result": "nil"
+            ])
             return nil
         }
         
-        return property as? String
+        guard let stringValue = property as? String else {
+            logger.warning("Property exists but is not a string", context: [
+                "property": key,
+                "actualType": String(describing: type(of: property)),
+                "expectedType": "String",
+                "result": "nil"
+            ])
+            return nil
+        }
+        
+        logger.debug("Successfully extracted string property", context: [
+            "property": key,
+            "value": stringValue,
+            "length": stringValue.count
+        ])
+        
+        return stringValue
     }
     
 
@@ -1040,33 +1286,114 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return number.uint8Value
     }
     
+    // MARK: - USB Description Helpers
+    
+    /// Get human-readable description for USB device class
+    private func getUSBClassDescription(_ deviceClass: UInt8) -> String {
+        switch deviceClass {
+        case 0x00:
+            return "Use class information in the Interface Descriptors"
+        case 0x01:
+            return "Audio"
+        case 0x02:
+            return "Communications and CDC Control"
+        case 0x03:
+            return "HID (Human Interface Device)"
+        case 0x05:
+            return "Physical"
+        case 0x06:
+            return "Image"
+        case 0x07:
+            return "Printer"
+        case 0x08:
+            return "Mass Storage"
+        case 0x09:
+            return "Hub"
+        case 0x0A:
+            return "CDC-Data"
+        case 0x0B:
+            return "Smart Card"
+        case 0x0D:
+            return "Content Security"
+        case 0x0E:
+            return "Video"
+        case 0x0F:
+            return "Personal Healthcare"
+        case 0x10:
+            return "Audio/Video Devices"
+        case 0x11:
+            return "Billboard Device Class"
+        case 0x12:
+            return "USB Type-C Bridge Class"
+        case 0xDC:
+            return "Diagnostic Device"
+        case 0xE0:
+            return "Wireless Controller"
+        case 0xEF:
+            return "Miscellaneous"
+        case 0xFE:
+            return "Application Specific"
+        case 0xFF:
+            return "Vendor Specific"
+        default:
+            return "Unknown Class (\(String(format: "0x%02x", deviceClass)))"
+        }
+    }
+    
+    /// Get human-readable description for USB speed
+    private func getUSBSpeedDescription(_ speed: USBSpeed) -> String {
+        switch speed {
+        case .low:
+            return "Low Speed (1.5 Mbps)"
+        case .full:
+            return "Full Speed (12 Mbps)"
+        case .high:
+            return "High Speed (480 Mbps)"
+        case .superSpeed:
+            return "SuperSpeed (5 Gbps)"
+        case .unknown:
+            return "Unknown Speed"
+        }
+    }
+    
     // MARK: - Notification System
     
     public func startNotifications() throws {
         try queue.sync {
             guard !isMonitoring else {
-                logger.debug("Device notifications already started")
+                logger.debug("Device notifications already started - skipping initialization")
                 return // Already started
             }
+            
+            logger.info("Initializing USB device notification system")
             
             // Ensure clean state before starting
             ensureCleanNotificationState()
             
-            logger.info("Starting USB device notifications")
+            logger.debug("Starting USB device notification setup")
             
             // Create notification port
+            logger.debug("Creating IOKit notification port")
             notificationPort = IONotificationPortCreate(kIOMasterPortDefault)
             guard let port = notificationPort else {
                 let error = handleNotificationError(KERN_FAILURE, operation: "IONotificationPortCreate")
-                logger.error("Failed to create IOKit notification port: \(error.localizedDescription)")
+                logger.error("Failed to create IOKit notification port", context: [
+                    "error": error.localizedDescription,
+                    "impact": "Device monitoring will not be available"
+                ])
                 throw error
             }
             
+            logger.debug("Successfully created IOKit notification port")
+            
             // Set notification port dispatch queue
             IONotificationPortSetDispatchQueue(port, queue)
-            logger.debug("Set notification port dispatch queue")
+            logger.debug("Configured notification port with dispatch queue", context: [
+                "queueLabel": queue.label
+            ])
             
             // Set up device added notifications
+            logger.debug("Setting up device connection notifications")
             let addedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
             let addedResult = IOServiceAddMatchingNotification(
                 port,
@@ -1078,10 +1405,20 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             )
             
             guard addedResult == KERN_SUCCESS else {
-                throw handleNotificationError(addedResult, operation: "IOServiceAddMatchingNotification (device added)")
+                let error = handleNotificationError(addedResult, operation: "IOServiceAddMatchingNotification (device added)")
+                logger.error("Failed to setup device connection notifications", context: [
+                    "error": error.localizedDescription,
+                    "kernReturn": addedResult
+                ])
+                throw error
             }
             
+            logger.debug("Successfully setup device connection notifications", context: [
+                "iterator": addedIterator
+            ])
+            
             // Set up device removed notifications
+            logger.debug("Setting up device disconnection notifications")
             let removedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
             let removedResult = IOServiceAddMatchingNotification(
                 port,
@@ -1093,46 +1430,65 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             )
             
             guard removedResult == KERN_SUCCESS else {
-                throw handleNotificationError(removedResult, operation: "IOServiceAddMatchingNotification (device removed)")
+                let error = handleNotificationError(removedResult, operation: "IOServiceAddMatchingNotification (device removed)")
+                logger.error("Failed to setup device disconnection notifications", context: [
+                    "error": error.localizedDescription,
+                    "kernReturn": removedResult
+                ])
+                throw error
             }
             
-            logger.debug("Consuming initial device notifications")
+            logger.debug("Successfully setup device disconnection notifications", context: [
+                "iterator": removedIterator
+            ])
+            
+            logger.debug("Consuming initial device notifications to prime iterators")
             
             // Consume initial notifications
             consumeIterator(addedIterator, isAddedNotification: true)
             consumeIterator(removedIterator, isAddedNotification: false)
             
             isMonitoring = true
-            logger.info("USB device notifications started successfully")
+            logger.info("USB device notification system started successfully", context: [
+                "addedIterator": addedIterator,
+                "removedIterator": removedIterator,
+                "isMonitoring": isMonitoring
+            ])
         }
     }
     
     public func stopNotifications() {
         queue.sync {
             guard isMonitoring else {
-                logger.debug("Device notifications already stopped")
+                logger.debug("Device notifications already stopped - no cleanup needed")
                 return
             }
             
-            logger.info("Stopping USB device notifications")
+            logger.info("Initiating USB device notification system shutdown")
             
             // Set monitoring flag to false first to prevent race conditions
             isMonitoring = false
+            logger.debug("Set monitoring flag to false to prevent new notifications")
             
             // Clean up notification iterators first to stop new notifications
+            logger.debug("Cleaning up notification iterators")
             cleanupNotificationIterators()
             
             // Destroy notification port after iterators are cleaned up
+            logger.debug("Destroying notification port")
             cleanupNotificationPort()
             
             // Clear the device cache when stopping notifications
+            logger.debug("Clearing device cache")
             cleanupDeviceCache()
             
             // Verify that cleanup was successful
             if verifyNotificationCleanup() {
-                logger.info("USB device notifications stopped successfully")
+                logger.info("USB device notification system stopped successfully")
             } else {
-                logger.error("USB device notifications stopped but cleanup verification failed")
+                logger.error("USB device notification system stopped but cleanup verification failed", context: [
+                    "recommendation": "Check for resource leaks and restart application if needed"
+                ])
             }
         }
     }
@@ -1280,11 +1636,17 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     // Changed from private to internal for callback access
     func consumeIterator(_ iterator: io_iterator_t, isAddedNotification: Bool) {
-        let eventType = isAddedNotification ? "added" : "removed"
-        logger.debug("Processing \(eventType) device notifications")
+        let eventType = isAddedNotification ? "connection" : "disconnection"
+        logger.debug("Starting to process \(eventType) notifications", context: [
+            "iterator": iterator,
+            "eventType": eventType
+        ])
         
         var deviceCount = 0
+        var processedSuccessfully = 0
+        var processingErrors = 0
         var service: io_service_t = IOIteratorNext(iterator)
+        
         while service != 0 {
             defer {
                 IOObjectRelease(service)
@@ -1293,15 +1655,38 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             deviceCount += 1
             
-            if isAddedNotification {
-                handleDeviceAddedNotification(service: service)
-            } else {
-                handleDeviceRemovedNotification(service: service)
+            logger.debug("Processing device \(eventType) notification", context: [
+                "deviceIndex": deviceCount,
+                "service": service,
+                "eventType": eventType
+            ])
+            
+            do {
+                if isAddedNotification {
+                    try handleDeviceAddedNotification(service: service)
+                } else {
+                    handleDeviceRemovedNotification(service: service)
+                }
+                processedSuccessfully += 1
+            } catch {
+                logger.warning("Failed to process device \(eventType) notification", context: [
+                    "deviceIndex": deviceCount,
+                    "error": error.localizedDescription,
+                    "eventType": eventType
+                ])
+                processingErrors += 1
             }
         }
         
         if deviceCount > 0 {
-            logger.debug("Processed \(deviceCount) \(eventType) device notifications")
+            logger.debug("Completed processing \(eventType) notifications", context: [
+                "totalNotifications": deviceCount,
+                "processedSuccessfully": processedSuccessfully,
+                "processingErrors": processingErrors,
+                "eventType": eventType
+            ])
+        } else {
+            logger.debug("No \(eventType) notifications to process")
         }
     }
     
@@ -1309,60 +1694,116 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Handle device connection events
     /// Creates USBDevice from IOKit service and triggers onDeviceConnected callback
-    private func handleDeviceAddedNotification(service: io_service_t) {
+    private func handleDeviceAddedNotification(service: io_service_t) throws {
+        logger.debug("Processing device connection notification", context: [
+            "service": service
+        ])
+        
         do {
             let device = try createUSBDeviceFromService(service)
             let deviceKey = "\(device.busID):\(device.deviceID)"
+            
+            // Check if device is already in cache (duplicate notification)
+            if connectedDevices[deviceKey] != nil {
+                logger.debug("Device connection notification for already cached device", context: [
+                    "deviceKey": deviceKey,
+                    "action": "ignoring_duplicate"
+                ])
+                return
+            }
             
             // Cache the device for proper disconnection handling
             connectedDevices[deviceKey] = device
             
             logger.info("USB device connected", context: [
+                "event": "device_connected",
                 "busID": device.busID,
                 "deviceID": device.deviceID,
+                "deviceKey": deviceKey,
                 "vendorID": String(format: "0x%04x", device.vendorID),
                 "productID": String(format: "0x%04x", device.productID),
+                "deviceClass": String(format: "0x%02x", device.deviceClass),
+                "deviceClassDescription": getUSBClassDescription(device.deviceClass),
+                "speed": device.speed.rawValue,
+                "speedDescription": getUSBSpeedDescription(device.speed),
                 "product": device.productString ?? "Unknown",
                 "manufacturer": device.manufacturerString ?? "Unknown",
-                "serial": device.serialNumberString ?? "None"
+                "serial": device.serialNumberString ?? "None",
+                "cachedDeviceCount": connectedDevices.count
             ])
             
             // Trigger the connection callback with complete device information
+            logger.debug("Triggering device connection callback")
             onDeviceConnected?(device)
             
-        } catch {
-            logger.error("Failed to create USB device from connection notification", context: [
-                "error": error.localizedDescription
+        } catch let error as DeviceDiscoveryError {
+            logger.error("Failed to process device connection due to discovery error", context: [
+                "service": service,
+                "error": error.localizedDescription,
+                "errorType": "DeviceDiscoveryError",
+                "impact": "Device will not be available for use"
             ])
+            throw error
+        } catch {
+            logger.error("Failed to process device connection due to unexpected error", context: [
+                "service": service,
+                "error": error.localizedDescription,
+                "errorType": String(describing: type(of: error)),
+                "impact": "Device will not be available for use"
+            ])
+            throw error
         }
     }
     
     /// Handle device disconnection events
     /// Attempts to provide complete device information using cached data
     private func handleDeviceRemovedNotification(service: io_service_t) {
+        logger.debug("Processing device disconnection notification", context: [
+            "service": service
+        ])
+        
         // Try to extract device identification from the terminating service
         guard let deviceKey = extractDeviceKey(from: service) else {
-            logger.warning("Could not extract device identification from removed device")
+            logger.warning("Could not extract device identification from disconnected device", context: [
+                "service": service,
+                "impact": "Device disconnection event may be lost"
+            ])
             return
         }
+        
+        logger.debug("Extracted device key from disconnection notification", context: [
+            "deviceKey": deviceKey
+        ])
         
         // Look up the cached device information
         if let cachedDevice = connectedDevices.removeValue(forKey: deviceKey) {
             logger.info("USB device disconnected", context: [
+                "event": "device_disconnected",
                 "busID": cachedDevice.busID,
                 "deviceID": cachedDevice.deviceID,
+                "deviceKey": deviceKey,
                 "vendorID": String(format: "0x%04x", cachedDevice.vendorID),
                 "productID": String(format: "0x%04x", cachedDevice.productID),
+                "deviceClass": String(format: "0x%02x", cachedDevice.deviceClass),
+                "deviceClassDescription": getUSBClassDescription(cachedDevice.deviceClass),
+                "speed": cachedDevice.speed.rawValue,
+                "speedDescription": getUSBSpeedDescription(cachedDevice.speed),
                 "product": cachedDevice.productString ?? "Unknown",
-                "manufacturer": cachedDevice.manufacturerString ?? "Unknown"
+                "manufacturer": cachedDevice.manufacturerString ?? "Unknown",
+                "serial": cachedDevice.serialNumberString ?? "None",
+                "remainingCachedDevices": connectedDevices.count
             ])
             
             // Trigger the disconnection callback with complete device information
+            logger.debug("Triggering device disconnection callback with cached device info")
             onDeviceDisconnected?(cachedDevice)
             
         } else {
             logger.warning("Device disconnected but not found in cache", context: [
-                "deviceKey": deviceKey
+                "deviceKey": deviceKey,
+                "cachedDeviceCount": connectedDevices.count,
+                "cachedDeviceKeys": Array(connectedDevices.keys),
+                "possibleCause": "Device was connected before monitoring started or cache was cleared"
             ])
             
             // Create minimal device information from available data
@@ -1385,37 +1826,83 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                     serialNumberString: nil
                 )
                 
-                logger.info("USB device disconnected (minimal info)", context: [
+                logger.info("USB device disconnected (minimal info only)", context: [
+                    "event": "device_disconnected_minimal",
                     "busID": busID,
-                    "deviceID": deviceID
+                    "deviceID": deviceID,
+                    "deviceKey": deviceKey,
+                    "dataAvailable": "minimal",
+                    "reason": "Device not found in cache"
                 ])
                 
+                logger.debug("Triggering device disconnection callback with minimal device info")
                 onDeviceDisconnected?(minimalDevice)
+            } else {
+                logger.error("Invalid device key format for disconnected device", context: [
+                    "deviceKey": deviceKey,
+                    "expectedFormat": "busID:deviceID",
+                    "impact": "Disconnection callback will not be triggered"
+                ])
             }
         }
     }
     
     /// Extract device key (busID:deviceID) from IOKit service for cache lookup
     private func extractDeviceKey(from service: io_service_t) -> String? {
+        logger.debug("Extracting device key from IOKit service for cache lookup")
+        
         // Try to extract locationID and derive bus/device IDs
         guard let locationID = getUInt32PropertyOptional(from: service, key: "locationID") else {
-            logger.debug("Could not get locationID from removed device")
+            logger.debug("Could not get locationID from device service", context: [
+                "service": service,
+                "property": "locationID",
+                "result": "nil"
+            ])
             return nil
         }
+        
+        logger.debug("Successfully extracted locationID", context: [
+            "locationID": String(format: "0x%08x", locationID)
+        ])
         
         let busNumber = (locationID >> 24) & 0xFF
         let busID = String(format: "%d", busNumber)
         
+        logger.debug("Derived bus ID from locationID", context: [
+            "busNumber": String(format: "0x%02x", busNumber),
+            "busID": busID
+        ])
+        
         // Try to get USB Address first (more reliable)
         if let address = getUInt8PropertyOptional(from: service, key: "USB Address") {
             let deviceID = String(format: "%d", address)
-            return "\(busID):\(deviceID)"
+            let deviceKey = "\(busID):\(deviceID)"
+            
+            logger.debug("Successfully extracted device key using USB Address", context: [
+                "usbAddress": String(format: "0x%02x", address),
+                "deviceID": deviceID,
+                "deviceKey": deviceKey,
+                "method": "USB Address"
+            ])
+            
+            return deviceKey
         }
+        
+        logger.debug("USB Address not available, falling back to locationID extraction")
         
         // Fallback to extracting from locationID
         let deviceAddress = locationID & 0xFF
         let deviceID = String(format: "%d", deviceAddress)
-        return "\(busID):\(deviceID)"
+        let deviceKey = "\(busID):\(deviceID)"
+        
+        logger.debug("Successfully extracted device key using locationID fallback", context: [
+            "deviceAddress": String(format: "0x%02x", deviceAddress),
+            "deviceID": deviceID,
+            "deviceKey": deviceKey,
+            "method": "locationID fallback"
+        ])
+        
+        return deviceKey
     }
 }
 
