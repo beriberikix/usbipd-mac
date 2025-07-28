@@ -165,25 +165,48 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     }
     
     public func getDevice(busID: String, deviceID: String) throws -> USBDevice? {
-        return try queue.sync {
+        return queue.sync {
             logger.debug("Looking for specific device", context: ["busID": busID, "deviceID": deviceID])
             
-            // Discover devices directly without calling the public method to avoid queue deadlock
-            let devices = try discoverDevicesInternal()
-            let device = devices.first { $0.busID == busID && $0.deviceID == deviceID }
-            
-            if let device = device {
-                logger.debug("Found requested device", context: [
-                    "busID": device.busID,
-                    "deviceID": device.deviceID,
-                    "vendorID": String(format: "0x%04x", device.vendorID),
-                    "productID": String(format: "0x%04x", device.productID)
+            // Handle IOKit errors gracefully by catching them and returning nil
+            // This satisfies requirement 4.5: handle IOKit errors gracefully and return nil
+            do {
+                // Discover devices directly without calling the public method to avoid queue deadlock
+                let devices = try discoverDevicesInternal()
+                
+                // Find device matching the specified bus and device IDs
+                // This satisfies requirement 4.4: return only the device matching the specified IDs
+                let device = devices.first { device in
+                    return device.busID == busID && device.deviceID == deviceID
+                }
+                
+                if let device = device {
+                    logger.debug("Found requested device", context: [
+                        "busID": device.busID,
+                        "deviceID": device.deviceID,
+                        "vendorID": String(format: "0x%04x", device.vendorID),
+                        "productID": String(format: "0x%04x", device.productID),
+                        "product": device.productString ?? "Unknown"
+                    ])
+                    return device
+                } else {
+                    // This satisfies requirements 4.2 and 4.3: return nil for invalid IDs or disconnected devices
+                    logger.warning("Device not found", context: [
+                        "busID": busID, 
+                        "deviceID": deviceID,
+                        "totalDevicesFound": devices.count
+                    ])
+                    return nil
+                }
+            } catch {
+                // This satisfies requirement 4.5: handle IOKit errors gracefully and return nil
+                logger.error("IOKit error during device lookup, returning nil", context: [
+                    "busID": busID,
+                    "deviceID": deviceID,
+                    "error": error.localizedDescription
                 ])
-            } else {
-                logger.warning("Device not found", context: ["busID": busID, "deviceID": deviceID])
+                return nil
             }
-            
-            return device
         }
     }
     
