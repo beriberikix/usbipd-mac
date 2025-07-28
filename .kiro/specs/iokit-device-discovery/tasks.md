@@ -21,14 +21,14 @@
     - **Commit**: `feat(device): implement IOKit device enumeration`
     - _Requirements: 1.1, 1.3, 6.1_
 
-  - [ ] 2.2 Implement device property extraction from IOKit
+  - [x] 2.2 Implement device property extraction from IOKit
     - Create extractDeviceProperties() method to read IOKit device properties
     - Map IOKit property keys to USBDevice struct fields (VID, PID, class, etc.)
     - Handle missing or invalid properties gracefully with appropriate defaults
     - **Commit**: `feat(device): add IOKit property extraction`
     - _Requirements: 2.1, 2.2, 2.3, 2.7_
 
-  - [ ] 2.3 Implement USB device object creation and ID generation
+  - [-] 2.3 Implement USB device object creation and ID generation
     - Create createUSBDeviceFromService() method to convert IOKit service to USBDevice
     - Implement bus ID and device ID generation from IOKit locationID
     - Add string descriptor extraction for manufacturer, product, and serial number

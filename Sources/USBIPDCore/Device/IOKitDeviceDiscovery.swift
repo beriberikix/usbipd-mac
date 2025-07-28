@@ -129,7 +129,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             while service != 0 {
                 let device = try withIOKitObject(service) { service in
-                    return try createUSBDevice(from: service)
+                    return try createUSBDeviceFromService(service)
                 }
                 
                 devices.append(device)
@@ -176,11 +176,13 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     // MARK: - Private Methods
     
-    private func createUSBDevice(from service: io_service_t) throws -> USBDevice {
+    /// Create USBDevice object from IOKit service
+    /// Converts IOKit service to USBDevice with proper bus/device ID generation
+    private func createUSBDeviceFromService(_ service: io_service_t) throws -> USBDevice {
         // Extract device properties using the comprehensive property extraction method
         let properties = try extractDeviceProperties(from: service)
         
-        // Generate bus and device IDs
+        // Generate bus and device IDs from IOKit locationID
         let busID = try getBusID(from: service)
         let deviceID = try getDeviceID(from: service)
         
@@ -442,6 +444,8 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
 
     
+    /// Generate bus ID from IOKit locationID
+    /// Bus ID is extracted from the high 24 bits of locationID for USB/IP compatibility
     private func getBusID(from service: io_service_t) throws -> String {
         // Get the location ID which contains bus information
         let locationID = try getUInt32Property(from: service, key: "locationID")
@@ -449,10 +453,18 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return String(format: "%d", busNumber)
     }
     
+    /// Generate device ID from IOKit locationID and USB Address
+    /// Device ID is extracted from the low 8 bits of locationID or USB Address for USB/IP compatibility
     private func getDeviceID(from service: io_service_t) throws -> String {
-        // Get the address on the bus
-        let address = try getUInt8Property(from: service, key: "USB Address")
-        return String(format: "%d", address)
+        // Try to get the USB Address first (more reliable for device identification)
+        if let address = getUInt8PropertyOptional(from: service, key: "USB Address") {
+            return String(format: "%d", address)
+        }
+        
+        // Fallback to extracting from locationID if USB Address is not available
+        let locationID = try getUInt32Property(from: service, key: "locationID")
+        let deviceAddress = locationID & 0xFF
+        return String(format: "%d", deviceAddress)
     }
     
     private func getUInt32Property(from service: io_service_t, key: String) throws -> UInt32 {
@@ -599,7 +611,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             if isAddedNotification {
                 do {
-                    let device = try createUSBDevice(from: service)
+                    let device = try createUSBDeviceFromService(service)
                     logger.info("USB device connected", context: [
                         "busID": device.busID,
                         "deviceID": device.deviceID,
