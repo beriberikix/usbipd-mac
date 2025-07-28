@@ -39,6 +39,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     private let logger: Logger
     private let queue: DispatchQueue
+    private let ioKit: IOKitInterface
     
     // MARK: - Initialization
     
@@ -52,8 +53,25 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             label: "com.usbipd.mac.device-discovery",
             qos: .userInitiated
         )
+        self.ioKit = RealIOKitInterface()
         
         logger.debug("IOKitDeviceDiscovery initialized with dedicated dispatch queue")
+    }
+    
+    /// Internal initializer for testing with dependency injection
+    internal init(ioKit: IOKitInterface, logger: Logger? = nil) {
+        self.ioKit = ioKit
+        self.logger = logger ?? Logger(
+            config: LoggerConfig(level: .info), 
+            subsystem: "com.usbipd.mac", 
+            category: "device-discovery"
+        )
+        self.queue = DispatchQueue(
+            label: "com.usbipd.mac.device-discovery",
+            qos: .userInitiated
+        )
+        
+        self.logger.debug("IOKitDeviceDiscovery initialized with injected IOKit interface for testing")
     }
     
     deinit {
@@ -96,7 +114,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     private func withIOKitObject<T>(_ object: io_object_t, _ block: (io_object_t) throws -> T) rethrows -> T {
         defer {
             if object != 0 {
-                IOObjectRelease(object)
+                _ = ioKit.objectRelease(object)
             }
         }
         return try block(object)
@@ -510,7 +528,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             let unsupportedDevices = 0
             
             // Create matching dictionary for USB devices
-            guard let matchingDict = IOServiceMatching(kIOUSBDeviceClassName) else {
+            guard let matchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
                 logger.error("Failed to create IOKit matching dictionary")
                 throw DeviceDiscoveryError.failedToCreateMatchingDictionary
             }
@@ -520,7 +538,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             ])
             
             var iterator: io_iterator_t = 0
-            let result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
+            let result = ioKit.serviceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
             
             guard result == KERN_SUCCESS else {
                 throw handleServiceAccessError(result, operation: "IOServiceGetMatchingServices")
@@ -533,7 +551,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return withIOKitObject(iterator) { iterator in
             logger.debug("Iterating through discovered USB devices")
             var deviceCount = 0
-            var service: io_service_t = IOIteratorNext(iterator)
+            var service: io_service_t = ioKit.iteratorNext(iterator)
             
             while service != 0 {
                 do {
@@ -602,7 +620,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                     skippedDevices += 1
                 }
                 
-                service = IOIteratorNext(iterator)
+                service = ioKit.iteratorNext(iterator)
             }
             
             // Log comprehensive discovery summary
@@ -1011,7 +1029,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Try to extract speed from a specific property key
     private func tryExtractSpeed(from service: io_service_t, key: String) -> USBSpeed? {
-        guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
             return nil
         }
         
@@ -1126,7 +1144,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             "property": key
         ])
         
-        guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
             logger.warning("Missing required UInt16 property", context: [
                 "property": key,
                 "error_type": "missing_property",
@@ -1160,7 +1178,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             "property": key
         ])
         
-        guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
             logger.warning("Missing required UInt8 property", context: [
                 "property": key,
                 "error_type": "missing_property",
@@ -1194,7 +1212,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             "property": key
         ])
         
-        guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
             logger.debug("String property not found", context: [
                 "property": key,
                 "result": "nil"
@@ -1247,7 +1265,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     }
     
     private func getUInt32Property(from service: io_service_t, key: String) throws -> UInt32 {
-        guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
             logger.warning("Missing required property", context: [
                 "key": key,
                 "error_type": "missing_property"
@@ -1269,7 +1287,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     }
     
     private func getUInt32PropertyOptional(from service: io_service_t, key: String) -> UInt32? {
-        guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue(),
+        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue(),
               let number = property as? NSNumber else {
             return nil
         }
@@ -1278,7 +1296,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     }
     
     private func getUInt8PropertyOptional(from service: io_service_t, key: String) -> UInt8? {
-        guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue(),
+        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue(),
               let number = property as? NSNumber else {
             return nil
         }
@@ -1374,7 +1392,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             // Create notification port
             logger.debug("Creating IOKit notification port")
-            notificationPort = IONotificationPortCreate(kIOMasterPortDefault)
+            notificationPort = ioKit.notificationPortCreate(kIOMasterPortDefault)
             guard let port = notificationPort else {
                 let error = handleNotificationError(KERN_FAILURE, operation: "IONotificationPortCreate")
                 logger.error("Failed to create IOKit notification port", context: [
@@ -1394,8 +1412,12 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             // Set up device added notifications
             logger.debug("Setting up device connection notifications")
-            let addedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
-            let addedResult = IOServiceAddMatchingNotification(
+            guard let addedMatchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
+                let error = DeviceDiscoveryError.failedToCreateMatchingDictionary
+                logger.error("Failed to create matching dictionary for device connection notifications")
+                throw error
+            }
+            let addedResult = ioKit.serviceAddMatchingNotification(
                 port,
                 kIOFirstMatchNotification,
                 addedMatchingDict,
@@ -1419,8 +1441,12 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             // Set up device removed notifications
             logger.debug("Setting up device disconnection notifications")
-            let removedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
-            let removedResult = IOServiceAddMatchingNotification(
+            guard let removedMatchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
+                let error = DeviceDiscoveryError.failedToCreateMatchingDictionary
+                logger.error("Failed to create matching dictionary for device disconnection notifications")
+                throw error
+            }
+            let removedResult = ioKit.serviceAddMatchingNotification(
                 port,
                 kIOTerminatedNotification,
                 removedMatchingDict,
@@ -1501,14 +1527,14 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         // Clean up device added iterator
         if addedIterator != 0 {
             // Consume any remaining notifications before cleanup
-            var service: io_service_t = IOIteratorNext(addedIterator)
+            var service: io_service_t = ioKit.iteratorNext(addedIterator)
             while service != 0 {
-                IOObjectRelease(service)
-                service = IOIteratorNext(addedIterator)
+                _ = ioKit.objectRelease(service)
+                service = ioKit.iteratorNext(addedIterator)
             }
             
             // Release the iterator itself
-            let result = IOObjectRelease(addedIterator)
+            let result = ioKit.objectRelease(addedIterator)
             if result != KERN_SUCCESS {
                 logger.warning("Failed to release device added iterator", context: [
                     "kern_return": result
@@ -1522,14 +1548,14 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         // Clean up device removed iterator
         if removedIterator != 0 {
             // Consume any remaining notifications before cleanup
-            var service: io_service_t = IOIteratorNext(removedIterator)
+            var service: io_service_t = ioKit.iteratorNext(removedIterator)
             while service != 0 {
-                IOObjectRelease(service)
-                service = IOIteratorNext(removedIterator)
+                _ = ioKit.objectRelease(service)
+                service = ioKit.iteratorNext(removedIterator)
             }
             
             // Release the iterator itself
-            let result = IOObjectRelease(removedIterator)
+            let result = ioKit.objectRelease(removedIterator)
             if result != KERN_SUCCESS {
                 logger.warning("Failed to release device removed iterator", context: [
                     "kern_return": result
@@ -1553,7 +1579,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             IONotificationPortSetDispatchQueue(port, nil)
             
             // Destroy the notification port
-            IONotificationPortDestroy(port)
+            ioKit.notificationPortDestroy(port)
             notificationPort = nil
             
             logger.debug("Successfully destroyed notification port")
@@ -1593,13 +1619,13 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         // Check for any leftover iterators
         if addedIterator != 0 {
             logger.warning("Found leftover added iterator, cleaning up")
-            IOObjectRelease(addedIterator)
+            _ = ioKit.objectRelease(addedIterator)
             addedIterator = 0
         }
         
         if removedIterator != 0 {
             logger.warning("Found leftover removed iterator, cleaning up")
-            IOObjectRelease(removedIterator)
+            _ = ioKit.objectRelease(removedIterator)
             removedIterator = 0
         }
         
@@ -1649,8 +1675,8 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         
         while service != 0 {
             defer {
-                IOObjectRelease(service)
-                service = IOIteratorNext(iterator)
+                _ = ioKit.objectRelease(service)
+                service = ioKit.iteratorNext(iterator)
             }
             
             deviceCount += 1
