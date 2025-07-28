@@ -13,7 +13,7 @@
   - **Commit**: `feat(device): add IOKit foundation and class structure`
   - _Requirements: 5.1, 5.4, 6.3_
 
-- [ ] 2. Implement core device enumeration functionality
+- [x] 2. Implement core device enumeration functionality
   - [x] 2.1 Create device discovery method with IOKit service matching
     - Implement discoverDevices() method using IOServiceMatching for USB devices
     - Create IOKit service iterator and enumerate all connected USB devices
@@ -28,7 +28,7 @@
     - **Commit**: `feat(device): add IOKit property extraction`
     - _Requirements: 2.1, 2.2, 2.3, 2.7_
 
-  - [-] 2.3 Implement USB device object creation and ID generation
+  - [x] 2.3 Implement USB device object creation and ID generation
     - Create createUSBDeviceFromService() method to convert IOKit service to USBDevice
     - Implement bus ID and device ID generation from IOKit locationID
     - Add string descriptor extraction for manufacturer, product, and serial number
@@ -36,7 +36,7 @@
     - _Requirements: 2.4, 2.5, 2.6_
 
 - [ ] 3. Implement device monitoring and notification system
-  - [ ] 3.1 Create IOKit notification port and callback setup
+  - [x] 3.1 Create IOKit notification port and callback setup
     - Implement startNotifications() method with IONotificationPortCreate
     - Set up notification port on dedicated dispatch queue for thread safety
     - Register for kIOFirstMatchNotification and kIOTerminatedNotification
