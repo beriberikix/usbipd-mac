@@ -130,7 +130,7 @@ public struct TestUSBDeviceFixtures {
     public static let deviceMissingOptionalProperties = MockUSBDevice(
         vendorID: 0x1234,
         productID: 0x5678,
-        missingProperties: [kUSBDeviceClass, kUSBDeviceSubClass, kUSBDeviceProtocol, "Speed"]
+        missingProperties: [kUSBDeviceClass, kUSBDeviceSubClass, kUSBDeviceProtocol, "Speed", "Device Speed"]
     )
     
     /// Device with no string descriptors (should work with nil values)
