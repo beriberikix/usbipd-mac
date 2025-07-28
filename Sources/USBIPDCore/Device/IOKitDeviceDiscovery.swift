@@ -57,7 +57,17 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     }
     
     deinit {
-        stopNotifications()
+        // Ensure notifications are stopped and resources are cleaned up
+        if isMonitoring {
+            logger.warning("IOKitDeviceDiscovery being deinitialized while monitoring is active")
+            stopNotifications()
+        }
+        
+        // Final verification that all resources are cleaned up
+        if !verifyNotificationCleanup() {
+            logger.error("IOKitDeviceDiscovery deinitialized with unclean notification state")
+        }
+        
         logger.debug("IOKitDeviceDiscovery deinitialized")
     }
     
@@ -511,6 +521,9 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                 return // Already started
             }
             
+            // Ensure clean state before starting
+            ensureCleanNotificationState()
+            
             logger.info("Starting USB device notifications")
             
             // Create notification port
@@ -574,34 +587,166 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             logger.info("Stopping USB device notifications")
             
-            if let port = notificationPort {
-                IONotificationPortDestroy(port)
-                notificationPort = nil
-                logger.debug("Destroyed notification port")
-            }
+            // Set monitoring flag to false first to prevent race conditions
+            isMonitoring = false
             
-            if addedIterator != 0 {
-                IOObjectRelease(addedIterator)
-                addedIterator = 0
-                logger.debug("Released device added iterator")
-            }
+            // Clean up notification iterators first to stop new notifications
+            cleanupNotificationIterators()
             
-            if removedIterator != 0 {
-                IOObjectRelease(removedIterator)
-                removedIterator = 0
-                logger.debug("Released device removed iterator")
-            }
+            // Destroy notification port after iterators are cleaned up
+            cleanupNotificationPort()
             
             // Clear the device cache when stopping notifications
-            let cachedDeviceCount = connectedDevices.count
-            connectedDevices.removeAll()
-            if cachedDeviceCount > 0 {
-                logger.debug("Cleared device cache", context: ["deviceCount": cachedDeviceCount])
+            cleanupDeviceCache()
+            
+            // Verify that cleanup was successful
+            if verifyNotificationCleanup() {
+                logger.info("USB device notifications stopped successfully")
+            } else {
+                logger.error("USB device notifications stopped but cleanup verification failed")
+            }
+        }
+    }
+    
+    /// Clean up notification iterators with proper resource management
+    /// Ensures all iterator resources are properly released
+    private func cleanupNotificationIterators() {
+        logger.debug("Cleaning up notification iterators")
+        
+        // Clean up device added iterator
+        if addedIterator != 0 {
+            // Consume any remaining notifications before cleanup
+            var service: io_service_t = IOIteratorNext(addedIterator)
+            while service != 0 {
+                IOObjectRelease(service)
+                service = IOIteratorNext(addedIterator)
             }
             
-            isMonitoring = false
-            logger.info("USB device notifications stopped")
+            // Release the iterator itself
+            let result = IOObjectRelease(addedIterator)
+            if result != KERN_SUCCESS {
+                logger.warning("Failed to release device added iterator", context: [
+                    "kern_return": result
+                ])
+            } else {
+                logger.debug("Successfully released device added iterator")
+            }
+            addedIterator = 0
         }
+        
+        // Clean up device removed iterator
+        if removedIterator != 0 {
+            // Consume any remaining notifications before cleanup
+            var service: io_service_t = IOIteratorNext(removedIterator)
+            while service != 0 {
+                IOObjectRelease(service)
+                service = IOIteratorNext(removedIterator)
+            }
+            
+            // Release the iterator itself
+            let result = IOObjectRelease(removedIterator)
+            if result != KERN_SUCCESS {
+                logger.warning("Failed to release device removed iterator", context: [
+                    "kern_return": result
+                ])
+            } else {
+                logger.debug("Successfully released device removed iterator")
+            }
+            removedIterator = 0
+        }
+        
+        logger.debug("Notification iterator cleanup completed")
+    }
+    
+    /// Clean up notification port with proper resource management
+    /// Ensures the notification port is properly destroyed and nullified
+    private func cleanupNotificationPort() {
+        logger.debug("Cleaning up notification port")
+        
+        if let port = notificationPort {
+            // Remove the dispatch queue from the notification port before destroying
+            IONotificationPortSetDispatchQueue(port, nil)
+            
+            // Destroy the notification port
+            IONotificationPortDestroy(port)
+            notificationPort = nil
+            
+            logger.debug("Successfully destroyed notification port")
+        } else {
+            logger.debug("Notification port was already nil")
+        }
+    }
+    
+    /// Clean up device cache with thread-safe state management
+    /// Clears the connected devices cache and logs the cleanup
+    private func cleanupDeviceCache() {
+        logger.debug("Cleaning up device cache")
+        
+        let cachedDeviceCount = connectedDevices.count
+        connectedDevices.removeAll()
+        
+        if cachedDeviceCount > 0 {
+            logger.debug("Cleared device cache", context: [
+                "deviceCount": cachedDeviceCount
+            ])
+        } else {
+            logger.debug("Device cache was already empty")
+        }
+    }
+    
+    /// Ensure clean notification state before starting notifications
+    /// Verifies that all notification resources are properly cleaned up
+    private func ensureCleanNotificationState() {
+        logger.debug("Ensuring clean notification state")
+        
+        // Check for any leftover notification port
+        if notificationPort != nil {
+            logger.warning("Found leftover notification port, cleaning up")
+            cleanupNotificationPort()
+        }
+        
+        // Check for any leftover iterators
+        if addedIterator != 0 {
+            logger.warning("Found leftover added iterator, cleaning up")
+            IOObjectRelease(addedIterator)
+            addedIterator = 0
+        }
+        
+        if removedIterator != 0 {
+            logger.warning("Found leftover removed iterator, cleaning up")
+            IOObjectRelease(removedIterator)
+            removedIterator = 0
+        }
+        
+        // Clear device cache if it has stale data
+        if !connectedDevices.isEmpty {
+            logger.warning("Found stale device cache, clearing")
+            connectedDevices.removeAll()
+        }
+        
+        logger.debug("Notification state is clean")
+    }
+    
+    /// Verify that notification resources are properly cleaned up
+    /// Returns true if all resources are properly released
+    private func verifyNotificationCleanup() -> Bool {
+        let isClean = notificationPort == nil && 
+                     addedIterator == 0 && 
+                     removedIterator == 0 && 
+                     !isMonitoring
+        
+        if isClean {
+            logger.debug("Notification cleanup verification passed")
+        } else {
+            logger.warning("Notification cleanup verification failed", context: [
+                "hasNotificationPort": notificationPort != nil,
+                "hasAddedIterator": addedIterator != 0,
+                "hasRemovedIterator": removedIterator != 0,
+                "isMonitoring": isMonitoring
+            ])
+        }
+        
+        return isClean
     }
     
     // Changed from private to internal for callback access
