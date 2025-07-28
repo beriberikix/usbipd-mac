@@ -102,11 +102,395 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return try block(object)
     }
     
-    /// Convert IOKit error codes to DeviceDiscoveryError
-    private func handleIOKitError(_ result: kern_return_t, operation: String) -> DeviceDiscoveryError {
-        let errorMessage = "IOKit operation '\(operation)' failed with code: \(result)"
-        logger.error(errorMessage, context: ["kern_return": result])
+    // MARK: - IOKit Error Handling Utilities
+    
+    /// Convert IOKit error codes to DeviceDiscoveryError with detailed logging
+    /// Provides comprehensive error mapping and logging for IOKit operations
+    private func handleIOKitError(_ result: kern_return_t, operation: String, context: [String: Any] = [:]) -> DeviceDiscoveryError {
+        let errorDescription = getIOKitErrorDescription(result)
+        let errorMessage = "IOKit operation '\(operation)' failed: \(errorDescription)"
+        
+        var logContext = context
+        logContext["kern_return"] = result
+        logContext["operation"] = operation
+        logContext["error_description"] = errorDescription
+        logContext["error_category"] = getIOKitErrorCategory(result)
+        
+        logger.error(errorMessage, context: logContext)
         return DeviceDiscoveryError.ioKitError(result, errorMessage)
+    }
+    
+    /// Get human-readable description for IOKit error codes
+    /// Maps common IOKit error codes to descriptive messages
+    private func getIOKitErrorDescription(_ result: kern_return_t) -> String {
+        switch result {
+        case KERN_SUCCESS:
+            return "Success"
+        case KERN_INVALID_ARGUMENT:
+            return "Invalid argument provided to IOKit function"
+        case KERN_FAILURE:
+            return "General IOKit failure"
+        case KERN_RESOURCE_SHORTAGE:
+            return "Insufficient system resources"
+        case KERN_NO_SPACE:
+            return "No space available"
+        case KERN_INVALID_ADDRESS:
+            return "Invalid memory address"
+        case KERN_PROTECTION_FAILURE:
+            return "Memory protection violation"
+        case KERN_NO_ACCESS:
+            return "Access denied - insufficient privileges"
+        case KERN_MEMORY_FAILURE:
+            return "Memory allocation failure"
+        case KERN_MEMORY_ERROR:
+            return "Memory error"
+        case KERN_NOT_IN_SET:
+            return "Object not found in set"
+        case KERN_NAME_EXISTS:
+            return "Name already exists"
+        case KERN_ABORTED:
+            return "Operation aborted"
+        case KERN_INVALID_NAME:
+            return "Invalid name specified"
+        case KERN_INVALID_TASK:
+            return "Invalid task"
+        case KERN_INVALID_RIGHT:
+            return "Invalid right"
+        case KERN_INVALID_VALUE:
+            return "Invalid value"
+        case KERN_UREFS_OVERFLOW:
+            return "User references overflow"
+        case KERN_INVALID_CAPABILITY:
+            return "Invalid capability"
+        case KERN_RIGHT_EXISTS:
+            return "Right already exists"
+        case KERN_INVALID_HOST:
+            return "Invalid host"
+        case KERN_MEMORY_PRESENT:
+            return "Memory already present"
+        case KERN_MEMORY_DATA_MOVED:
+            return "Memory data moved"
+        case KERN_MEMORY_RESTART_COPY:
+            return "Memory restart copy"
+        case KERN_INVALID_PROCESSOR_SET:
+            return "Invalid processor set"
+        case KERN_POLICY_LIMIT:
+            return "Policy limit exceeded"
+        case KERN_INVALID_POLICY:
+            return "Invalid policy"
+        case KERN_INVALID_OBJECT:
+            return "Invalid object"
+        case KERN_ALREADY_IN_SET:
+            return "Object already in set"
+        case KERN_NOT_FOUND:
+            return "Object not found"
+        case KERN_NOT_RECEIVER:
+            return "Not a receiver"
+        case KERN_SEMAPHORE_DESTROYED:
+            return "Semaphore destroyed"
+        case KERN_RPC_SERVER_TERMINATED:
+            return "RPC server terminated"
+        case KERN_RPC_TERMINATE_ORPHAN:
+            return "RPC terminate orphan"
+        case KERN_RPC_CONTINUE_ORPHAN:
+            return "RPC continue orphan"
+        case KERN_NOT_SUPPORTED:
+            return "Operation not supported"
+        case KERN_NODE_DOWN:
+            return "Node is down"
+        case KERN_NOT_WAITING:
+            return "Thread not waiting"
+        case KERN_OPERATION_TIMED_OUT:
+            return "Operation timed out"
+        case KERN_CODESIGN_ERROR:
+            return "Code signing error"
+        case KERN_POLICY_STATIC:
+            return "Policy is static"
+
+        case KERN_DENIED:
+            return "Operation denied"
+
+        case KERN_RETURN_MAX:
+            return "Maximum return value"
+        default:
+            // Handle IOKit-specific error codes (cast to UInt32 for comparison)
+            let unsignedResult = UInt32(bitPattern: result)
+            if unsignedResult >= 0xe00002bc && unsignedResult <= 0xe00002ff {
+                return getIOKitSpecificErrorDescription(result)
+            }
+            return "Unknown IOKit error (code: \(String(format: "0x%08x", UInt32(bitPattern: result))))"
+        }
+    }
+    
+    /// Get descriptions for IOKit-specific error codes
+    /// Handles IOKit framework specific error codes beyond general kernel errors
+    private func getIOKitSpecificErrorDescription(_ result: kern_return_t) -> String {
+        let unsignedResult = UInt32(bitPattern: result)
+        switch unsignedResult {
+        case 0xe00002bc: // kIOReturnError
+            return "General IOKit error"
+        case 0xe00002bd: // kIOReturnNoMemory
+            return "IOKit memory allocation failed"
+        case 0xe00002be: // kIOReturnNoResources
+            return "IOKit resources unavailable"
+        case 0xe00002bf: // kIOReturnIPCError
+            return "IOKit IPC communication error"
+        case 0xe00002c0: // kIOReturnNoDevice
+            return "IOKit device not found"
+        case 0xe00002c1: // kIOReturnNotPrivileged
+            return "IOKit operation requires elevated privileges"
+        case 0xe00002c2: // kIOReturnBadArgument
+            return "IOKit invalid argument"
+        case 0xe00002c3: // kIOReturnLockedRead
+            return "IOKit locked for reading"
+        case 0xe00002c4: // kIOReturnLockedWrite
+            return "IOKit locked for writing"
+        case 0xe00002c5: // kIOReturnExclusiveAccess
+            return "IOKit device requires exclusive access"
+        case 0xe00002c6: // kIOReturnBadMessageID
+            return "IOKit invalid message ID"
+        case 0xe00002c7: // kIOReturnUnsupported
+            return "IOKit operation not supported"
+        case 0xe00002c8: // kIOReturnVMError
+            return "IOKit virtual memory error"
+        case 0xe00002c9: // kIOReturnInternalError
+            return "IOKit internal error"
+        case 0xe00002ca: // kIOReturnIOError
+            return "IOKit I/O error"
+        case 0xe00002cb: // kIOReturnCannotLock
+            return "IOKit cannot acquire lock"
+        case 0xe00002cc: // kIOReturnNotOpen
+            return "IOKit device not open"
+        case 0xe00002cd: // kIOReturnNotReadable
+            return "IOKit device not readable"
+        case 0xe00002ce: // kIOReturnNotWritable
+            return "IOKit device not writable"
+        case 0xe00002cf: // kIOReturnNotAligned
+            return "IOKit data not aligned"
+        case 0xe00002d0: // kIOReturnBadMedia
+            return "IOKit bad media"
+        case 0xe00002d1: // kIOReturnStillOpen
+            return "IOKit device still open"
+        case 0xe00002d2: // kIOReturnRLDError
+            return "IOKit runtime linker error"
+        case 0xe00002d3: // kIOReturnDMAError
+            return "IOKit DMA error"
+        case 0xe00002d4: // kIOReturnBusy
+            return "IOKit device busy"
+        case 0xe00002d5: // kIOReturnTimeout
+            return "IOKit operation timed out"
+        case 0xe00002d6: // kIOReturnOffline
+            return "IOKit device offline"
+        case 0xe00002d7: // kIOReturnNotReady
+            return "IOKit device not ready"
+        case 0xe00002d8: // kIOReturnNotAttached
+            return "IOKit device not attached"
+        case 0xe00002d9: // kIOReturnNoChannels
+            return "IOKit no channels available"
+        case 0xe00002da: // kIOReturnNoSpace
+            return "IOKit no space available"
+        case 0xe00002db: // kIOReturnPortExists
+            return "IOKit port already exists"
+        case 0xe00002dc: // kIOReturnCannotWire
+            return "IOKit cannot wire memory"
+        case 0xe00002dd: // kIOReturnNoInterrupt
+            return "IOKit no interrupt available"
+        case 0xe00002de: // kIOReturnNoFrames
+            return "IOKit no frames available"
+        case 0xe00002df: // kIOReturnMessageTooLarge
+            return "IOKit message too large"
+        case 0xe00002e0: // kIOReturnNotPermitted
+            return "IOKit operation not permitted"
+        case 0xe00002e1: // kIOReturnNoPower
+            return "IOKit insufficient power"
+        case 0xe00002e2: // kIOReturnNoMedia
+            return "IOKit no media present"
+        case 0xe00002e3: // kIOReturnUnformattedMedia
+            return "IOKit media not formatted"
+        case 0xe00002e4: // kIOReturnUnsupportedMode
+            return "IOKit unsupported mode"
+        case 0xe00002e5: // kIOReturnUnderrun
+            return "IOKit data underrun"
+        case 0xe00002e6: // kIOReturnOverrun
+            return "IOKit data overrun"
+        case 0xe00002e7: // kIOReturnDeviceError
+            return "IOKit device error"
+        case 0xe00002e8: // kIOReturnNoCompletion
+            return "IOKit no completion routine"
+        case 0xe00002e9: // kIOReturnAborted
+            return "IOKit operation aborted"
+        case 0xe00002ea: // kIOReturnNoBandwidth
+            return "IOKit insufficient bandwidth"
+        case 0xe00002eb: // kIOReturnNotResponding
+            return "IOKit device not responding"
+        case 0xe00002ec: // kIOReturnIsoTooOld
+            return "IOKit isochronous request too old"
+        case 0xe00002ed: // kIOReturnIsoTooNew
+            return "IOKit isochronous request too new"
+        case 0xe00002ee: // kIOReturnNotFound
+            return "IOKit object not found"
+        case 0xe00002ef: // kIOReturnInvalid
+            return "IOKit invalid operation"
+        default:
+            return "Unknown IOKit-specific error (code: \(String(format: "0x%08x", unsignedResult)))"
+        }
+    }
+    
+    /// Categorize IOKit errors for better error handling
+    /// Groups errors into categories for appropriate handling strategies
+    private func getIOKitErrorCategory(_ result: kern_return_t) -> String {
+        let unsignedResult = UInt32(bitPattern: result)
+        switch result {
+        case KERN_SUCCESS:
+            return "success"
+        case KERN_NO_ACCESS, KERN_PROTECTION_FAILURE:
+            return "permission"
+        case KERN_RESOURCE_SHORTAGE, KERN_NO_SPACE, KERN_MEMORY_FAILURE, KERN_MEMORY_ERROR:
+            return "resource"
+        case KERN_INVALID_ARGUMENT, KERN_INVALID_ADDRESS, KERN_INVALID_VALUE:
+            return "argument"
+        case KERN_NOT_FOUND:
+            return "not_found"
+        case KERN_OPERATION_TIMED_OUT:
+            return "timeout"
+        case KERN_NOT_SUPPORTED:
+            return "unsupported"
+        default:
+            // Check IOKit-specific error codes
+            switch unsignedResult {
+            case 0xe00002c1: // kIOReturnNotPrivileged
+                return "permission"
+            case 0xe00002bd: // kIOReturnNoMemory
+                return "resource"
+            case 0xe00002c2: // kIOReturnBadArgument
+                return "argument"
+            case 0xe00002c0, 0xe00002ee: // kIOReturnNoDevice, kIOReturnNotFound
+                return "not_found"
+            case 0xe00002d5: // kIOReturnTimeout
+                return "timeout"
+            case 0xe00002d4: // kIOReturnBusy
+                return "busy"
+            case 0xe00002ca, 0xe00002e7: // kIOReturnIOError, kIOReturnDeviceError
+                return "hardware"
+            case 0xe00002c7: // kIOReturnUnsupported
+                return "unsupported"
+            default:
+                return "unknown"
+            }
+        }
+    }
+    
+    /// Helper method for common IOKit service access errors
+    /// Provides standardized error handling for service enumeration failures
+    private func handleServiceAccessError(_ result: kern_return_t, operation: String = "service access") -> DeviceDiscoveryError {
+        let context = [
+            "error_type": "service_access",
+            "common_causes": getServiceAccessErrorCauses(result)
+        ]
+        return handleIOKitError(result, operation: operation, context: context)
+    }
+    
+    /// Helper method for common IOKit property access errors
+    /// Provides standardized error handling for property extraction failures
+    private func handlePropertyAccessError(_ result: kern_return_t, property: String, operation: String = "property access") -> DeviceDiscoveryError {
+        let context = [
+            "error_type": "property_access",
+            "property": property,
+            "common_causes": getPropertyAccessErrorCauses(result)
+        ]
+        return handleIOKitError(result, operation: operation, context: context)
+    }
+    
+    /// Helper method for common IOKit notification errors
+    /// Provides standardized error handling for notification setup failures
+    private func handleNotificationError(_ result: kern_return_t, operation: String = "notification setup") -> DeviceDiscoveryError {
+        let context = [
+            "error_type": "notification",
+            "common_causes": getNotificationErrorCauses(result)
+        ]
+        return handleIOKitError(result, operation: operation, context: context)
+    }
+    
+    /// Get common causes for service access errors
+    private func getServiceAccessErrorCauses(_ result: kern_return_t) -> String {
+        let unsignedResult = UInt32(bitPattern: result)
+        switch result {
+        case KERN_NO_ACCESS:
+            return "Application lacks required entitlements or running without proper privileges"
+        case KERN_RESOURCE_SHORTAGE, KERN_NO_SPACE:
+            return "System resources exhausted, try closing other applications"
+        case KERN_NOT_FOUND:
+            return "No USB devices found or USB subsystem not available"
+        case KERN_INVALID_ARGUMENT:
+            return "Invalid matching dictionary or service parameters"
+        default:
+            if unsignedResult == 0xe00002c1 { // kIOReturnNotPrivileged
+                return "Application lacks required entitlements or running without proper privileges"
+            }
+            return "Check system logs for additional details"
+        }
+    }
+    
+    /// Get common causes for property access errors
+    private func getPropertyAccessErrorCauses(_ result: kern_return_t) -> String {
+        let unsignedResult = UInt32(bitPattern: result)
+        switch result {
+        case KERN_NO_ACCESS:
+            return "Property access denied, device may require elevated privileges"
+        case KERN_NOT_FOUND:
+            return "Property not available for this device type"
+        case KERN_INVALID_ARGUMENT:
+            return "Invalid property key or device service"
+        default:
+            if unsignedResult == 0xe00002c0 { // kIOReturnNoDevice
+                return "Device disconnected during property access"
+            }
+            return "Property may not be supported by this device"
+        }
+    }
+    
+    /// Get common causes for notification errors
+    private func getNotificationErrorCauses(_ result: kern_return_t) -> String {
+        let unsignedResult = UInt32(bitPattern: result)
+        switch result {
+        case KERN_NO_ACCESS:
+            return "Notification setup requires elevated privileges"
+        case KERN_RESOURCE_SHORTAGE:
+            return "System notification resources exhausted"
+        case KERN_INVALID_ARGUMENT:
+            return "Invalid notification parameters or callback"
+        default:
+            if unsignedResult == 0xe00002bc { // kIOReturnError
+                return "IOKit notification system error, try restarting application"
+            }
+            return "Check system notification limits and permissions"
+        }
+    }
+    
+    /// Safely execute IOKit operations with automatic error handling
+    /// Wraps IOKit operations with comprehensive error handling and logging
+    private func safeIOKitOperation<T>(_ operation: String, _ block: () throws -> T) throws -> T {
+        do {
+            logger.debug("Starting IOKit operation", context: ["operation": operation])
+            let result = try block()
+            logger.debug("IOKit operation completed successfully", context: ["operation": operation])
+            return result
+        } catch let error as DeviceDiscoveryError {
+            // Re-throw DeviceDiscoveryError with additional context
+            logger.error("IOKit operation failed", context: [
+                "operation": operation,
+                "error": error.localizedDescription
+            ])
+            throw error
+        } catch {
+            // Convert unexpected errors to DeviceDiscoveryError
+            let message = "Unexpected error during IOKit operation '\(operation)': \(error.localizedDescription)"
+            logger.error(message, context: [
+                "operation": operation,
+                "error_type": String(describing: type(of: error))
+            ])
+            throw DeviceDiscoveryError.ioKitError(-1, message)
+        }
     }
     
     // MARK: - DeviceDiscovery Protocol
@@ -119,21 +503,22 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Internal device discovery method that doesn't use queue synchronization
     private func discoverDevicesInternal() throws -> [USBDevice] {
-        logger.debug("Starting USB device discovery")
-        var devices: [USBDevice] = []
-        
-        // Create matching dictionary for USB devices
-        guard let matchingDict = IOServiceMatching(kIOUSBDeviceClassName) else {
-            logger.error("Failed to create IOKit matching dictionary")
-            throw DeviceDiscoveryError.failedToCreateMatchingDictionary
-        }
-        
-        var iterator: io_iterator_t = 0
-        let result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
-        
-        guard result == KERN_SUCCESS else {
-            throw DeviceDiscoveryError.failedToGetMatchingServices(result)
-        }
+        return try safeIOKitOperation("device discovery") {
+            logger.debug("Starting USB device discovery")
+            var devices: [USBDevice] = []
+            
+            // Create matching dictionary for USB devices
+            guard let matchingDict = IOServiceMatching(kIOUSBDeviceClassName) else {
+                logger.error("Failed to create IOKit matching dictionary")
+                throw DeviceDiscoveryError.failedToCreateMatchingDictionary
+            }
+            
+            var iterator: io_iterator_t = 0
+            let result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
+            
+            guard result == KERN_SUCCESS else {
+                throw handleServiceAccessError(result, operation: "IOServiceGetMatchingServices")
+            }
         
         return try withIOKitObject(iterator) { iterator in
             logger.debug("Iterating through discovered USB devices")
@@ -161,6 +546,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             logger.info("Discovered \(deviceCount) USB devices")
             return devices
+        }
         }
     }
     
@@ -306,40 +692,43 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     /// Create USBDevice object from IOKit service
     /// Converts IOKit service to USBDevice with proper bus/device ID generation
     private func createUSBDeviceFromService(_ service: io_service_t) throws -> USBDevice {
-        // Extract device properties using the comprehensive property extraction method
-        let properties = try extractDeviceProperties(from: service)
-        
-        // Generate bus and device IDs from IOKit locationID
-        let busID = try getBusID(from: service)
-        let deviceID = try getDeviceID(from: service)
-        
-        return USBDevice(
-            busID: busID,
-            deviceID: deviceID,
-            vendorID: properties.vendorID,
-            productID: properties.productID,
-            deviceClass: properties.deviceClass,
-            deviceSubClass: properties.deviceSubClass,
-            deviceProtocol: properties.deviceProtocol,
-            speed: properties.speed,
-            manufacturerString: properties.manufacturerString,
-            productString: properties.productString,
-            serialNumberString: properties.serialNumberString
-        )
+        return try safeIOKitOperation("USB device creation") {
+            // Extract device properties using the comprehensive property extraction method
+            let properties = try extractDeviceProperties(from: service)
+            
+            // Generate bus and device IDs from IOKit locationID
+            let busID = try getBusID(from: service)
+            let deviceID = try getDeviceID(from: service)
+            
+            return USBDevice(
+                busID: busID,
+                deviceID: deviceID,
+                vendorID: properties.vendorID,
+                productID: properties.productID,
+                deviceClass: properties.deviceClass,
+                deviceSubClass: properties.deviceSubClass,
+                deviceProtocol: properties.deviceProtocol,
+                speed: properties.speed,
+                manufacturerString: properties.manufacturerString,
+                productString: properties.productString,
+                serialNumberString: properties.serialNumberString
+            )
+        }
     }
     
     /// Extract comprehensive device properties from IOKit service
     /// Maps IOKit property keys to USBDevice struct fields with graceful error handling
     private func extractDeviceProperties(from service: io_service_t) throws -> DeviceProperties {
-        logger.debug("Extracting device properties from IOKit service")
-        
-        // Extract required properties with error handling
-        let vendorID = try extractVendorID(from: service)
-        let productID = try extractProductID(from: service)
-        let deviceClass = extractDeviceClass(from: service)
-        let deviceSubClass = extractDeviceSubClass(from: service)
-        let deviceProtocol = extractDeviceProtocol(from: service)
-        let speed = extractUSBSpeed(from: service)
+        return try safeIOKitOperation("device property extraction") {
+            logger.debug("Extracting device properties from IOKit service")
+            
+            // Extract required properties with error handling
+            let vendorID = try extractVendorID(from: service)
+            let productID = try extractProductID(from: service)
+            let deviceClass = extractDeviceClass(from: service)
+            let deviceSubClass = extractDeviceSubClass(from: service)
+            let deviceProtocol = extractDeviceProtocol(from: service)
+            let speed = extractUSBSpeed(from: service)
         
         // Extract optional string descriptors
         let manufacturerString = extractManufacturerString(from: service)
@@ -358,17 +747,18 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             "hasSerial": serialNumberString != nil
         ])
         
-        return DeviceProperties(
-            vendorID: vendorID,
-            productID: productID,
-            deviceClass: deviceClass,
-            deviceSubClass: deviceSubClass,
-            deviceProtocol: deviceProtocol,
-            speed: speed,
-            manufacturerString: manufacturerString,
-            productString: productString,
-            serialNumberString: serialNumberString
-        )
+            return DeviceProperties(
+                vendorID: vendorID,
+                productID: productID,
+                deviceClass: deviceClass,
+                deviceSubClass: deviceSubClass,
+                deviceProtocol: deviceProtocol,
+                speed: speed,
+                manufacturerString: manufacturerString,
+                productString: productString,
+                serialNumberString: serialNumberString
+            )
+        }
     }
     
     // MARK: - Property Extraction Methods
@@ -535,12 +925,20 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     private func getUInt16Property(from service: io_service_t, key: String) throws -> UInt16 {
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
-            logger.warning("Missing required property", context: ["key": key])
+            logger.warning("Missing required property", context: [
+                "key": key,
+                "error_type": "missing_property"
+            ])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
-            logger.warning("Invalid property type", context: ["key": key])
+            logger.warning("Invalid property type", context: [
+                "key": key,
+                "property_type": String(describing: type(of: property)),
+                "expected_type": "NSNumber",
+                "error_type": "invalid_property_type"
+            ])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
@@ -549,12 +947,20 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     private func getUInt8Property(from service: io_service_t, key: String) throws -> UInt8 {
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
-            logger.warning("Missing required property", context: ["key": key])
+            logger.warning("Missing required property", context: [
+                "key": key,
+                "error_type": "missing_property"
+            ])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
-            logger.warning("Invalid property type", context: ["key": key])
+            logger.warning("Invalid property type", context: [
+                "key": key,
+                "property_type": String(describing: type(of: property)),
+                "expected_type": "NSNumber",
+                "error_type": "invalid_property_type"
+            ])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
@@ -596,12 +1002,20 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     private func getUInt32Property(from service: io_service_t, key: String) throws -> UInt32 {
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
-            logger.warning("Missing required property", context: ["key": key])
+            logger.warning("Missing required property", context: [
+                "key": key,
+                "error_type": "missing_property"
+            ])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
-            logger.warning("Invalid property type", context: ["key": key])
+            logger.warning("Invalid property type", context: [
+                "key": key,
+                "property_type": String(describing: type(of: property)),
+                "expected_type": "NSNumber",
+                "error_type": "invalid_property_type"
+            ])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
@@ -643,8 +1057,9 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             // Create notification port
             notificationPort = IONotificationPortCreate(kIOMasterPortDefault)
             guard let port = notificationPort else {
-                logger.error("Failed to create IOKit notification port")
-                throw DeviceDiscoveryError.failedToCreateNotificationPort
+                let error = handleNotificationError(KERN_FAILURE, operation: "IONotificationPortCreate")
+                logger.error("Failed to create IOKit notification port: \(error.localizedDescription)")
+                throw error
             }
             
             // Set notification port dispatch queue
@@ -663,7 +1078,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             )
             
             guard addedResult == KERN_SUCCESS else {
-                throw DeviceDiscoveryError.failedToAddNotification(addedResult)
+                throw handleNotificationError(addedResult, operation: "IOServiceAddMatchingNotification (device added)")
             }
             
             // Set up device removed notifications
@@ -678,7 +1093,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             )
             
             guard removedResult == KERN_SUCCESS else {
-                throw DeviceDiscoveryError.failedToAddNotification(removedResult)
+                throw handleNotificationError(removedResult, operation: "IOServiceAddMatchingNotification (device removed)")
             }
             
             logger.debug("Consuming initial device notifications")
