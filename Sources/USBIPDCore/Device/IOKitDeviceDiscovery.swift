@@ -34,6 +34,9 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     private var removedIterator: io_iterator_t = 0
     private var isMonitoring: Bool = false
     
+    // Cache of connected devices for proper disconnection callbacks
+    private var connectedDevices: [String: USBDevice] = [:]
+    
     private let logger: Logger
     private let queue: DispatchQueue
     
@@ -589,6 +592,13 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                 logger.debug("Released device removed iterator")
             }
             
+            // Clear the device cache when stopping notifications
+            let cachedDeviceCount = connectedDevices.count
+            connectedDevices.removeAll()
+            if cachedDeviceCount > 0 {
+                logger.debug("Cleared device cache", context: ["deviceCount": cachedDeviceCount])
+            }
+            
             isMonitoring = false
             logger.info("USB device notifications stopped")
         }
@@ -610,60 +620,9 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             deviceCount += 1
             
             if isAddedNotification {
-                do {
-                    let device = try createUSBDeviceFromService(service)
-                    logger.info("USB device connected", context: [
-                        "busID": device.busID,
-                        "deviceID": device.deviceID,
-                        "vendorID": String(format: "0x%04x", device.vendorID),
-                        "productID": String(format: "0x%04x", device.productID),
-                        "product": device.productString ?? "Unknown"
-                    ])
-                    onDeviceConnected?(device)
-                } catch {
-                    logger.error("Failed to create USB device from added notification", context: ["error": error.localizedDescription])
-                }
+                handleDeviceAddedNotification(service: service)
             } else {
-                // For removed notifications, we don't have full device info
-                // This is a limitation of the current approach
-                // We'll need to improve this to get the device info before it's removed
-                // For now, we'll create a minimal device with just the location ID
-                // Try to extract minimal information for device identification
-                if let locationID = getUInt32PropertyOptional(from: service, key: "locationID") {
-                    let busNumber = (locationID >> 24) & 0xFF
-                    let busID = String(format: "%d", busNumber)
-                    
-                    // Try to get address if available
-                    if let address = getUInt8PropertyOptional(from: service, key: "USB Address") {
-                        let deviceID = String(format: "%d", address)
-                        
-                        logger.info("USB device disconnected", context: [
-                            "busID": busID,
-                            "deviceID": deviceID
-                        ])
-                        
-                        // Create minimal device with just identification info
-                        let device = USBDevice(
-                            busID: busID,
-                            deviceID: deviceID,
-                            vendorID: 0,
-                            productID: 0,
-                            deviceClass: 0,
-                            deviceSubClass: 0,
-                            deviceProtocol: 0,
-                            speed: .unknown,
-                            manufacturerString: nil,
-                            productString: nil,
-                            serialNumberString: nil
-                        )
-                        
-                        onDeviceDisconnected?(device)
-                    } else {
-                        logger.warning("Could not get device address for removed device", context: ["locationID": locationID])
-                    }
-                } else {
-                    logger.warning("Could not get location ID for removed device")
-                }
+                handleDeviceRemovedNotification(service: service)
             }
         }
         
@@ -671,24 +630,149 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             logger.debug("Processed \(deviceCount) \(eventType) device notifications")
         }
     }
+    
+    // MARK: - Device Notification Handlers
+    
+    /// Handle device connection events
+    /// Creates USBDevice from IOKit service and triggers onDeviceConnected callback
+    private func handleDeviceAddedNotification(service: io_service_t) {
+        do {
+            let device = try createUSBDeviceFromService(service)
+            let deviceKey = "\(device.busID):\(device.deviceID)"
+            
+            // Cache the device for proper disconnection handling
+            connectedDevices[deviceKey] = device
+            
+            logger.info("USB device connected", context: [
+                "busID": device.busID,
+                "deviceID": device.deviceID,
+                "vendorID": String(format: "0x%04x", device.vendorID),
+                "productID": String(format: "0x%04x", device.productID),
+                "product": device.productString ?? "Unknown",
+                "manufacturer": device.manufacturerString ?? "Unknown",
+                "serial": device.serialNumberString ?? "None"
+            ])
+            
+            // Trigger the connection callback with complete device information
+            onDeviceConnected?(device)
+            
+        } catch {
+            logger.error("Failed to create USB device from connection notification", context: [
+                "error": error.localizedDescription
+            ])
+        }
+    }
+    
+    /// Handle device disconnection events
+    /// Attempts to provide complete device information using cached data
+    private func handleDeviceRemovedNotification(service: io_service_t) {
+        // Try to extract device identification from the terminating service
+        guard let deviceKey = extractDeviceKey(from: service) else {
+            logger.warning("Could not extract device identification from removed device")
+            return
+        }
+        
+        // Look up the cached device information
+        if let cachedDevice = connectedDevices.removeValue(forKey: deviceKey) {
+            logger.info("USB device disconnected", context: [
+                "busID": cachedDevice.busID,
+                "deviceID": cachedDevice.deviceID,
+                "vendorID": String(format: "0x%04x", cachedDevice.vendorID),
+                "productID": String(format: "0x%04x", cachedDevice.productID),
+                "product": cachedDevice.productString ?? "Unknown",
+                "manufacturer": cachedDevice.manufacturerString ?? "Unknown"
+            ])
+            
+            // Trigger the disconnection callback with complete device information
+            onDeviceDisconnected?(cachedDevice)
+            
+        } else {
+            logger.warning("Device disconnected but not found in cache", context: [
+                "deviceKey": deviceKey
+            ])
+            
+            // Create minimal device information from available data
+            let components = deviceKey.split(separator: ":")
+            if components.count == 2 {
+                let busID = String(components[0])
+                let deviceID = String(components[1])
+                
+                let minimalDevice = USBDevice(
+                    busID: busID,
+                    deviceID: deviceID,
+                    vendorID: 0,
+                    productID: 0,
+                    deviceClass: 0,
+                    deviceSubClass: 0,
+                    deviceProtocol: 0,
+                    speed: .unknown,
+                    manufacturerString: nil,
+                    productString: nil,
+                    serialNumberString: nil
+                )
+                
+                logger.info("USB device disconnected (minimal info)", context: [
+                    "busID": busID,
+                    "deviceID": deviceID
+                ])
+                
+                onDeviceDisconnected?(minimalDevice)
+            }
+        }
+    }
+    
+    /// Extract device key (busID:deviceID) from IOKit service for cache lookup
+    private func extractDeviceKey(from service: io_service_t) -> String? {
+        // Try to extract locationID and derive bus/device IDs
+        guard let locationID = getUInt32PropertyOptional(from: service, key: "locationID") else {
+            logger.debug("Could not get locationID from removed device")
+            return nil
+        }
+        
+        let busNumber = (locationID >> 24) & 0xFF
+        let busID = String(format: "%d", busNumber)
+        
+        // Try to get USB Address first (more reliable)
+        if let address = getUInt8PropertyOptional(from: service, key: "USB Address") {
+            let deviceID = String(format: "%d", address)
+            return "\(busID):\(deviceID)"
+        }
+        
+        // Fallback to extracting from locationID
+        let deviceAddress = locationID & 0xFF
+        let deviceID = String(format: "%d", deviceAddress)
+        return "\(busID):\(deviceID)"
+    }
 }
 
 // MARK: - C Callbacks
 
+/// IOKit callback function for device connection events
+/// Called when a USB device is connected to the system
 private func deviceAddedCallback(
     refcon: UnsafeMutableRawPointer?,
     iterator: io_iterator_t
 ) {
-    guard let refcon = refcon else { return }
+    guard let refcon = refcon else { 
+        print("ERROR: deviceAddedCallback called with nil refcon")
+        return 
+    }
+    
     let discovery = Unmanaged<IOKitDeviceDiscovery>.fromOpaque(refcon).takeUnretainedValue()
     discovery.consumeIterator(iterator, isAddedNotification: true)
 }
 
+/// IOKit callback function for device disconnection events
+/// Called when a USB device is disconnected from the system
 private func deviceRemovedCallback(
     refcon: UnsafeMutableRawPointer?,
     iterator: io_iterator_t
 ) {
-    guard let refcon = refcon else { return }
+    guard let refcon = refcon else { 
+        print("ERROR: deviceRemovedCallback called with nil refcon")
+        return 
+    }
+    
     let discovery = Unmanaged<IOKitDeviceDiscovery>.fromOpaque(refcon).takeUnretainedValue()
     discovery.consumeIterator(iterator, isAddedNotification: false)
 }
