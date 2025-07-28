@@ -17,87 +17,139 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     private var notificationPort: IONotificationPortRef?
     private var addedIterator: io_iterator_t = 0
     private var removedIterator: io_iterator_t = 0
-    private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "device-discovery")
+    private var isMonitoring: Bool = false
+    
+    private let logger: Logger
+    private let queue: DispatchQueue
     
     // MARK: - Initialization
     
-    public init() {}
+    public init() {
+        self.logger = Logger(
+            config: LoggerConfig(level: .info), 
+            subsystem: "com.usbipd.mac", 
+            category: "device-discovery"
+        )
+        self.queue = DispatchQueue(
+            label: "com.usbipd.mac.device-discovery",
+            qos: .userInitiated
+        )
+        
+        logger.debug("IOKitDeviceDiscovery initialized with dedicated dispatch queue")
+    }
     
     deinit {
         stopNotifications()
+        logger.debug("IOKitDeviceDiscovery deinitialized")
+    }
+    
+    // MARK: - IOKit Memory Management Utilities
+    
+    /// RAII wrapper for IOKit objects that need to be released
+    private class IOKitObjectWrapper {
+        private let object: io_object_t
+        
+        init(_ object: io_object_t) {
+            self.object = object
+        }
+        
+        deinit {
+            if object != 0 {
+                IOObjectRelease(object)
+            }
+        }
+        
+        var value: io_object_t {
+            return object
+        }
+    }
+    
+    /// Safely execute a block with automatic IOKit object cleanup
+    private func withIOKitObject<T>(_ object: io_object_t, _ block: (io_object_t) throws -> T) rethrows -> T {
+        defer {
+            if object != 0 {
+                IOObjectRelease(object)
+            }
+        }
+        return try block(object)
+    }
+    
+    /// Convert IOKit error codes to DeviceDiscoveryError
+    private func handleIOKitError(_ result: kern_return_t, operation: String) -> DeviceDiscoveryError {
+        let errorMessage = "IOKit operation '\(operation)' failed with code: \(result)"
+        logger.error(errorMessage, context: ["kern_return": result])
+        return DeviceDiscoveryError.ioKitError(result, errorMessage)
     }
     
     // MARK: - DeviceDiscovery Protocol
     
     public func discoverDevices() throws -> [USBDevice] {
-        logger.debug("Starting USB device discovery")
-        var devices: [USBDevice] = []
-        
-        // Create matching dictionary for USB devices
-        guard let matchingDict = IOServiceMatching(kIOUSBDeviceClassName) else {
-            logger.error("Failed to create IOKit matching dictionary")
-            throw DeviceDiscoveryError.failedToCreateMatchingDictionary
-        }
-        
-        var iterator: io_iterator_t = 0
-        let result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
-        
-        guard result == KERN_SUCCESS else {
-            logger.error("Failed to get matching services", context: ["result": result])
-            throw DeviceDiscoveryError.failedToGetMatchingServices(result)
-        }
-        
-        defer {
-            IOObjectRelease(iterator)
-        }
-        
-        logger.debug("Iterating through discovered USB devices")
-        var deviceCount = 0
-        var service: io_service_t = IOIteratorNext(iterator)
-        while service != 0 {
-            defer {
-                IOObjectRelease(service)
-                service = IOIteratorNext(iterator)
+        return try queue.sync {
+            logger.debug("Starting USB device discovery")
+            var devices: [USBDevice] = []
+            
+            // Create matching dictionary for USB devices
+            guard let matchingDict = IOServiceMatching(kIOUSBDeviceClassName) else {
+                logger.error("Failed to create IOKit matching dictionary")
+                throw DeviceDiscoveryError.failedToCreateMatchingDictionary
             }
             
-            do {
-                let device = try createUSBDevice(from: service)
-                devices.append(device)
-                deviceCount += 1
+            var iterator: io_iterator_t = 0
+            let result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
+            
+            guard result == KERN_SUCCESS else {
+                throw DeviceDiscoveryError.failedToGetMatchingServices(result)
+            }
+            
+            return try withIOKitObject(iterator) { iterator in
+                logger.debug("Iterating through discovered USB devices")
+                var deviceCount = 0
+                var service: io_service_t = IOIteratorNext(iterator)
                 
-                logger.debug("Found USB device", context: [
-                    "busID": device.busID,
-                    "deviceID": device.deviceID,
-                    "vendorID": String(format: "0x%04x", device.vendorID),
-                    "productID": String(format: "0x%04x", device.productID),
-                    "product": device.productString ?? "Unknown"
-                ])
-            } catch {
-                logger.warning("Failed to create USB device from service", context: ["error": error.localizedDescription])
+                while service != 0 {
+                    let device = try withIOKitObject(service) { service in
+                        return try createUSBDevice(from: service)
+                    }
+                    
+                    devices.append(device)
+                    deviceCount += 1
+                    
+                    logger.debug("Found USB device", context: [
+                        "busID": device.busID,
+                        "deviceID": device.deviceID,
+                        "vendorID": String(format: "0x%04x", device.vendorID),
+                        "productID": String(format: "0x%04x", device.productID),
+                        "product": device.productString ?? "Unknown"
+                    ])
+                    
+                    service = IOIteratorNext(iterator)
+                }
+                
+                logger.info("Discovered \(deviceCount) USB devices")
+                return devices
             }
         }
-        
-        logger.info("Discovered \(deviceCount) USB devices")
-        return devices
     }
     
     public func getDevice(busID: String, deviceID: String) throws -> USBDevice? {
-        logger.debug("Looking for specific device", context: ["busID": busID, "deviceID": deviceID])
-        let devices = try discoverDevices()
-        let device = devices.first { $0.busID == busID && $0.deviceID == deviceID }
-        
-        if let device = device {
-            logger.debug("Found requested device", context: [
-                "busID": device.busID,
-                "deviceID": device.deviceID,
-                "vendorID": String(format: "0x%04x", device.vendorID),
-                "productID": String(format: "0x%04x", device.productID)
-            ])
-        } else {
-            logger.warning("Device not found", context: ["busID": busID, "deviceID": deviceID])
+        return try queue.sync {
+            logger.debug("Looking for specific device", context: ["busID": busID, "deviceID": deviceID])
+            let devices = try discoverDevices()
+            let device = devices.first { $0.busID == busID && $0.deviceID == deviceID }
+            
+            if let device = device {
+                logger.debug("Found requested device", context: [
+                    "busID": device.busID,
+                    "deviceID": device.deviceID,
+                    "vendorID": String(format: "0x%04x", device.vendorID),
+                    "productID": String(format: "0x%04x", device.productID)
+                ])
+            } else {
+                logger.warning("Device not found", context: ["busID": busID, "deviceID": deviceID])
+            }
+            
+            return device
         }
-        
-        return device
     }
     
     // MARK: - Private Methods
@@ -137,10 +189,12 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     private func getUInt16Property(from service: io_service_t, key: String) throws -> UInt16 {
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+            logger.warning("Missing required property", context: ["key": key])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
+            logger.warning("Invalid property type", context: ["key": key])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
@@ -149,10 +203,12 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     private func getUInt8Property(from service: io_service_t, key: String) throws -> UInt8 {
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+            logger.warning("Missing required property", context: ["key": key])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
+            logger.warning("Invalid property type", context: ["key": key])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
@@ -204,10 +260,12 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     private func getUInt32Property(from service: io_service_t, key: String) throws -> UInt32 {
         guard let property = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+            logger.warning("Missing required property", context: ["key": key])
             throw DeviceDiscoveryError.missingProperty(key)
         }
         
         guard let number = property as? NSNumber else {
+            logger.warning("Invalid property type", context: ["key": key])
             throw DeviceDiscoveryError.invalidPropertyType(key)
         }
         
@@ -235,96 +293,96 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     // MARK: - Notification System
     
     public func startNotifications() throws {
-        guard notificationPort == nil else {
-            logger.debug("Device notifications already started")
-            return // Already started
+        try queue.sync {
+            guard !isMonitoring else {
+                logger.debug("Device notifications already started")
+                return // Already started
+            }
+            
+            logger.info("Starting USB device notifications")
+            
+            // Create notification port
+            notificationPort = IONotificationPortCreate(kIOMasterPortDefault)
+            guard let port = notificationPort else {
+                logger.error("Failed to create IOKit notification port")
+                throw DeviceDiscoveryError.failedToCreateNotificationPort
+            }
+            
+            // Set notification port dispatch queue
+            IONotificationPortSetDispatchQueue(port, queue)
+            logger.debug("Set notification port dispatch queue")
+            
+            // Set up device added notifications
+            let addedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
+            let addedResult = IOServiceAddMatchingNotification(
+                port,
+                kIOFirstMatchNotification,
+                addedMatchingDict,
+                deviceAddedCallback,
+                Unmanaged.passUnretained(self).toOpaque(),
+                &addedIterator
+            )
+            
+            guard addedResult == KERN_SUCCESS else {
+                throw DeviceDiscoveryError.failedToAddNotification(addedResult)
+            }
+            
+            // Set up device removed notifications
+            let removedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
+            let removedResult = IOServiceAddMatchingNotification(
+                port,
+                kIOTerminatedNotification,
+                removedMatchingDict,
+                deviceRemovedCallback,
+                Unmanaged.passUnretained(self).toOpaque(),
+                &removedIterator
+            )
+            
+            guard removedResult == KERN_SUCCESS else {
+                throw DeviceDiscoveryError.failedToAddNotification(removedResult)
+            }
+            
+            logger.debug("Consuming initial device notifications")
+            
+            // Consume initial notifications
+            consumeIterator(addedIterator, isAddedNotification: true)
+            consumeIterator(removedIterator, isAddedNotification: false)
+            
+            isMonitoring = true
+            logger.info("USB device notifications started successfully")
         }
-        
-        logger.info("Starting USB device notifications")
-        
-        // Create notification port
-        notificationPort = IONotificationPortCreate(kIOMasterPortDefault)
-        guard let port = notificationPort else {
-            logger.error("Failed to create IOKit notification port")
-            throw DeviceDiscoveryError.failedToCreateNotificationPort
-        }
-        
-        // Add notification port to run loop
-        let runLoopSource = IONotificationPortGetRunLoopSource(port)?.takeUnretainedValue()
-        if let source = runLoopSource {
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, CFRunLoopMode.defaultMode)
-            logger.debug("Added notification port to run loop")
-        } else {
-            logger.warning("Failed to get run loop source from notification port")
-        }
-        
-        // Set up device added notifications
-        let addedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
-        let addedResult = IOServiceAddMatchingNotification(
-            port,
-            kIOFirstMatchNotification,
-            addedMatchingDict,
-            deviceAddedCallback,
-            Unmanaged.passUnretained(self).toOpaque(),
-            &addedIterator
-        )
-        
-        guard addedResult == KERN_SUCCESS else {
-            logger.error("Failed to add device added notification", context: ["result": addedResult])
-            throw DeviceDiscoveryError.failedToAddNotification(addedResult)
-        }
-        
-        // Set up device removed notifications
-        let removedMatchingDict = IOServiceMatching(kIOUSBDeviceClassName)
-        let removedResult = IOServiceAddMatchingNotification(
-            port,
-            kIOTerminatedNotification,
-            removedMatchingDict,
-            deviceRemovedCallback,
-            Unmanaged.passUnretained(self).toOpaque(),
-            &removedIterator
-        )
-        
-        guard removedResult == KERN_SUCCESS else {
-            logger.error("Failed to add device removed notification", context: ["result": removedResult])
-            throw DeviceDiscoveryError.failedToAddNotification(removedResult)
-        }
-        
-        logger.debug("Consuming initial device notifications")
-        
-        // Consume initial notifications
-        consumeIterator(addedIterator, isAddedNotification: true)
-        consumeIterator(removedIterator, isAddedNotification: false)
-        
-        logger.info("USB device notifications started successfully")
     }
     
     public func stopNotifications() {
-        logger.info("Stopping USB device notifications")
-        
-        if let port = notificationPort {
-            if let runLoopSource = IONotificationPortGetRunLoopSource(port)?.takeUnretainedValue() {
-                CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, CFRunLoopMode.defaultMode)
-                logger.debug("Removed notification port from run loop")
+        queue.sync {
+            guard isMonitoring else {
+                logger.debug("Device notifications already stopped")
+                return
             }
-            IONotificationPortDestroy(port)
-            notificationPort = nil
-            logger.debug("Destroyed notification port")
+            
+            logger.info("Stopping USB device notifications")
+            
+            if let port = notificationPort {
+                IONotificationPortDestroy(port)
+                notificationPort = nil
+                logger.debug("Destroyed notification port")
+            }
+            
+            if addedIterator != 0 {
+                IOObjectRelease(addedIterator)
+                addedIterator = 0
+                logger.debug("Released device added iterator")
+            }
+            
+            if removedIterator != 0 {
+                IOObjectRelease(removedIterator)
+                removedIterator = 0
+                logger.debug("Released device removed iterator")
+            }
+            
+            isMonitoring = false
+            logger.info("USB device notifications stopped")
         }
-        
-        if addedIterator != 0 {
-            IOObjectRelease(addedIterator)
-            addedIterator = 0
-            logger.debug("Released device added iterator")
-        }
-        
-        if removedIterator != 0 {
-            IOObjectRelease(removedIterator)
-            removedIterator = 0
-            logger.debug("Released device removed iterator")
-        }
-        
-        logger.info("USB device notifications stopped")
     }
     
     // Changed from private to internal for callback access
@@ -426,30 +484,3 @@ private func deviceRemovedCallback(
     discovery.consumeIterator(iterator, isAddedNotification: false)
 }
 
-// MARK: - Error Types
-
-public enum DeviceDiscoveryError: Error, LocalizedError {
-    case failedToCreateMatchingDictionary
-    case failedToGetMatchingServices(kern_return_t)
-    case missingProperty(String)
-    case invalidPropertyType(String)
-    case failedToCreateNotificationPort
-    case failedToAddNotification(kern_return_t)
-    
-    public var errorDescription: String? {
-        switch self {
-        case .failedToCreateMatchingDictionary:
-            return "Failed to create IOKit matching dictionary"
-        case .failedToGetMatchingServices(let result):
-            return "Failed to get matching services: \(result)"
-        case .missingProperty(let key):
-            return "Missing required property: \(key)"
-        case .invalidPropertyType(let key):
-            return "Invalid property type for key: \(key)"
-        case .failedToCreateNotificationPort:
-            return "Failed to create IOKit notification port"
-        case .failedToAddNotification(let result):
-            return "Failed to add IOKit notification: \(result)"
-        }
-    }
-}
