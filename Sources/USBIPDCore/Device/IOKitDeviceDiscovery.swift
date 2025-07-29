@@ -538,7 +538,13 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             ])
             
             var iterator: io_iterator_t = 0
-            let result = ioKit.serviceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
+            let masterPort: mach_port_t
+            if #available(macOS 12.0, *) {
+                masterPort = kIOMainPortDefault
+            } else {
+                masterPort = kIOMasterPortDefault
+            }
+            let result = ioKit.serviceGetMatchingServices(masterPort, matchingDict, &iterator)
             
             guard result == KERN_SUCCESS else {
                 throw handleServiceAccessError(result, operation: "IOServiceGetMatchingServices")
@@ -1392,7 +1398,13 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             
             // Create notification port
             logger.debug("Creating IOKit notification port")
-            notificationPort = ioKit.notificationPortCreate(kIOMasterPortDefault)
+            let masterPort: mach_port_t
+            if #available(macOS 12.0, *) {
+                masterPort = kIOMainPortDefault
+            } else {
+                masterPort = kIOMasterPortDefault
+            }
+            notificationPort = ioKit.notificationPortCreate(masterPort)
             guard let port = notificationPort else {
                 let error = handleNotificationError(KERN_FAILURE, operation: "IONotificationPortCreate")
                 logger.error("Failed to create IOKit notification port", context: [
@@ -1405,7 +1417,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             logger.debug("Successfully created IOKit notification port")
             
             // Set notification port dispatch queue
-            IONotificationPortSetDispatchQueue(port, queue)
+            ioKit.notificationPortSetDispatchQueue(port, queue)
             logger.debug("Configured notification port with dispatch queue", context: [
                 "queueLabel": queue.label
             ])
@@ -1576,7 +1588,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         
         if let port = notificationPort {
             // Remove the dispatch queue from the notification port before destroying
-            IONotificationPortSetDispatchQueue(port, nil)
+            ioKit.notificationPortSetDispatchQueue(port, nil)
             
             // Destroy the notification port
             ioKit.notificationPortDestroy(port)

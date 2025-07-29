@@ -38,6 +38,9 @@ public class MockIOKitInterface: IOKitInterface {
     public var registryEntryCreateCFPropertyCalls: [(io_registry_entry_t, String)] = []
     public var notificationPortCreateCalls: [mach_port_t] = []
     public var serviceAddMatchingNotificationCalls: [(IONotificationPortRef, String)] = []
+    public var notificationPortGetRunLoopSourceCalls: [IONotificationPortRef] = []
+    public var notificationPortSetDispatchQueueCalls: [(IONotificationPortRef, DispatchQueue?)] = []
+    public var notificationPortDestroyCalls: [IONotificationPortRef] = []
     
     // MARK: - Mock Iterator State
     
@@ -66,6 +69,9 @@ public class MockIOKitInterface: IOKitInterface {
         registryEntryCreateCFPropertyCalls.removeAll()
         notificationPortCreateCalls.removeAll()
         serviceAddMatchingNotificationCalls.removeAll()
+        notificationPortGetRunLoopSourceCalls.removeAll()
+        notificationPortSetDispatchQueueCalls.removeAll()
+        notificationPortDestroyCalls.removeAll()
         
         currentIteratorIndex = 0
     }
@@ -157,11 +163,18 @@ public class MockIOKitInterface: IOKitInterface {
     }
     
     public func notificationPortGetRunLoopSource(_ notify: IONotificationPortRef) -> CFRunLoopSource? {
+        notificationPortGetRunLoopSourceCalls.append(notify)
         // Return a mock run loop source
         return CFRunLoopSourceCreate(kCFAllocatorDefault, 0, nil)
     }
     
+    public func notificationPortSetDispatchQueue(_ notify: IONotificationPortRef, _ queue: DispatchQueue?) {
+        notificationPortSetDispatchQueueCalls.append((notify, queue))
+        // Mock implementation - nothing to do
+    }
+    
     public func notificationPortDestroy(_ notify: IONotificationPortRef) {
+        notificationPortDestroyCalls.append(notify)
         // Mock implementation - nothing to do
     }
 }

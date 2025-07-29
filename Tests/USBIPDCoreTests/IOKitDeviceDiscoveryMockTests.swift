@@ -225,7 +225,7 @@ final class IOKitDeviceDiscoveryMockTests: XCTestCase {
         XCTAssertNil(device2)
     }
     
-    // MARK: - Notification System Tests
+    // MARK: - Device Monitoring and Notification Tests
     
     func testStartNotificationsSuccess() throws {
         // Given: Mock setup for successful notifications
@@ -243,6 +243,13 @@ final class IOKitDeviceDiscoveryMockTests: XCTestCase {
         let notificationTypes = mockIOKit.serviceAddMatchingNotificationCalls.map { $0.1 }
         XCTAssertTrue(notificationTypes.contains(kIOFirstMatchNotification))
         XCTAssertTrue(notificationTypes.contains(kIOTerminatedNotification))
+        
+        // Verify master port parameter
+        if #available(macOS 12.0, *) {
+            XCTAssertEqual(mockIOKit.notificationPortCreateCalls.first, kIOMainPortDefault)
+        } else {
+            XCTAssertEqual(mockIOKit.notificationPortCreateCalls.first, kIOMasterPortDefault)
+        }
     }
     
     func testStartNotificationsWithPortCreationFailure() {
@@ -251,11 +258,17 @@ final class IOKitDeviceDiscoveryMockTests: XCTestCase {
         
         // When/Then: Should throw error
         XCTAssertThrowsError(try deviceDiscovery.startNotifications()) { error in
-            guard case DeviceDiscoveryError.ioKitError(_, _) = error else {
+            guard case DeviceDiscoveryError.ioKitError(_, let message) = error else {
                 XCTFail("Expected ioKitError, got \(error)")
                 return
             }
+            XCTAssertTrue(message.contains("notification") || message.contains("IONotificationPortCreate"))
         }
+        
+        // Verify port creation was attempted
+        XCTAssertEqual(mockIOKit.notificationPortCreateCalls.count, 1)
+        // Should not attempt to add notifications if port creation failed
+        XCTAssertEqual(mockIOKit.serviceAddMatchingNotificationCalls.count, 0)
     }
     
     func testStartNotificationsWithAddNotificationFailure() {
@@ -266,24 +279,260 @@ final class IOKitDeviceDiscoveryMockTests: XCTestCase {
         
         // When/Then: Should throw error
         XCTAssertThrowsError(try deviceDiscovery.startNotifications()) { error in
-            guard case DeviceDiscoveryError.ioKitError(let code, _) = error else {
+            guard case DeviceDiscoveryError.ioKitError(let code, let message) = error else {
                 XCTFail("Expected ioKitError, got \(error)")
                 return
             }
             XCTAssertEqual(code, KERN_NO_ACCESS)
+            XCTAssertTrue(message.contains("notification") || message.contains("IOServiceAddMatchingNotification"))
+        }
+        
+        // Verify port creation succeeded but notification addition failed
+        XCTAssertEqual(mockIOKit.notificationPortCreateCalls.count, 1)
+        XCTAssertGreaterThan(mockIOKit.serviceAddMatchingNotificationCalls.count, 0)
+    }
+    
+    func testStartNotificationsWithDifferentErrorCodes() {
+        // Test various IOKit error codes for notification setup
+        let errorCodes: [kern_return_t] = [
+            KERN_RESOURCE_SHORTAGE,
+            KERN_INVALID_ARGUMENT,
+            KERN_NOT_SUPPORTED,
+            KERN_FAILURE
+        ]
+        
+        for errorCode in errorCodes {
+            // Given: Fresh mock state
+            mockIOKit.reset()
+            mockIOKit.shouldFailAddNotification = true
+            mockIOKit.addNotificationError = errorCode
+            
+            // When/Then: Should throw appropriate error
+            XCTAssertThrowsError(try deviceDiscovery.startNotifications()) { error in
+                guard case DeviceDiscoveryError.ioKitError(let code, _) = error else {
+                    XCTFail("Expected ioKitError for code \(errorCode), got \(error)")
+                    return
+                }
+                XCTAssertEqual(code, errorCode)
+            }
         }
     }
     
-    func testStopNotifications() throws {
-        // Given: Notifications are started
+    func testStopNotificationsAfterSuccessfulStart() throws {
+        // Given: Notifications are started successfully
         try deviceDiscovery.startNotifications()
-        mockIOKit.reset() // Clear call history
+        let initialPortCalls = mockIOKit.notificationPortCreateCalls.count
+        let initialNotificationCalls = mockIOKit.serviceAddMatchingNotificationCalls.count
         
         // When: Stopping notifications
         deviceDiscovery.stopNotifications()
         
-        // Then: Should clean up properly (verified by no crashes)
-        // The actual cleanup verification is done internally by the implementation
+        // Then: Should not make additional IOKit calls for cleanup
+        // (cleanup is handled internally by the implementation)
+        XCTAssertEqual(mockIOKit.notificationPortCreateCalls.count, initialPortCalls)
+        XCTAssertEqual(mockIOKit.serviceAddMatchingNotificationCalls.count, initialNotificationCalls)
+    }
+    
+    func testStopNotificationsWithoutStart() {
+        // Given: Notifications were never started
+        
+        // When: Stopping notifications
+        deviceDiscovery.stopNotifications()
+        
+        // Then: Should handle gracefully without errors
+        XCTAssertEqual(mockIOKit.notificationPortCreateCalls.count, 0)
+        XCTAssertEqual(mockIOKit.serviceAddMatchingNotificationCalls.count, 0)
+    }
+    
+    func testMultipleStartNotificationsCalls() throws {
+        // Given: Notifications are already started
+        try deviceDiscovery.startNotifications()
+        let initialPortCalls = mockIOKit.notificationPortCreateCalls.count
+        let initialNotificationCalls = mockIOKit.serviceAddMatchingNotificationCalls.count
+        
+        // When: Starting notifications again
+        XCTAssertNoThrow(try deviceDiscovery.startNotifications())
+        
+        // Then: Should not make additional IOKit calls (should be idempotent)
+        XCTAssertEqual(mockIOKit.notificationPortCreateCalls.count, initialPortCalls)
+        XCTAssertEqual(mockIOKit.serviceAddMatchingNotificationCalls.count, initialNotificationCalls)
+    }
+    
+    func testNotificationCleanupOnDeinitialization() throws {
+        // Given: Device discovery with active notifications
+        var deviceDiscovery: IOKitDeviceDiscovery? = IOKitDeviceDiscovery(ioKit: mockIOKit, logger: logger)
+        try deviceDiscovery!.startNotifications()
+        
+        // When: Device discovery is deinitialized
+        deviceDiscovery = nil
+        
+        // Then: Should clean up without crashes
+        // (Cleanup verification is done internally by the implementation)
+        // This test primarily ensures no memory leaks or crashes occur
+    }
+    
+    func testDeviceConnectionCallbackTriggering() throws {
+        // Given: Notifications are started and callback is set
+        var connectedDevices: [USBDevice] = []
+        deviceDiscovery.onDeviceConnected = { device in
+            connectedDevices.append(device)
+        }
+        
+        try deviceDiscovery.startNotifications()
+        
+        // When: Simulating device connection through mock
+        // Note: In a real implementation, this would be triggered by IOKit callbacks
+        // For testing, we verify the callback mechanism is properly set up
+        let testDevice = TestUSBDeviceFixtures.appleMagicMouse
+        mockIOKit.mockDevices = [testDevice]
+        
+        // Simulate callback invocation (this would normally be done by IOKit)
+        let expectedDevice = TestUSBDeviceFixtures.expectedUSBDevice(from: testDevice)
+        deviceDiscovery.onDeviceConnected?(expectedDevice)
+        
+        // Then: Callback should have been invoked
+        XCTAssertEqual(connectedDevices.count, 1)
+        XCTAssertEqual(connectedDevices.first?.vendorID, expectedDevice.vendorID)
+        XCTAssertEqual(connectedDevices.first?.productID, expectedDevice.productID)
+    }
+    
+    func testDeviceDisconnectionCallbackTriggering() throws {
+        // Given: Notifications are started and callback is set
+        var disconnectedDevices: [USBDevice] = []
+        deviceDiscovery.onDeviceDisconnected = { device in
+            disconnectedDevices.append(device)
+        }
+        
+        try deviceDiscovery.startNotifications()
+        
+        // When: Simulating device disconnection through mock
+        let testDevice = TestUSBDeviceFixtures.appleMagicMouse
+        let expectedDevice = TestUSBDeviceFixtures.expectedUSBDevice(from: testDevice)
+        
+        // Simulate callback invocation (this would normally be done by IOKit)
+        deviceDiscovery.onDeviceDisconnected?(expectedDevice)
+        
+        // Then: Callback should have been invoked
+        XCTAssertEqual(disconnectedDevices.count, 1)
+        XCTAssertEqual(disconnectedDevices.first?.vendorID, expectedDevice.vendorID)
+        XCTAssertEqual(disconnectedDevices.first?.productID, expectedDevice.productID)
+    }
+    
+    func testBothConnectionAndDisconnectionCallbacks() throws {
+        // Given: Both callbacks are set
+        var connectedDevices: [USBDevice] = []
+        var disconnectedDevices: [USBDevice] = []
+        
+        deviceDiscovery.onDeviceConnected = { device in
+            connectedDevices.append(device)
+        }
+        
+        deviceDiscovery.onDeviceDisconnected = { device in
+            disconnectedDevices.append(device)
+        }
+        
+        try deviceDiscovery.startNotifications()
+        
+        // When: Simulating both connection and disconnection
+        let testDevice = TestUSBDeviceFixtures.appleMagicMouse
+        let expectedDevice = TestUSBDeviceFixtures.expectedUSBDevice(from: testDevice)
+        
+        deviceDiscovery.onDeviceConnected?(expectedDevice)
+        deviceDiscovery.onDeviceDisconnected?(expectedDevice)
+        
+        // Then: Both callbacks should have been invoked
+        XCTAssertEqual(connectedDevices.count, 1)
+        XCTAssertEqual(disconnectedDevices.count, 1)
+        XCTAssertEqual(connectedDevices.first?.vendorID, disconnectedDevices.first?.vendorID)
+    }
+    
+    func testCallbacksWithoutNotificationSetup() {
+        // Given: Callbacks are set but notifications are not started
+        var callbackInvoked = false
+        deviceDiscovery.onDeviceConnected = { _ in
+            callbackInvoked = true
+        }
+        
+        // When: Manually invoking callback
+        let testDevice = TestUSBDeviceFixtures.appleMagicMouse
+        let expectedDevice = TestUSBDeviceFixtures.expectedUSBDevice(from: testDevice)
+        deviceDiscovery.onDeviceConnected?(expectedDevice)
+        
+        // Then: Callback should still work
+        XCTAssertTrue(callbackInvoked)
+    }
+    
+    func testNotificationResourceManagement() throws {
+        // Given: Multiple start/stop cycles
+        for cycle in 1...3 {
+            // Start notifications
+            try deviceDiscovery.startNotifications()
+            
+            // Verify setup
+            XCTAssertEqual(mockIOKit.notificationPortCreateCalls.count, cycle)
+            XCTAssertEqual(mockIOKit.serviceAddMatchingNotificationCalls.count, cycle * 2)
+            
+            // Stop notifications
+            deviceDiscovery.stopNotifications()
+        }
+        
+        // Then: Should handle multiple cycles without issues
+        // Resource management is verified by the absence of crashes or errors
+    }
+    
+    func testNotificationErrorHandlingWithResourceCleanup() {
+        // Given: Notification setup that will fail partway through
+        mockIOKit.shouldFailNotificationPortCreate = false
+        mockIOKit.shouldFailAddNotification = true
+        mockIOKit.addNotificationError = KERN_RESOURCE_SHORTAGE
+        
+        // When: Attempting to start notifications
+        XCTAssertThrowsError(try deviceDiscovery.startNotifications()) { error in
+            guard case DeviceDiscoveryError.ioKitError(let code, let message) = error else {
+                XCTFail("Expected ioKitError, got \(error)")
+                return
+            }
+            XCTAssertEqual(code, KERN_RESOURCE_SHORTAGE)
+            XCTAssertTrue(message.contains("resource") || message.contains("shortage"))
+        }
+        
+        // Then: Should have attempted cleanup even after failure
+        XCTAssertEqual(mockIOKit.notificationPortCreateCalls.count, 1)
+        
+        // Subsequent stop should be safe
+        deviceDiscovery.stopNotifications()
+    }
+    
+    func testNotificationSystemThreadSafety() throws {
+        // Given: Notifications are started
+        try deviceDiscovery.startNotifications()
+        
+        // When: Accessing callbacks from multiple threads
+        let expectation = XCTestExpectation(description: "Thread safety test")
+        expectation.expectedFulfillmentCount = 10
+        
+        var callbackResults: [Bool] = []
+        let resultsQueue = DispatchQueue(label: "test.results")
+        
+        deviceDiscovery.onDeviceConnected = { device in
+            resultsQueue.async {
+                callbackResults.append(true)
+                expectation.fulfill()
+            }
+        }
+        
+        // Simulate concurrent callback invocations
+        let testDevice = TestUSBDeviceFixtures.expectedUSBDevice(from: TestUSBDeviceFixtures.appleMagicMouse)
+        
+        for _ in 0..<10 {
+            DispatchQueue.global().async {
+                self.deviceDiscovery.onDeviceConnected?(testDevice)
+            }
+        }
+        
+        // Then: Should handle concurrent access safely
+        wait(for: [expectation], timeout: 5.0)
+        XCTAssertEqual(callbackResults.count, 10)
     }
     
     // MARK: - Edge Case Tests

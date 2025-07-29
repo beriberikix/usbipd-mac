@@ -23,6 +23,7 @@ public protocol IOKitInterface {
     func notificationPortCreate(_ masterPort: mach_port_t) -> IONotificationPortRef?
     func serviceAddMatchingNotification(_ notifyPort: IONotificationPortRef, _ notificationType: String, _ matching: CFDictionary, _ callback: IOServiceMatchingCallback?, _ refCon: UnsafeMutableRawPointer?, _ notification: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t
     func notificationPortGetRunLoopSource(_ notify: IONotificationPortRef) -> CFRunLoopSource?
+    func notificationPortSetDispatchQueue(_ notify: IONotificationPortRef, _ queue: DispatchQueue?)
     func notificationPortDestroy(_ notify: IONotificationPortRef)
 }
 
@@ -62,6 +63,10 @@ public class RealIOKitInterface: IOKitInterface {
     
     public func notificationPortGetRunLoopSource(_ notify: IONotificationPortRef) -> CFRunLoopSource? {
         return IONotificationPortGetRunLoopSource(notify)?.takeRetainedValue()
+    }
+    
+    public func notificationPortSetDispatchQueue(_ notify: IONotificationPortRef, _ queue: DispatchQueue?) {
+        IONotificationPortSetDispatchQueue(notify, queue)
     }
     
     public func notificationPortDestroy(_ notify: IONotificationPortRef) {
