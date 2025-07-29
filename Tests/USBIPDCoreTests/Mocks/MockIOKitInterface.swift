@@ -48,6 +48,33 @@ public class MockIOKitInterface: IOKitInterface {
     private var mockIteratorValue: io_iterator_t = 1000
     private var mockServiceValue: io_service_t = 2000
     
+    // MARK: - Notification Simulation State
+    
+    /// Controls whether notification setup should fail
+    public var shouldFailNotificationSetup = false
+    public var notificationSetupError: Error?
+    
+    /// Stored callbacks for notification simulation
+    private var deviceAddedCallback: IOServiceMatchingCallback?
+    private var deviceRemovedCallback: IOServiceMatchingCallback?
+    private var callbackRefCon: UnsafeMutableRawPointer?
+    private var addedIterator: io_iterator_t = 0
+    private var removedIterator: io_iterator_t = 0
+    
+    /// Devices to simulate in notifications
+    private var notificationDevices: [MockUSBDevice] = []
+    
+    /// Devices to return for notification iterators
+    private var addedNotificationDevices: [MockUSBDevice] = []
+    private var removedNotificationDevices: [MockUSBDevice] = []
+    
+    /// Current index for notification iterators
+    private var addedNotificationIndex = 0
+    private var removedNotificationIndex = 0
+    
+    /// Error to simulate during device discovery operations
+    private var simulatedDiscoveryError: Error?
+    
     public init() {}
     
     // MARK: - Reset Methods
@@ -74,6 +101,19 @@ public class MockIOKitInterface: IOKitInterface {
         notificationPortDestroyCalls.removeAll()
         
         currentIteratorIndex = 0
+        shouldFailNotificationSetup = false
+        notificationSetupError = nil
+        deviceAddedCallback = nil
+        deviceRemovedCallback = nil
+        callbackRefCon = nil
+        addedIterator = 0
+        removedIterator = 0
+        notificationDevices.removeAll()
+        addedNotificationDevices.removeAll()
+        removedNotificationDevices.removeAll()
+        addedNotificationIndex = 0
+        removedNotificationIndex = 0
+        simulatedDiscoveryError = nil
     }
     
     // MARK: - IOKitInterface Implementation
@@ -109,7 +149,32 @@ public class MockIOKitInterface: IOKitInterface {
     public func iteratorNext(_ iterator: io_iterator_t) -> io_service_t {
         iteratorNextCalls.append(iterator)
         
-        // Return mock services based on current index
+        // Handle notification iterators
+        if iterator == addedIterator {
+            print("DEBUG: iteratorNext called for addedIterator \(iterator), index: \(addedNotificationIndex), devices: \(addedNotificationDevices.count)")
+            if addedNotificationIndex < addedNotificationDevices.count {
+                let service = io_service_t(mockServiceValue + 1000 + UInt32(addedNotificationIndex))
+                addedNotificationIndex += 1
+                print("DEBUG: Returning service \(service) for added notification")
+                return service
+            }
+            print("DEBUG: No more added notification devices to return")
+            return 0
+        }
+        
+        if iterator == removedIterator {
+            print("DEBUG: iteratorNext called for removedIterator \(iterator), index: \(removedNotificationIndex), devices: \(removedNotificationDevices.count)")
+            if removedNotificationIndex < removedNotificationDevices.count {
+                let service = io_service_t(mockServiceValue + 2000 + UInt32(removedNotificationIndex))
+                removedNotificationIndex += 1
+                print("DEBUG: Returning service \(service) for removed notification")
+                return service
+            }
+            print("DEBUG: No more removed notification devices to return")
+            return 0
+        }
+        
+        // Handle regular discovery iterator
         if currentIteratorIndex < mockDevices.count {
             let service = io_service_t(mockServiceValue + UInt32(currentIteratorIndex))
             currentIteratorIndex += 1
@@ -129,14 +194,31 @@ public class MockIOKitInterface: IOKitInterface {
         let keyString = key as String
         registryEntryCreateCFPropertyCalls.append((entry, keyString))
         
-        // Find the mock device for this service
-        let serviceIndex = Int(entry - mockServiceValue)
-        guard serviceIndex >= 0 && serviceIndex < mockDevices.count else {
-            return nil
+        // Handle notification services
+        if entry >= mockServiceValue + 1000 && entry < mockServiceValue + 2000 {
+            // Added notification device
+            let deviceIndex = Int(entry - mockServiceValue - 1000)
+            if deviceIndex >= 0 && deviceIndex < addedNotificationDevices.count {
+                let mockDevice = addedNotificationDevices[deviceIndex]
+                return mockDevice.getProperty(key: keyString)
+            }
+        } else if entry >= mockServiceValue + 2000 && entry < mockServiceValue + 3000 {
+            // Removed notification device
+            let deviceIndex = Int(entry - mockServiceValue - 2000)
+            if deviceIndex >= 0 && deviceIndex < removedNotificationDevices.count {
+                let mockDevice = removedNotificationDevices[deviceIndex]
+                return mockDevice.getProperty(key: keyString)
+            }
+        } else {
+            // Regular discovery device
+            let serviceIndex = Int(entry - mockServiceValue)
+            if serviceIndex >= 0 && serviceIndex < mockDevices.count {
+                let mockDevice = mockDevices[serviceIndex]
+                return mockDevice.getProperty(key: keyString)
+            }
         }
         
-        let mockDevice = mockDevices[serviceIndex]
-        return mockDevice.getProperty(key: keyString)
+        return nil
     }
     
     public func notificationPortCreate(_ masterPort: mach_port_t) -> IONotificationPortRef? {
@@ -157,8 +239,18 @@ public class MockIOKitInterface: IOKitInterface {
             return addNotificationError
         }
         
-        // Set up a mock iterator for notifications
-        notification.pointee = io_iterator_t(mockIteratorValue + 100)
+        // Store callback and refcon for simulation
+        if notificationType == kIOFirstMatchNotification {
+            deviceAddedCallback = callback
+            addedIterator = io_iterator_t(mockIteratorValue + 100)
+            notification.pointee = addedIterator
+        } else if notificationType == kIOTerminatedNotification {
+            deviceRemovedCallback = callback
+            removedIterator = io_iterator_t(mockIteratorValue + 200)
+            notification.pointee = removedIterator
+        }
+        
+        callbackRefCon = refCon
         return KERN_SUCCESS
     }
     
@@ -176,6 +268,87 @@ public class MockIOKitInterface: IOKitInterface {
     public func notificationPortDestroy(_ notify: IONotificationPortRef) {
         notificationPortDestroyCalls.append(notify)
         // Mock implementation - nothing to do
+    }
+    
+    // MARK: - Simulation Methods for Testing
+    
+    /// Simulate a device connection notification
+    public func simulateDeviceConnection(_ device: USBDevice) {
+        // Convert USBDevice to MockUSBDevice for simulation
+        let mockDevice = MockUSBDevice(
+            vendorID: device.vendorID,
+            productID: device.productID,
+            deviceClass: device.deviceClass,
+            deviceSubClass: device.deviceSubClass,
+            deviceProtocol: device.deviceProtocol,
+            speed: UInt8(device.speed.rawValue),
+            manufacturerString: device.manufacturerString,
+            productString: device.productString,
+            serialNumberString: device.serialNumberString,
+            locationID: UInt32((Int(device.busID) ?? 20) << 24) | UInt32(Int(device.deviceID) ?? 0)
+        )
+        
+        // Add to notification devices
+        notificationDevices.append(mockDevice)
+        
+        // Set up the notification device and reset index before triggering callback
+        addedNotificationDevices = [mockDevice] // Replace with single device for this notification
+        addedNotificationIndex = 0 // Reset index for new notification
+        
+        // Trigger callback if set
+        if let callback = deviceAddedCallback {
+            callback(callbackRefCon, addedIterator)
+        }
+    }
+    
+    /// Simulate a device disconnection notification
+    public func simulateDeviceDisconnection(_ device: USBDevice) {
+        // Convert USBDevice to MockUSBDevice for simulation
+        let mockDevice = MockUSBDevice(
+            vendorID: device.vendorID,
+            productID: device.productID,
+            deviceClass: device.deviceClass,
+            deviceSubClass: device.deviceSubClass,
+            deviceProtocol: device.deviceProtocol,
+            speed: UInt8(device.speed.rawValue),
+            manufacturerString: device.manufacturerString,
+            productString: device.productString,
+            serialNumberString: device.serialNumberString,
+            locationID: UInt32((Int(device.busID) ?? 20) << 24) | UInt32(Int(device.deviceID) ?? 0)
+        )
+        
+        // Remove from notification devices
+        notificationDevices.removeAll { existingDevice in
+            existingDevice.vendorID == device.vendorID &&
+            existingDevice.productID == device.productID &&
+            existingDevice.locationID == mockDevice.locationID
+        }
+        
+        // Set up the notification device and reset index before triggering callback
+        removedNotificationDevices = [mockDevice] // Replace with single device for this notification
+        removedNotificationIndex = 0 // Reset index for new notification
+        
+        // Trigger callback if set
+        if let callback = deviceRemovedCallback {
+            callback(callbackRefCon, removedIterator)
+        }
+    }
+    
+    /// Simulate a device discovery error
+    public func simulateDeviceDiscoveryError(_ error: Error) {
+        simulatedDiscoveryError = error
+        // In a real implementation, this would trigger error handling in the device discovery
+        // For testing purposes, we'll store the error and let tests verify it's handled
+    }
+    
+    /// Get the simulated discovery error (for test verification)
+    public func getSimulatedDiscoveryError() -> Error? {
+        return simulatedDiscoveryError
+    }
+    
+    /// Clear the simulated discovery error
+    public func clearSimulatedDiscoveryError() {
+        simulatedDiscoveryError = nil
     }
 }
 
