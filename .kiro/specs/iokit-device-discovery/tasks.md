@@ -87,37 +87,37 @@
     - **Commit**: `feat(device): add comprehensive device discovery logging`
     - _Requirements: 6.2, 6.4, 6.6_
 
-- [ ] 6. Create comprehensive unit tests for device discovery
-  - [-] 6.1 Create mock IOKit interface for testing
+- [x] 6. Create comprehensive unit tests for device discovery
+  - [x] 6.1 Create mock IOKit interface for testing
     - Design protocol wrapper around IOKit functions for dependency injection
     - Implement mock IOKit service provider for unit testing
     - Create test fixtures with known USB device properties and scenarios
     - **Commit**: `test(device): add mock IOKit interface for testing`
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ] 6.2 Implement device enumeration and property extraction tests
+  - [x] 6.2 Implement device enumeration and property extraction tests
     - Write tests for discoverDevices() with various device configurations
     - Test property extraction with missing, invalid, and valid IOKit properties
     - Test USBDevice creation with different device types and speeds
     - **Commit**: `test(device): add device enumeration and property tests`
     - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-  - [ ] 6.3 Create device monitoring and notification tests
+  - [x] 6.3 Create device monitoring and notification tests
     - Test notification setup and cleanup with mock IOKit notification port
     - Test device connection and disconnection callback triggering
     - Test notification system error handling and resource management
     - **Commit**: `test(device): add device monitoring and notification tests`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [ ] 7. Create integration tests with existing system components
-  - [ ] 7.1 Test integration with CLI commands
+- [x] 7. Create integration tests with existing system components
+  - [x] 7.1 Test integration with CLI commands
     - Test IOKitDeviceDiscovery with existing ListCommand implementation
     - Verify device data format compatibility with CLI output formatting
     - Test bind/unbind command integration with device lookup functionality
     - **Commit**: `test(device): add CLI integration tests`
     - _Requirements: 5.2, 5.6_
 
-  - [ ] 7.2 Test integration with ServerCoordinator
+  - [x] 7.2 Test integration with ServerCoordinator
     - Test IOKitDeviceDiscovery integration with ServerCoordinator device callbacks
     - Verify notification system works correctly with server event handling
     - Test error propagation from device discovery to server error handling
