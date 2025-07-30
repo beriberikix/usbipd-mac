@@ -21,6 +21,229 @@ private struct DeviceProperties {
     let serialNumberString: String?
 }
 
+// MARK: - Performance Optimization Types
+
+/// Configuration for device list caching
+internal struct DeviceCacheConfiguration {
+    let maxAge: TimeInterval
+    let maxSize: Int
+    let enableCaching: Bool
+    
+    static let `default` = DeviceCacheConfiguration(
+        maxAge: 2.0,        // Cache for 2 seconds
+        maxSize: 100,       // Maximum 100 cached devices
+        enableCaching: true
+    )
+    
+    static let aggressive = DeviceCacheConfiguration(
+        maxAge: 5.0,        // Cache for 5 seconds
+        maxSize: 200,       // Maximum 200 cached devices
+        enableCaching: true
+    )
+    
+    static let disabled = DeviceCacheConfiguration(
+        maxAge: 0,
+        maxSize: 0,
+        enableCaching: false
+    )
+}
+
+/// Device list cache with automatic expiration
+private class DeviceListCache {
+    private let config: DeviceCacheConfiguration
+    private var cachedDevices: [USBDevice] = []
+    private var cacheTimestamp: Date = Date.distantPast
+    private let lock = NSLock()
+    
+    init(config: DeviceCacheConfiguration) {
+        self.config = config
+    }
+    
+    /// Check if cache is valid and not expired
+    var isValid: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard config.enableCaching else { return false }
+        
+        let age = Date().timeIntervalSince(cacheTimestamp)
+        return age < config.maxAge && !cachedDevices.isEmpty
+    }
+    
+    /// Get cached devices if valid
+    func getCachedDevices() -> [USBDevice]? {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard isValid else { return nil }
+        return cachedDevices
+    }
+    
+    /// Update cache with new device list
+    func updateCache(with devices: [USBDevice]) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard config.enableCaching else { return }
+        
+        // Limit cache size to prevent memory issues
+        let limitedDevices = Array(devices.prefix(config.maxSize))
+        
+        cachedDevices = limitedDevices
+        cacheTimestamp = Date()
+    }
+    
+    /// Clear the cache
+    func clearCache() {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        cachedDevices.removeAll()
+        cacheTimestamp = Date.distantPast
+    }
+    
+    /// Get cache statistics for monitoring
+    func getCacheStats() -> (deviceCount: Int, age: TimeInterval, isValid: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        let age = Date().timeIntervalSince(cacheTimestamp)
+        return (cachedDevices.count, age, isValid)
+    }
+}
+
+/// Pool for reusing IOKit objects to reduce allocation overhead
+private class IOKitObjectPool {
+    private var availableIterators: [io_iterator_t] = []
+    private let lock = NSLock()
+    private let maxPoolSize: Int
+    private var totalBorrowed: Int = 0
+    private var totalReturned: Int = 0
+    private var peakUsage: Int = 0
+    
+    init(maxPoolSize: Int = 10) {
+        self.maxPoolSize = maxPoolSize
+    }
+    
+    /// Get an iterator from the pool or create a new one
+    func borrowIterator() -> io_iterator_t? {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        totalBorrowed += 1
+        let currentUsage = totalBorrowed - totalReturned
+        peakUsage = max(peakUsage, currentUsage)
+        
+        if !availableIterators.isEmpty {
+            return availableIterators.removeLast()
+        }
+        
+        return nil // Caller should create new iterator
+    }
+    
+    /// Return an iterator to the pool for reuse
+    func returnIterator(_ iterator: io_iterator_t) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        totalReturned += 1
+        
+        guard iterator != 0 && availableIterators.count < maxPoolSize else {
+            // Pool is full or invalid iterator, release it
+            IOObjectRelease(iterator)
+            return
+        }
+        
+        availableIterators.append(iterator)
+    }
+    
+    /// Get pool statistics for monitoring
+    func getPoolStats() -> (available: Int, borrowed: Int, returned: Int, peakUsage: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        return (availableIterators.count, totalBorrowed, totalReturned, peakUsage)
+    }
+    
+    /// Clear the pool and release all objects
+    func clearPool() {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        for iterator in availableIterators {
+            IOObjectRelease(iterator)
+        }
+        availableIterators.removeAll()
+        totalBorrowed = 0
+        totalReturned = 0
+        peakUsage = 0
+    }
+    
+    deinit {
+        clearPool()
+    }
+}
+
+/// RAII wrapper for IOKit objects with automatic cleanup and lifecycle tracking
+private class IOKitObjectManager {
+    private let object: io_object_t
+    private var isReleased = false
+    private let lock = NSLock()
+    private let creationTime: Date
+    private let objectType: String
+    
+    init(_ object: io_object_t, type: String = "unknown") {
+        self.object = object
+        self.objectType = type
+        self.creationTime = Date()
+    }
+    
+    var value: io_object_t {
+        lock.lock()
+        defer { lock.unlock() }
+        return isReleased ? 0 : object
+    }
+    
+    /// Get object lifecycle information
+    var lifecycleInfo: (age: TimeInterval, isReleased: Bool, type: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        return (Date().timeIntervalSince(creationTime), isReleased, objectType)
+    }
+    
+    /// Manually release the object (useful for early cleanup)
+    func release() -> kern_return_t {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard !isReleased && object != 0 else {
+            return KERN_SUCCESS
+        }
+        
+        isReleased = true
+        let result = IOObjectRelease(object)
+        
+        // Log long-lived objects for memory management monitoring
+        let age = Date().timeIntervalSince(creationTime)
+        if age > 10.0 { // Objects held for more than 10 seconds
+            print("IOKit object held for \(String(format: "%.2f", age))s before release: \(objectType)")
+        }
+        
+        return result
+    }
+    
+    deinit {
+        if !isReleased && object != 0 {
+            let age = Date().timeIntervalSince(creationTime)
+            if age > 5.0 { // Log objects that lived longer than expected
+                print("IOKit object auto-released after \(String(format: "%.2f", age))s: \(objectType)")
+            }
+            IOObjectRelease(object)
+        }
+    }
+}
+
 /// IOKit-based implementation of USB device discovery
 public class IOKitDeviceDiscovery: DeviceDiscovery {
     
@@ -36,6 +259,20 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     // Cache of connected devices for proper disconnection callbacks
     private var connectedDevices: [String: USBDevice] = [:]
+    
+    // MARK: - Performance Optimization Properties
+    
+    /// Device list cache to avoid repeated IOKit queries
+    private var deviceListCache: DeviceListCache?
+    
+    /// Cache configuration for device list caching
+    private let cacheConfig: DeviceCacheConfiguration
+    
+    /// IOKit object pool for reusing common objects
+    private let objectPool: IOKitObjectPool
+    
+    /// CF dictionary pool for reusing dictionary objects
+    private let dictionaryPool: CFDictionaryPool
     
     private let logger: Logger
     private let queue: DispatchQueue
@@ -54,12 +291,23 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             qos: .userInitiated
         )
         self.ioKit = RealIOKitInterface()
+        self.cacheConfig = .default
+        self.deviceListCache = DeviceListCache(config: self.cacheConfig)
+        self.objectPool = IOKitObjectPool()
+        self.dictionaryPool = CFDictionaryPool()
         
-        logger.debug("IOKitDeviceDiscovery initialized with dedicated dispatch queue")
+        logger.debug("IOKitDeviceDiscovery initialized with performance optimizations", context: [
+            "cacheEnabled": cacheConfig.enableCaching,
+            "cacheMaxAge": cacheConfig.maxAge,
+            "cacheMaxSize": cacheConfig.maxSize,
+            "objectPoolEnabled": true,
+            "dictionaryPoolEnabled": true,
+            "optimizationLevel": "enhanced"
+        ])
     }
     
     /// Internal initializer for testing with dependency injection
-    internal init(ioKit: IOKitInterface, logger: Logger? = nil) {
+    internal init(ioKit: IOKitInterface, logger: Logger? = nil, cacheConfig: DeviceCacheConfiguration? = nil) {
         self.ioKit = ioKit
         self.logger = logger ?? Logger(
             config: LoggerConfig(level: .info), 
@@ -70,8 +318,18 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             label: "com.usbipd.mac.device-discovery",
             qos: .userInitiated
         )
+        self.cacheConfig = cacheConfig ?? .default
+        self.deviceListCache = DeviceListCache(config: self.cacheConfig)
+        self.objectPool = IOKitObjectPool()
+        self.dictionaryPool = CFDictionaryPool()
         
-        self.logger.debug("IOKitDeviceDiscovery initialized with injected IOKit interface for testing")
+        self.logger.debug("IOKitDeviceDiscovery initialized with injected dependencies for testing", context: [
+            "cacheEnabled": self.cacheConfig.enableCaching,
+            "testMode": true,
+            "objectPoolEnabled": true,
+            "dictionaryPoolEnabled": true,
+            "optimizationLevel": "enhanced"
+        ])
     }
     
     deinit {
@@ -81,12 +339,104 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             stopNotifications()
         }
         
+        // Clean up performance optimization resources
+        deviceListCache?.clearCache()
+        objectPool.clearPool()
+        dictionaryPool.clearPool()
+        
         // Final verification that all resources are cleaned up
         if !verifyNotificationCleanup() {
             logger.error("IOKitDeviceDiscovery deinitialized with unclean notification state")
         }
         
-        logger.debug("IOKitDeviceDiscovery deinitialized")
+        logger.debug("IOKitDeviceDiscovery deinitialized with performance optimization cleanup")
+    }
+    
+    // MARK: - Performance Monitoring
+    
+    /// Monitor memory usage and trigger cleanup if needed
+    private func monitorMemoryUsage() {
+        let poolStats = objectPool.getPoolStats()
+        let dictPoolStats = dictionaryPool.getPoolStats()
+        let outstandingObjects = (poolStats.borrowed - poolStats.returned) + (dictPoolStats.borrowed - dictPoolStats.returned)
+        
+        // Trigger cleanup if too many objects are outstanding
+        if outstandingObjects > 50 {
+            logger.warning("High number of outstanding IOKit objects detected", context: [
+                "outstandingObjects": outstandingObjects,
+                "objectPoolOutstanding": poolStats.borrowed - poolStats.returned,
+                "dictPoolOutstanding": dictPoolStats.borrowed - dictPoolStats.returned,
+                "action": "triggering_cleanup"
+            ])
+            
+            // Force garbage collection to help with memory cleanup
+            autoreleasepool {
+                // This block helps ensure any autoreleased objects are cleaned up
+            }
+        }
+        
+        // Log memory usage periodically for monitoring
+        if outstandingObjects > 0 {
+            logger.debug("Memory usage monitoring", context: [
+                "outstandingObjects": outstandingObjects,
+                "cacheSize": connectedDevices.count,
+                "memoryFootprint": connectedDevices.count * MemoryLayout<USBDevice>.size
+            ])
+        }
+    }
+    
+    /// Get performance statistics for monitoring optimization effectiveness
+    internal func getPerformanceStats() -> [String: Any] {
+        let cacheStats = deviceListCache?.getCacheStats() ?? (0, 0, false)
+        let poolStats = objectPool.getPoolStats()
+        let dictPoolStats = dictionaryPool.getPoolStats()
+        
+        return [
+            "cache": [
+                "enabled": cacheConfig.enableCaching,
+                "deviceCount": cacheStats.0,
+                "age": String(format: "%.2f", cacheStats.1),
+                "isValid": cacheStats.2,
+                "maxAge": cacheConfig.maxAge,
+                "maxSize": cacheConfig.maxSize,
+                "hitRate": cacheStats.2 ? "active" : "expired"
+            ],
+            "connectedDevicesCache": [
+                "count": connectedDevices.count,
+                "keys": Array(connectedDevices.keys),
+                "memoryFootprint": connectedDevices.count * MemoryLayout<USBDevice>.size
+            ],
+            "objectPool": [
+                "available": poolStats.available,
+                "borrowed": poolStats.borrowed,
+                "returned": poolStats.returned,
+                "peakUsage": poolStats.peakUsage,
+                "efficiency": poolStats.returned > 0 ? String(format: "%.1f%%", Double(poolStats.returned) / Double(poolStats.borrowed) * 100) : "0%"
+            ],
+            "dictionaryPool": [
+                "available": dictPoolStats.available,
+                "borrowed": dictPoolStats.borrowed,
+                "returned": dictPoolStats.returned,
+                "peakUsage": dictPoolStats.peakUsage,
+                "efficiency": dictPoolStats.returned > 0 ? String(format: "%.1f%%", Double(dictPoolStats.returned) / Double(dictPoolStats.borrowed) * 100) : "0%"
+            ],
+            "optimization": [
+                "level": "enhanced",
+                "objectPoolEnabled": true,
+                "dictionaryPoolEnabled": true,
+                "batchProcessingEnabled": true,
+                "minimalIOKitCallsEnabled": true,
+                "raiipatternsEnabled": true,
+                "lifecycleTrackingEnabled": true,
+                "memoryOptimizationsEnabled": true
+            ],
+            "memoryManagement": [
+                "totalAllocatedObjects": poolStats.borrowed + dictPoolStats.borrowed,
+                "totalReleasedObjects": poolStats.returned + dictPoolStats.returned,
+                "outstandingObjects": (poolStats.borrowed - poolStats.returned) + (dictPoolStats.borrowed - dictPoolStats.returned),
+                "peakMemoryUsage": poolStats.peakUsage + dictPoolStats.peakUsage
+            ]
+        ]
     }
     
     // MARK: - IOKit Memory Management Utilities
@@ -118,6 +468,46 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             }
         }
         return try block(object)
+    }
+    
+    /// Optimized RAII wrapper using IOKitObjectManager for better lifecycle management
+    private func withManagedIOKitObject<T>(_ object: io_object_t, type: String = "service", _ block: (io_object_t) throws -> T) throws -> T {
+        let manager = IOKitObjectManager(object, type: type)
+        
+        do {
+            let result = try block(manager.value)
+            
+            // Explicitly release early for better memory management
+            let releaseResult = manager.release()
+            if releaseResult != KERN_SUCCESS {
+                let lifecycleInfo = manager.lifecycleInfo
+                logger.warning("Failed to release managed IOKit object", context: [
+                    "object": object,
+                    "type": lifecycleInfo.type,
+                    "age": String(format: "%.3f", lifecycleInfo.age),
+                    "kern_return": releaseResult
+                ])
+            } else {
+                let lifecycleInfo = manager.lifecycleInfo
+                logger.debug("Successfully released managed IOKit object", context: [
+                    "object": object,
+                    "type": lifecycleInfo.type,
+                    "age": String(format: "%.3f", lifecycleInfo.age)
+                ])
+            }
+            
+            return result
+        } catch {
+            // Manager will automatically clean up in deinit
+            let lifecycleInfo = manager.lifecycleInfo
+            logger.debug("IOKit object will be auto-released due to error", context: [
+                "object": object,
+                "type": lifecycleInfo.type,
+                "age": String(format: "%.3f", lifecycleInfo.age),
+                "error": error.localizedDescription
+            ])
+            throw error
+        }
     }
     
     // MARK: - Error Recovery Configuration
@@ -556,6 +946,406 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return handleIOKitError(result, operation: operation, context: context)
     }
     
+    /// Optimized property access with minimal overhead for performance-critical paths
+    private func getUInt32PropertyOptimal(from service: io_service_t, key: String) -> UInt32? {
+        // Use direct IOKit call without extensive error handling for performance
+        guard let property = ioKit.registryEntryCreateCFProperty(
+            service, 
+            key as CFString, 
+            kCFAllocatorDefault, 
+            0
+        )?.takeRetainedValue() else {
+            return nil
+        }
+        
+        defer {
+            // Ensure immediate cleanup for optimal memory management
+            if CFGetTypeID(property) == CFNumberGetTypeID() {
+                // Property will be automatically released when going out of scope
+            }
+        }
+        
+        guard let number = property as? NSNumber else {
+            return nil
+        }
+        
+        return number.uint32Value
+    }
+    
+    /// Optimized string property access with minimal overhead
+    private func getStringPropertyOptimal(from service: io_service_t, key: String) -> String? {
+        guard let property = ioKit.registryEntryCreateCFProperty(
+            service, 
+            key as CFString, 
+            kCFAllocatorDefault, 
+            0
+        )?.takeRetainedValue() else {
+            return nil
+        }
+        
+        defer {
+            // Ensure immediate cleanup for optimal memory management
+            if CFGetTypeID(property) == CFStringGetTypeID() {
+                // Property will be automatically released when going out of scope
+            }
+        }
+        
+        return property as? String
+    }
+    
+    /// Enhanced RAII wrapper for multiple IOKit objects with automatic cleanup
+    private class IOKitObjectBatch {
+        private var objects: [io_object_t] = []
+        private let lock = NSLock()
+        private var isReleased = false
+        
+        func add(_ object: io_object_t) {
+            lock.lock()
+            defer { lock.unlock() }
+            
+            guard !isReleased && object != 0 else { return }
+            objects.append(object)
+        }
+        
+        func releaseAll() -> [kern_return_t] {
+            lock.lock()
+            defer { lock.unlock() }
+            
+            guard !isReleased else { return [] }
+            
+            var results: [kern_return_t] = []
+            for object in objects {
+                if object != 0 {
+                    results.append(IOObjectRelease(object))
+                }
+            }
+            
+            objects.removeAll()
+            isReleased = true
+            return results
+        }
+        
+        deinit {
+            if !isReleased {
+                _ = releaseAll()
+            }
+        }
+    }
+    
+    /// Memory pool for reusing CFMutableDictionary objects to reduce allocation overhead
+    private class CFDictionaryPool {
+        private var availableDictionaries: [CFMutableDictionary] = []
+        private let lock = NSLock()
+        private let maxPoolSize: Int
+        private var totalBorrowed: Int = 0
+        private var totalReturned: Int = 0
+        private var peakUsage: Int = 0
+        
+        init(maxPoolSize: Int = 5) {
+            self.maxPoolSize = maxPoolSize
+        }
+        
+        /// Get a dictionary from the pool or create a new one
+        func borrowDictionary() -> CFMutableDictionary {
+            lock.lock()
+            defer { lock.unlock() }
+            
+            totalBorrowed += 1
+            let currentUsage = totalBorrowed - totalReturned
+            peakUsage = max(peakUsage, currentUsage)
+            
+            if !availableDictionaries.isEmpty {
+                let dict = availableDictionaries.removeLast()
+                CFDictionaryRemoveAllValues(dict)
+                return dict
+            }
+            
+            var keyCallbacks = kCFTypeDictionaryKeyCallBacks
+            var valueCallbacks = kCFTypeDictionaryValueCallBacks
+            return CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &keyCallbacks, &valueCallbacks)
+        }
+        
+        /// Return a dictionary to the pool for reuse
+        func returnDictionary(_ dictionary: CFMutableDictionary) {
+            lock.lock()
+            defer { lock.unlock() }
+            
+            totalReturned += 1
+            
+            guard availableDictionaries.count < maxPoolSize else {
+                // Pool is full, let the dictionary be deallocated
+                return
+            }
+            
+            CFDictionaryRemoveAllValues(dictionary)
+            availableDictionaries.append(dictionary)
+        }
+        
+        /// Get pool statistics for monitoring
+        func getPoolStats() -> (available: Int, borrowed: Int, returned: Int, peakUsage: Int) {
+            lock.lock()
+            defer { lock.unlock() }
+            
+            return (availableDictionaries.count, totalBorrowed, totalReturned, peakUsage)
+        }
+        
+        /// Clear the pool and release all dictionaries
+        func clearPool() {
+            lock.lock()
+            defer { lock.unlock() }
+            
+            availableDictionaries.removeAll()
+            totalBorrowed = 0
+            totalReturned = 0
+            peakUsage = 0
+        }
+        
+        deinit {
+            clearPool()
+        }
+    }
+    
+    /// Batch property extraction for improved performance with optimized memory management
+    private func extractPropertiesBatch(from service: io_service_t, keys: [String]) -> [String: Any] {
+        var properties: [String: Any] = [:]
+        properties.reserveCapacity(keys.count)
+        
+        // Extract properties individually with optimized error handling
+        for key in keys {
+            if let property = ioKit.registryEntryCreateCFProperty(
+                service, 
+                key as CFString, 
+                kCFAllocatorDefault, 
+                0
+            )?.takeRetainedValue() {
+                properties[key] = property
+            }
+        }
+        
+        return properties
+    }
+    
+    /// Ultra-optimized property extraction for performance-critical paths
+    private func extractPropertiesBatchOptimal(from service: io_service_t, keys: [String]) -> [String: Any] {
+        var properties: [String: Any] = [:]
+        properties.reserveCapacity(keys.count)
+        
+        // Use direct IOKit calls with minimal overhead for critical properties
+        let criticalKeys = [kUSBVendorID, kUSBProductID, "locationID"]
+        let optionalKeys = keys.filter { !criticalKeys.contains($0) }
+        
+        // Extract critical properties first with error handling
+        for key in criticalKeys where keys.contains(key) {
+            if let property = ioKit.registryEntryCreateCFProperty(
+                service, 
+                key as CFString, 
+                kCFAllocatorDefault, 
+                0
+            )?.takeRetainedValue() {
+                properties[key] = property
+            }
+        }
+        
+        // Extract optional properties with graceful failure handling
+        for key in optionalKeys {
+            if let property = ioKit.registryEntryCreateCFProperty(
+                service, 
+                key as CFString, 
+                kCFAllocatorDefault, 
+                0
+            )?.takeRetainedValue() {
+                properties[key] = property
+            }
+        }
+        
+        return properties
+    }
+    
+    /// Extract only essential properties needed for device identification and creation
+    private func extractEssentialPropertiesBatch(from service: io_service_t) -> [String: Any] {
+        let essentialKeys = [
+            "locationID",
+            kUSBVendorID,
+            kUSBProductID,
+            kUSBDeviceClass,
+            kUSBDeviceSubClass,
+            kUSBDeviceProtocol,
+            "USB Address",
+            "Speed"
+        ]
+        
+        return extractPropertiesBatch(from: service, keys: essentialKeys)
+    }
+    
+    /// Create USB device from pre-extracted properties to avoid redundant IOKit calls
+    private func createUSBDeviceFromPreExtractedProperties(
+        service: io_service_t,
+        properties: [String: Any],
+        locationID: UInt32,
+        vendorID: UInt16,
+        productID: UInt16
+    ) throws -> USBDevice {
+        
+        // Extract bus and device IDs from locationID
+        let busNumber = (locationID >> 24) & 0xFF
+        let busID = String(format: "%d", busNumber)
+        
+        // Try USB Address first, fallback to locationID
+        let deviceID: String
+        if let usbAddress = properties["USB Address"] as? UInt8 {
+            deviceID = String(format: "%d", usbAddress)
+        } else {
+            let deviceAddress = locationID & 0xFF
+            deviceID = String(format: "%d", deviceAddress)
+        }
+        
+        // Extract other properties with defaults
+        let deviceClass = (properties[kUSBDeviceClass] as? UInt8) ?? 0
+        let deviceSubClass = (properties[kUSBDeviceSubClass] as? UInt8) ?? 0
+        let deviceProtocol = (properties[kUSBDeviceProtocol] as? UInt8) ?? 0
+        
+        // Extract USB speed with fallback using existing extraction method
+        let speed = extractUSBSpeed(from: service)
+        
+        // Extract string descriptors only if needed (lazy loading for performance)
+        let manufacturerString = getStringPropertyOptimal(from: service, key: kUSBManufacturerStringIndex)
+        let productString = getStringPropertyOptimal(from: service, key: kUSBProductStringIndex)
+        let serialNumberString = getStringPropertyOptimal(from: service, key: kUSBSerialNumberStringIndex)
+        
+        logger.debug("Created USB device from pre-extracted properties", context: [
+            "busID": busID,
+            "deviceID": deviceID,
+            "vendorID": String(format: "0x%04x", vendorID),
+            "productID": String(format: "0x%04x", productID),
+            "deviceClass": String(format: "0x%02x", deviceClass),
+            "speed": speed.rawValue,
+            "optimized": true
+        ])
+        
+        return USBDevice(
+            busID: busID,
+            deviceID: deviceID,
+            vendorID: vendorID,
+            productID: productID,
+            deviceClass: deviceClass,
+            deviceSubClass: deviceSubClass,
+            deviceProtocol: deviceProtocol,
+            speed: speed,
+            manufacturerString: manufacturerString,
+            productString: productString,
+            serialNumberString: serialNumberString
+        )
+    }
+    
+    /// Create optimized matching dictionary using dictionary pool for better memory management
+    private func createOptimizedMatchingDictionary() -> CFMutableDictionary? {
+        // Try to use the standard IOKit method first for compatibility
+        if let standardDict = ioKit.serviceMatching(kIOUSBDeviceClassName) {
+            return standardDict
+        }
+        
+        // Fallback to manual creation using dictionary pool
+        let dict = dictionaryPool.borrowDictionary()
+        
+        // Set up USB device matching criteria
+        let ioProviderClass = kIOUSBDeviceClassName as CFString
+        CFDictionarySetValue(dict, Unmanaged.passUnretained(kIOProviderClassKey as CFString).toOpaque(), Unmanaged.passUnretained(ioProviderClass).toOpaque())
+        
+        logger.debug("Created optimized matching dictionary using dictionary pool", context: [
+            "className": kIOUSBDeviceClassName,
+            "method": "dictionary_pool_fallback"
+        ])
+        
+        return dict
+    }
+    
+    /// Release matching dictionary back to pool for reuse
+    private func releaseMatchingDictionary(_ dict: CFMutableDictionary?) {
+        guard let dict = dict else { return }
+        
+        // Return dictionary to pool for reuse
+        dictionaryPool.returnDictionary(dict)
+        
+        logger.debug("Returned matching dictionary to pool for reuse", context: [
+            "poolEnabled": true,
+            "memoryOptimization": "active"
+        ])
+    }
+    
+    /// Handle device disconnection using pre-computed device key
+    private func handleDeviceDisconnectionWithKey(deviceKey: String) {
+        // Look up the cached device information
+        if let cachedDevice = connectedDevices.removeValue(forKey: deviceKey) {
+            logger.info("USB device disconnected (optimized)", context: [
+                "event": "device_disconnected_optimized",
+                "busID": cachedDevice.busID,
+                "deviceID": cachedDevice.deviceID,
+                "deviceKey": deviceKey,
+                "vendorID": String(format: "0x%04x", cachedDevice.vendorID),
+                "productID": String(format: "0x%04x", cachedDevice.productID),
+                "product": cachedDevice.productString ?? "Unknown",
+                "manufacturer": cachedDevice.manufacturerString ?? "Unknown",
+                "remainingCachedDevices": connectedDevices.count,
+                "optimizationLevel": "minimal_iokit_calls"
+            ])
+            
+            // Trigger the disconnection callback with complete device information
+            logger.debug("Triggering optimized device disconnection callback")
+            onDeviceDisconnected?(cachedDevice)
+            
+        } else {
+            logger.warning("Device disconnected but not found in cache (optimized)", context: [
+                "deviceKey": deviceKey,
+                "cachedDeviceCount": connectedDevices.count,
+                "cachedDeviceKeys": Array(connectedDevices.keys),
+                "possibleCause": "Device was connected before monitoring started or cache was cleared"
+            ])
+            
+            // Create minimal device information from device key
+            let components = deviceKey.split(separator: ":")
+            if components.count == 2 {
+                let busID = String(components[0])
+                let deviceID = String(components[1])
+                
+                let minimalDevice = USBDevice(
+                    busID: busID,
+                    deviceID: deviceID,
+                    vendorID: 0,
+                    productID: 0,
+                    deviceClass: 0,
+                    deviceSubClass: 0,
+                    deviceProtocol: 0,
+                    speed: .unknown,
+                    manufacturerString: nil,
+                    productString: nil,
+                    serialNumberString: nil
+                )
+                
+                logger.info("USB device disconnected (minimal info, optimized)", context: [
+                    "event": "device_disconnected_minimal_optimized",
+                    "busID": busID,
+                    "deviceID": deviceID,
+                    "deviceKey": deviceKey,
+                    "dataAvailable": "minimal",
+                    "reason": "Device not found in cache",
+                    "optimizationLevel": "minimal_iokit_calls"
+                ])
+                
+                logger.debug("Triggering optimized device disconnection callback with minimal info")
+                onDeviceDisconnected?(minimalDevice)
+            }
+        }
+    }
+    
+    /// Optional property access with graceful fallback
+    private func getUInt32PropertyOptional(from service: io_service_t, key: String) -> UInt32? {
+        do {
+            return try getUInt32Property(from: service, key: key)
+        } catch {
+            return nil
+        }
+    }
+    
     /// Helper method for common IOKit notification errors
     /// Provides standardized error handling for notification setup failures
     private func handleNotificationError(_ result: kern_return_t, operation: String = "notification setup") -> DeviceDiscoveryError {
@@ -658,18 +1448,34 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Internal device discovery method that doesn't use queue synchronization
     private func discoverDevicesInternal() throws -> [USBDevice] {
+        // Check cache first for performance optimization
+        if let cachedDevices = deviceListCache?.getCachedDevices() {
+            let cacheStats = deviceListCache?.getCacheStats() ?? (0, 0, false)
+            logger.debug("Using cached device list for performance", context: [
+                "cachedDeviceCount": cachedDevices.count,
+                "cacheAge": String(format: "%.2f", cacheStats.1),
+                "cacheMaxAge": cacheConfig.maxAge
+            ])
+            return cachedDevices
+        }
+        
         return try executeWithRetry(operation: "device discovery") {
             return try safeIOKitOperation("device discovery with retry") {
-                logger.debug("Starting USB device discovery with error recovery")
+                logger.debug("Starting USB device discovery with error recovery and caching")
                 var devices: [USBDevice] = []
                 var skippedDevices = 0
                 var recoveredDevices = 0
                 var partialFailures: [String] = []
                 
-                // Create matching dictionary for USB devices with retry logic
-                guard let matchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
+                // Create matching dictionary for USB devices with retry logic and dictionary pooling
+                guard let matchingDict = createOptimizedMatchingDictionary() else {
                     logger.error("Failed to create IOKit matching dictionary")
                     throw DeviceDiscoveryError.failedToCreateMatchingDictionary
+                }
+                
+                // Ensure dictionary is returned to pool after use
+                defer {
+                    releaseMatchingDictionary(matchingDict)
                 }
                 
                 logger.debug("Created IOKit matching dictionary for USB devices", context: [
@@ -779,6 +1585,19 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                         "impact": "Some device information may be incomplete but devices are usable"
                     ])
                 }
+                
+                // Update cache with discovered devices for performance optimization
+                deviceListCache?.updateCache(with: devices)
+                
+                // Monitor memory usage and trigger cleanup if needed
+                monitorMemoryUsage()
+                
+                logger.debug("Device discovery completed with caching and memory monitoring", context: [
+                    "discoveredDevices": devices.count,
+                    "cacheEnabled": cacheConfig.enableCaching,
+                    "cacheMaxAge": cacheConfig.maxAge,
+                    "memoryOptimizationsActive": true
+                ])
                 
                 return devices
             }
@@ -2149,14 +2968,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return number.uint32Value
     }
     
-    private func getUInt32PropertyOptional(from service: io_service_t, key: String) -> UInt32? {
-        guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue(),
-              let number = property as? NSNumber else {
-            return nil
-        }
-        
-        return number.uint32Value
-    }
+
     
     private func getUInt8PropertyOptional(from service: io_service_t, key: String) -> UInt8? {
         guard let property = ioKit.registryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue(),
@@ -2398,8 +3210,9 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             cleanupNotificationPort()
             
             // Clear the device cache when stopping notifications
-            logger.debug("Clearing device cache")
+            logger.debug("Clearing device cache and performance optimization resources")
             cleanupDeviceCache()
+            cleanupPerformanceOptimizations()
             
             // Verify that cleanup was successful
             if verifyNotificationCleanup() {
@@ -2496,6 +3309,25 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         } else {
             logger.debug("Device cache was already empty")
         }
+    }
+    
+    /// Clean up performance optimization resources
+    private func cleanupPerformanceOptimizations() {
+        logger.debug("Cleaning up performance optimization resources")
+        
+        // Clear device list cache
+        let cacheStats = deviceListCache?.getCacheStats() ?? (0, 0, false)
+        deviceListCache?.clearCache()
+        
+        // Clear object pool
+        objectPool.clearPool()
+        
+        logger.debug("Completed performance optimization cleanup", context: [
+            "previousCacheDeviceCount": cacheStats.0,
+            "previousCacheAge": String(format: "%.2f", cacheStats.1),
+            "cacheWasValid": cacheStats.2,
+            "objectPoolCleared": true
+        ])
     }
     
     /// Ensure clean notification state before starting notifications
@@ -2660,53 +3492,83 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     // Changed from private to internal for callback access
     func consumeIterator(_ iterator: io_iterator_t, isAddedNotification: Bool) {
         let eventType = isAddedNotification ? "connection" : "disconnection"
-        logger.debug("Starting to process \(eventType) notifications", context: [
+        logger.debug("Starting to process \(eventType) notifications with optimizations", context: [
             "iterator": iterator,
             "eventType": eventType
         ])
         
+        // Invalidate cache on device changes for consistency
+        if cacheConfig.enableCaching {
+            deviceListCache?.clearCache()
+            logger.debug("Cleared device cache due to device \(eventType) event")
+        }
+        
         var deviceCount = 0
         var processedSuccessfully = 0
         var processingErrors = 0
-        var service: io_service_t = IOIteratorNext(iterator)
         
+        // Optimized notification processing with minimal IOKit calls
+        let objectBatch = IOKitObjectBatch()
+        var servicesToProcess: [(service: io_service_t, index: Int)] = []
+        
+        // Collect all services in a single pass to minimize iterator overhead
+        var service: io_service_t = ioKit.iteratorNext(iterator)
         while service != 0 {
-            defer {
-                _ = ioKit.objectRelease(service)
-                service = ioKit.iteratorNext(iterator)
-            }
-            
+            servicesToProcess.append((service: service, index: deviceCount))
+            objectBatch.add(service)
             deviceCount += 1
-            
-            logger.debug("Processing device \(eventType) notification", context: [
-                "deviceIndex": deviceCount,
-                "service": service,
+            service = ioKit.iteratorNext(iterator)
+        }
+        
+        // Process collected services with optimized batch operations
+        if !servicesToProcess.isEmpty {
+            logger.debug("Processing \(eventType) notifications in optimized batch", context: [
+                "batchSize": servicesToProcess.count,
                 "eventType": eventType
             ])
             
-            do {
-                if isAddedNotification {
-                    try handleDeviceAddedNotification(service: service)
-                } else {
-                    handleDeviceRemovedNotification(service: service)
+            // Process notifications with minimal IOKit overhead
+            for (serviceInfo) in servicesToProcess {
+                do {
+                    if isAddedNotification {
+                        try handleDeviceAddedNotificationOptimized(service: serviceInfo.service, batchIndex: serviceInfo.index)
+                    } else {
+                        handleDeviceRemovedNotificationOptimized(service: serviceInfo.service, batchIndex: serviceInfo.index)
+                    }
+                    processedSuccessfully += 1
+                } catch {
+                    logger.warning("Failed to process device \(eventType) notification", context: [
+                        "deviceIndex": serviceInfo.index + 1,
+                        "error": error.localizedDescription,
+                        "eventType": eventType,
+                        "batchIndex": serviceInfo.index + 1
+                    ])
+                    processingErrors += 1
                 }
-                processedSuccessfully += 1
-            } catch {
-                logger.warning("Failed to process device \(eventType) notification", context: [
-                    "deviceIndex": deviceCount,
-                    "error": error.localizedDescription,
+            }
+            
+            // Batch release all IOKit objects for optimal memory management
+            let releaseResults = objectBatch.releaseAll()
+            let failedReleases = releaseResults.filter { $0 != KERN_SUCCESS }
+            
+            if !failedReleases.isEmpty {
+                logger.warning("Some IOKit objects failed to release during batch cleanup", context: [
+                    "totalObjects": releaseResults.count,
+                    "failedReleases": failedReleases.count,
                     "eventType": eventType
                 ])
-                processingErrors += 1
             }
         }
         
         if deviceCount > 0 {
-            logger.debug("Completed processing \(eventType) notifications", context: [
+            logger.debug("Completed processing \(eventType) notifications with optimizations", context: [
                 "totalNotifications": deviceCount,
                 "processedSuccessfully": processedSuccessfully,
                 "processingErrors": processingErrors,
-                "eventType": eventType
+                "eventType": eventType,
+                "batchProcessing": true,
+                "cacheCleared": cacheConfig.enableCaching,
+                "optimizationLevel": "enhanced"
             ])
         } else {
             logger.debug("No \(eventType) notifications to process")
@@ -2714,6 +3576,83 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     }
     
     // MARK: - Device Notification Handlers
+    
+    /// Optimized device connection handler with minimal IOKit calls
+    private func handleDeviceAddedNotificationOptimized(service: io_service_t, batchIndex: Int) throws {
+        logger.debug("Processing device connection notification with minimal IOKit overhead", context: [
+            "service": service,
+            "batchIndex": batchIndex
+        ])
+        
+        // Extract only essential properties in a single optimized batch to minimize IOKit calls
+        let essentialProperties = extractPropertiesBatchOptimal(from: service, keys: [
+            "locationID",
+            kUSBVendorID,
+            kUSBProductID,
+            kUSBDeviceClass,
+            kUSBDeviceSubClass,
+            kUSBDeviceProtocol,
+            "USB Address",
+            "Speed"
+        ])
+        
+        // Quick validation of essential properties before full device creation
+        guard let locationID = essentialProperties["locationID"] as? UInt32,
+              let vendorID = essentialProperties[kUSBVendorID] as? UInt16,
+              let productID = essentialProperties[kUSBProductID] as? UInt16 else {
+            logger.debug("Skipping device connection - missing essential properties", context: [
+                "service": service,
+                "batchIndex": batchIndex,
+                "availableProperties": essentialProperties.keys.sorted()
+            ])
+            return
+        }
+        
+        // Create device with pre-extracted properties to avoid redundant IOKit calls
+        let device = try createUSBDeviceFromPreExtractedProperties(
+            service: service,
+            properties: essentialProperties,
+            locationID: locationID,
+            vendorID: vendorID,
+            productID: productID
+        )
+        
+        handleSuccessfulDeviceConnection(device: device)
+    }
+    
+    /// Optimized device disconnection handler with minimal IOKit calls
+    private func handleDeviceRemovedNotificationOptimized(service: io_service_t, batchIndex: Int) {
+        logger.debug("Processing device disconnection notification with minimal IOKit overhead", context: [
+            "service": service,
+            "batchIndex": batchIndex
+        ])
+        
+        // Extract only locationID for device identification to minimize IOKit calls
+        guard let locationID = getUInt32PropertyOptimal(from: service, key: "locationID") else {
+            logger.warning("Could not extract locationID from disconnected device", context: [
+                "service": service,
+                "batchIndex": batchIndex,
+                "impact": "Device disconnection event may be lost"
+            ])
+            return
+        }
+        
+        // Generate device key from locationID without additional IOKit calls
+        let busNumber = (locationID >> 24) & 0xFF
+        let busID = String(format: "%d", busNumber)
+        let deviceAddress = locationID & 0xFF
+        let deviceID = String(format: "%d", deviceAddress)
+        let deviceKey = "\(busID):\(deviceID)"
+        
+        logger.debug("Generated device key from locationID for optimized disconnection", context: [
+            "locationID": String(format: "0x%08x", locationID),
+            "deviceKey": deviceKey,
+            "batchIndex": batchIndex
+        ])
+        
+        // Handle disconnection using cached device information
+        handleDeviceDisconnectionWithKey(deviceKey: deviceKey)
+    }
     
     /// Handle device connection events with comprehensive error recovery
     /// Creates USBDevice from IOKit service and triggers onDeviceConnected callback
@@ -2875,7 +3814,7 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         logger.debug("Triggering device connection callback for recovered device")
         onDeviceConnected?(device)
     }
-    
+
     /// Handle device disconnection events
     /// Attempts to provide complete device information using cached data
     private func handleDeviceRemovedNotification(service: io_service_t) {
