@@ -444,6 +444,10 @@ public struct MockUSBDevice {
             return nil
         case "locationID":
             return Unmanaged.passRetained(NSNumber(value: locationID))
+        case "IOObjectClass":
+            return Unmanaged.passRetained("IOUSBDevice" as CFString)
+        case "USB Address":
+            return Unmanaged.passRetained(NSNumber(value: UInt8(locationID & 0xFF)))
         default:
             return nil
         }

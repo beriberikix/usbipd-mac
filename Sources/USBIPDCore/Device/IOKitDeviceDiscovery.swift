@@ -120,6 +120,143 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return try block(object)
     }
     
+    // MARK: - Error Recovery Configuration
+    
+    /// Configuration for retry logic during IOKit operations
+    private struct RetryConfiguration {
+        let maxRetries: Int
+        let baseDelay: TimeInterval
+        let maxDelay: TimeInterval
+        let backoffMultiplier: Double
+        
+        static let `default` = RetryConfiguration(
+            maxRetries: 3,
+            baseDelay: 0.1,
+            maxDelay: 2.0,
+            backoffMultiplier: 2.0
+        )
+        
+        static let aggressive = RetryConfiguration(
+            maxRetries: 5,
+            baseDelay: 0.05,
+            maxDelay: 1.0,
+            backoffMultiplier: 1.5
+        )
+    }
+    
+    /// Determines if an IOKit error is transient and should be retried
+    private func isTransientIOKitError(_ result: kern_return_t) -> Bool {
+        let unsignedResult = UInt32(bitPattern: result)
+        switch result {
+        case KERN_RESOURCE_SHORTAGE, KERN_NO_SPACE, KERN_MEMORY_FAILURE:
+            return true
+        case KERN_OPERATION_TIMED_OUT:
+            return true
+        default:
+            // Check IOKit-specific transient errors
+            switch unsignedResult {
+            case 0xe00002bd: // kIOReturnNoMemory
+                return true
+            case 0xe00002be: // kIOReturnNoResources
+                return true
+            case 0xe00002d4: // kIOReturnBusy
+                return true
+            case 0xe00002d5: // kIOReturnTimeout
+                return true
+            case 0xe00002d7: // kIOReturnNotReady
+                return true
+            case 0xe00002eb: // kIOReturnNotResponding
+                return true
+            default:
+                return false
+            }
+        }
+    }
+    
+    /// Execute an IOKit operation with retry logic for transient failures
+    private func executeWithRetry<T>(
+        operation: String,
+        config: RetryConfiguration = .default,
+        block: () throws -> T
+    ) throws -> T {
+        var lastError: Error?
+        var delay = config.baseDelay
+        
+        for attempt in 0...config.maxRetries {
+            do {
+                if attempt > 0 {
+                    logger.debug("Retrying IOKit operation", context: [
+                        "operation": operation,
+                        "attempt": attempt + 1,
+                        "maxRetries": config.maxRetries + 1,
+                        "delay": delay
+                    ])
+                    
+                    // Sleep before retry (except for first attempt)
+                    Thread.sleep(forTimeInterval: delay)
+                    
+                    // Exponential backoff with jitter
+                    delay = min(delay * config.backoffMultiplier + Double.random(in: 0...0.1), config.maxDelay)
+                }
+                
+                let result = try block()
+                
+                if attempt > 0 {
+                    logger.info("IOKit operation succeeded after retry", context: [
+                        "operation": operation,
+                        "successfulAttempt": attempt + 1,
+                        "totalAttempts": attempt + 1
+                    ])
+                }
+                
+                return result
+                
+            } catch let error as DeviceDiscoveryError {
+                lastError = error
+                
+                // Check if this is a transient error that should be retried
+                if case .ioKitError(let code, _) = error, isTransientIOKitError(code) {
+                    if attempt < config.maxRetries {
+                        logger.warning("Transient IOKit error, will retry", context: [
+                            "operation": operation,
+                            "attempt": attempt + 1,
+                            "error": error.localizedDescription,
+                            "nextRetryDelay": delay,
+                            "remainingRetries": config.maxRetries - attempt
+                        ])
+                        continue
+                    } else {
+                        logger.error("IOKit operation failed after all retries", context: [
+                            "operation": operation,
+                            "totalAttempts": attempt + 1,
+                            "finalError": error.localizedDescription
+                        ])
+                        throw error
+                    }
+                } else {
+                    // Non-transient error, don't retry
+                    logger.debug("Non-transient error, not retrying", context: [
+                        "operation": operation,
+                        "error": error.localizedDescription,
+                        "attempt": attempt + 1
+                    ])
+                    throw error
+                }
+            } catch {
+                lastError = error
+                logger.error("Unexpected error during IOKit operation", context: [
+                    "operation": operation,
+                    "attempt": attempt + 1,
+                    "error": error.localizedDescription
+                ])
+                throw error
+            }
+        }
+        
+        // This should never be reached, but provide a fallback
+        throw lastError ?? DeviceDiscoveryError.ioKitError(-1, "Unknown error after retries")
+    }
+    
     // MARK: - IOKit Error Handling Utilities
     
     /// Convert IOKit error codes to DeviceDiscoveryError with detailed logging
@@ -521,134 +658,400 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     /// Internal device discovery method that doesn't use queue synchronization
     private func discoverDevicesInternal() throws -> [USBDevice] {
-        return try safeIOKitOperation("device discovery") {
-            logger.debug("Starting USB device discovery")
-            var devices: [USBDevice] = []
-            var skippedDevices = 0
-            let unsupportedDevices = 0
-            
-            // Create matching dictionary for USB devices
-            guard let matchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
-                logger.error("Failed to create IOKit matching dictionary")
-                throw DeviceDiscoveryError.failedToCreateMatchingDictionary
-            }
-            
-            logger.debug("Created IOKit matching dictionary for USB devices", context: [
-                "className": kIOUSBDeviceClassName
-            ])
-            
-            var iterator: io_iterator_t = 0
-            let masterPort: mach_port_t
-            if #available(macOS 12.0, *) {
-                masterPort = kIOMainPortDefault
-            } else {
-                masterPort = kIOMasterPortDefault
-            }
-            let result = ioKit.serviceGetMatchingServices(masterPort, matchingDict, &iterator)
-            
-            guard result == KERN_SUCCESS else {
-                throw handleServiceAccessError(result, operation: "IOServiceGetMatchingServices")
-            }
-            
-            logger.debug("Successfully obtained IOKit service iterator", context: [
-                "iterator": iterator
-            ])
-        
-        return withIOKitObject(iterator) { iterator in
-            logger.debug("Iterating through discovered USB devices")
-            var deviceCount = 0
-            var service: io_service_t = ioKit.iteratorNext(iterator)
-            
-            while service != 0 {
-                do {
-                    let device = try withIOKitObject(service) { service in
-                        return try createUSBDeviceFromService(service)
-                    }
-                    
-                    devices.append(device)
-                    deviceCount += 1
-                    
-                    logger.debug("Successfully enumerated USB device", context: [
-                        "deviceIndex": deviceCount,
-                        "busID": device.busID,
-                        "deviceID": device.deviceID,
-                        "vendorID": String(format: "0x%04x", device.vendorID),
-                        "productID": String(format: "0x%04x", device.productID),
-                        "deviceClass": String(format: "0x%02x", device.deviceClass),
-                        "deviceSubClass": String(format: "0x%02x", device.deviceSubClass),
-                        "deviceProtocol": String(format: "0x%02x", device.deviceProtocol),
-                        "speed": device.speed.rawValue,
-                        "product": device.productString ?? "Unknown",
-                        "manufacturer": device.manufacturerString ?? "Unknown",
-                        "hasSerial": device.serialNumberString != nil
-                    ])
-                    
-                } catch let error as DeviceDiscoveryError {
-                    // Handle device enumeration errors gracefully - continue with other devices
-                    switch error {
-                    case .missingProperty(let property):
-                        logger.warning("Skipping device due to missing required property", context: [
-                            "missingProperty": property,
-                            "deviceIndex": deviceCount + 1,
-                            "action": "skipped"
-                        ])
-                        skippedDevices += 1
-                    case .invalidPropertyType(let property):
-                        logger.warning("Skipping device due to invalid property type", context: [
-                            "invalidProperty": property,
-                            "deviceIndex": deviceCount + 1,
-                            "action": "skipped"
-                        ])
-                        skippedDevices += 1
-                    case .ioKitError(let code, let message):
-                        logger.warning("Skipping device due to IOKit error", context: [
-                            "ioKitCode": code,
-                            "ioKitMessage": message,
-                            "deviceIndex": deviceCount + 1,
-                            "action": "skipped"
-                        ])
-                        skippedDevices += 1
-                    default:
-                        logger.warning("Skipping device due to unexpected error", context: [
-                            "error": error.localizedDescription,
-                            "deviceIndex": deviceCount + 1,
-                            "action": "skipped"
-                        ])
-                        skippedDevices += 1
-                    }
-                } catch {
-                    logger.warning("Skipping device due to unexpected error", context: [
-                        "error": error.localizedDescription,
-                        "errorType": String(describing: type(of: error)),
-                        "deviceIndex": deviceCount + 1,
-                        "action": "skipped"
-                    ])
-                    skippedDevices += 1
+        return try executeWithRetry(operation: "device discovery") {
+            return try safeIOKitOperation("device discovery with retry") {
+                logger.debug("Starting USB device discovery with error recovery")
+                var devices: [USBDevice] = []
+                var skippedDevices = 0
+                var recoveredDevices = 0
+                var partialFailures: [String] = []
+                
+                // Create matching dictionary for USB devices with retry logic
+                guard let matchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
+                    logger.error("Failed to create IOKit matching dictionary")
+                    throw DeviceDiscoveryError.failedToCreateMatchingDictionary
                 }
                 
-                service = ioKit.iteratorNext(iterator)
-            }
-            
-            // Log comprehensive discovery summary
-            logger.info("USB device discovery completed", context: [
-                "successfulDevices": deviceCount,
-                "skippedDevices": skippedDevices,
-                "unsupportedDevices": unsupportedDevices,
-                "totalProcessed": deviceCount + skippedDevices + unsupportedDevices
-            ])
-            
-            if skippedDevices > 0 {
-                logger.warning("Some devices were skipped during enumeration", context: [
-                    "skippedCount": skippedDevices,
-                    "successfulCount": deviceCount,
-                    "recommendation": "Check device permissions and IOKit access"
+                logger.debug("Created IOKit matching dictionary for USB devices", context: [
+                    "className": kIOUSBDeviceClassName
                 ])
-            }
+                
+                var iterator: io_iterator_t = 0
+                let masterPort: mach_port_t
+                if #available(macOS 12.0, *) {
+                    masterPort = kIOMainPortDefault
+                } else {
+                    masterPort = kIOMasterPortDefault
+                }
+                
+                // Use retry logic for service enumeration
+                _ = try executeWithRetry(operation: "IOServiceGetMatchingServices") {
+                    let result = ioKit.serviceGetMatchingServices(masterPort, matchingDict, &iterator)
+                    guard result == KERN_SUCCESS else {
+                        throw handleServiceAccessError(result, operation: "IOServiceGetMatchingServices")
+                    }
+                    return result
+                }
+                
+                logger.debug("Successfully obtained IOKit service iterator with retry support", context: [
+                    "iterator": iterator
+                ])
             
-            return devices
-        }
+            return try withIOKitObjectAndCleanup(iterator) { iterator in
+                logger.debug("Iterating through discovered USB devices with error recovery")
+                var deviceCount = 0
+                var service: io_service_t = ioKit.iteratorNext(iterator)
+                
+                while service != 0 {
+                    let currentDeviceIndex = deviceCount + 1
+                    
+                    // Process each device with comprehensive error recovery
+                    let deviceResult = processDeviceWithRecovery(service: service, deviceIndex: currentDeviceIndex)
+                    
+                    switch deviceResult {
+                    case .success(let device):
+                        devices.append(device)
+                        deviceCount += 1
+                        
+                        logger.debug("Successfully enumerated USB device", context: [
+                            "deviceIndex": deviceCount,
+                            "busID": device.busID,
+                            "deviceID": device.deviceID,
+                            "vendorID": String(format: "0x%04x", device.vendorID),
+                            "productID": String(format: "0x%04x", device.productID),
+                            "deviceClass": String(format: "0x%02x", device.deviceClass),
+                            "deviceSubClass": String(format: "0x%02x", device.deviceSubClass),
+                            "deviceProtocol": String(format: "0x%02x", device.deviceProtocol),
+                            "speed": device.speed.rawValue,
+                            "product": device.productString ?? "Unknown",
+                            "manufacturer": device.manufacturerString ?? "Unknown",
+                            "hasSerial": device.serialNumberString != nil
+                        ])
+                        
+                    case .recovered(let device):
+                        devices.append(device)
+                        recoveredDevices += 1
+                        
+                        logger.info("Successfully recovered device after partial failure", context: [
+                            "deviceIndex": currentDeviceIndex,
+                            "busID": device.busID,
+                            "deviceID": device.deviceID,
+                            "recoveryType": "partial_data",
+                            "availableData": getAvailableDeviceDataDescription(device)
+                        ])
+                        
+                    case .skipped(let reason):
+                        skippedDevices += 1
+                        partialFailures.append("Device \(currentDeviceIndex): \(reason)")
+                        
+                        logger.warning("Skipping device due to unrecoverable error", context: [
+                            "deviceIndex": currentDeviceIndex,
+                            "reason": reason,
+                            "action": "skipped"
+                        ])
+                    }
+                    
+                    service = ioKit.iteratorNext(iterator)
+                }
+                
+                // Log comprehensive discovery summary with recovery statistics
+                logger.info("USB device discovery completed with error recovery", context: [
+                    "successfulDevices": deviceCount - recoveredDevices,
+                    "recoveredDevices": recoveredDevices,
+                    "skippedDevices": skippedDevices,
+                    "totalProcessed": deviceCount + skippedDevices,
+                    "recoveryRate": recoveredDevices > 0 ? String(format: "%.1f%%", Double(recoveredDevices) / Double(deviceCount + skippedDevices) * 100) : "0%"
+                ])
+                
+                if skippedDevices > 0 {
+                    logger.warning("Some devices were skipped during enumeration", context: [
+                        "skippedCount": skippedDevices,
+                        "successfulCount": deviceCount,
+                        "partialFailures": partialFailures,
+                        "recommendation": "Check device permissions and IOKit access"
+                    ])
+                }
+                
+                if recoveredDevices > 0 {
+                    logger.info("Successfully recovered devices from partial failures", context: [
+                        "recoveredCount": recoveredDevices,
+                        "totalDevices": deviceCount,
+                        "impact": "Some device information may be incomplete but devices are usable"
+                    ])
+                }
+                
+                return devices
+            }
+            }
         }
     }
+    
+    /// Enhanced IOKit object wrapper with comprehensive cleanup
+    private func withIOKitObjectAndCleanup<T>(_ object: io_object_t, _ block: (io_object_t) throws -> T) throws -> T {
+        var cleanupPerformed = false
+        
+        defer {
+            if !cleanupPerformed && object != 0 {
+                let result = ioKit.objectRelease(object)
+                if result != KERN_SUCCESS {
+                    logger.warning("Failed to release IOKit object during cleanup", context: [
+                        "object": object,
+                        "kern_return": result
+                    ])
+                } else {
+                    logger.debug("Successfully released IOKit object during cleanup", context: [
+                        "object": object
+                    ])
+                }
+            }
+        }
+        
+        do {
+            let result = try block(object)
+            
+            // Perform explicit cleanup on success
+            if object != 0 {
+                let releaseResult = ioKit.objectRelease(object)
+                cleanupPerformed = true
+                
+                if releaseResult != KERN_SUCCESS {
+                    logger.warning("Failed to release IOKit object after successful operation", context: [
+                        "object": object,
+                        "kern_return": releaseResult
+                    ])
+                } else {
+                    logger.debug("Successfully released IOKit object after successful operation", context: [
+                        "object": object
+                    ])
+                }
+            }
+            
+            return result
+            
+        } catch {
+            // Perform explicit cleanup on error
+            if object != 0 {
+                let releaseResult = ioKit.objectRelease(object)
+                cleanupPerformed = true
+                
+                if releaseResult != KERN_SUCCESS {
+                    logger.error("Failed to release IOKit object after error", context: [
+                        "object": object,
+                        "kern_return": releaseResult,
+                        "originalError": error.localizedDescription
+                    ])
+                } else {
+                    logger.debug("Successfully released IOKit object after error", context: [
+                        "object": object,
+                        "originalError": error.localizedDescription
+                    ])
+                }
+            }
+            
+            throw error
+        }
+    }
+    
+    /// Result type for device processing with recovery
+    private enum DeviceProcessingResult {
+        case success(USBDevice)
+        case recovered(USBDevice)
+        case skipped(String)
+    }
+    
+    /// Process a single device with comprehensive error recovery
+    private func processDeviceWithRecovery(service: io_service_t, deviceIndex: Int) -> DeviceProcessingResult {
+        do {
+            // Try normal device creation first
+            let device = try withIOKitObject(service) { service in
+                return try createUSBDeviceFromService(service)
+            }
+            return .success(device)
+            
+        } catch let error as DeviceDiscoveryError {
+            // Attempt recovery based on error type
+            switch error {
+            case .deviceNotFound(_):
+                // Device was removed during processing - try to create minimal device
+                logger.debug("Attempting device recovery after removal", context: [
+                    "deviceIndex": deviceIndex,
+                    "error": error.localizedDescription
+                ])
+                
+                if let recoveredDevice = attemptDeviceRecovery(service: service) {
+                    return .recovered(recoveredDevice)
+                } else {
+                    return .skipped("Device removed during processing and recovery failed")
+                }
+                
+            case .ioKitError(_, _) where isDeviceRemovalError(error):
+                // Device was removed during processing - try to create minimal device
+                logger.debug("Attempting device recovery after removal", context: [
+                    "deviceIndex": deviceIndex,
+                    "error": error.localizedDescription
+                ])
+                
+                if let recoveredDevice = attemptDeviceRecovery(service: service) {
+                    return .recovered(recoveredDevice)
+                } else {
+                    return .skipped("Device removed during processing and recovery failed")
+                }
+                
+            case .missingProperty(let property):
+                // Try to create device with default values for missing properties
+                logger.debug("Attempting device recovery with missing property", context: [
+                    "deviceIndex": deviceIndex,
+                    "missingProperty": property
+                ])
+                
+                if let recoveredDevice = attemptDeviceRecoveryWithDefaults(service: service, missingProperty: property) {
+                    return .recovered(recoveredDevice)
+                } else {
+                    return .skipped("Missing critical property: \(property)")
+                }
+                
+            case .invalidPropertyType(let property):
+                return .skipped("Invalid property type: \(property)")
+                
+            case .ioKitError(let code, let message):
+                if isTransientIOKitError(code) {
+                    // For transient errors, the retry logic in executeWithRetry should handle it
+                    // If we reach here, all retries failed
+                    return .skipped("Transient IOKit error after retries: \(message)")
+                } else {
+                    return .skipped("IOKit error: \(message)")
+                }
+                
+            default:
+                return .skipped("Unexpected error: \(error.localizedDescription)")
+            }
+            
+        } catch {
+            return .skipped("Unexpected error: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Attempt to recover device information after device removal
+    private func attemptDeviceRecovery(service: io_service_t) -> USBDevice? {
+        logger.debug("Attempting device recovery after removal")
+        
+        // Try to extract minimal identification information
+        guard let locationID = getUInt32PropertyOptional(from: service, key: "locationID") else {
+            logger.debug("Cannot recover device - no locationID available")
+            return nil
+        }
+        
+        let busNumber = (locationID >> 24) & 0xFF
+        let busID = String(format: "%d", busNumber)
+        
+        let deviceAddress = locationID & 0xFF
+        let deviceID = String(format: "%d", deviceAddress)
+        
+        logger.debug("Recovered basic device identification", context: [
+            "busID": busID,
+            "deviceID": deviceID,
+            "locationID": String(format: "0x%08x", locationID)
+        ])
+        
+        // Create minimal device with available information
+        return USBDevice(
+            busID: busID,
+            deviceID: deviceID,
+            vendorID: 0,
+            productID: 0,
+            deviceClass: 0,
+            deviceSubClass: 0,
+            deviceProtocol: 0,
+            speed: .unknown,
+            manufacturerString: nil,
+            productString: nil,
+            serialNumberString: nil
+        )
+    }
+    
+    /// Attempt to recover device with default values for missing properties
+    private func attemptDeviceRecoveryWithDefaults(service: io_service_t, missingProperty: String) -> USBDevice? {
+        logger.debug("Attempting device recovery with defaults", context: [
+            "missingProperty": missingProperty
+        ])
+        
+        do {
+            // Extract what we can and use defaults for the rest
+            let busID = try getBusID(from: service)
+            let deviceID = try getDeviceID(from: service)
+            
+            // Try to extract vendor/product IDs - these are critical
+            let vendorID: UInt16
+            let productID: UInt16
+            
+            if missingProperty == kUSBVendorID {
+                vendorID = 0 // Default for missing vendor ID
+                productID = try getUInt16Property(from: service, key: kUSBProductID)
+            } else if missingProperty == kUSBProductID {
+                vendorID = try getUInt16Property(from: service, key: kUSBVendorID)
+                productID = 0 // Default for missing product ID
+            } else {
+                // Missing property is not critical, extract normally
+                vendorID = try getUInt16Property(from: service, key: kUSBVendorID)
+                productID = try getUInt16Property(from: service, key: kUSBProductID)
+            }
+            
+            // Use defaults for other properties
+            let deviceClass = extractDeviceClass(from: service)
+            let deviceSubClass = extractDeviceSubClass(from: service)
+            let deviceProtocol = extractDeviceProtocol(from: service)
+            let speed = extractUSBSpeed(from: service)
+            let manufacturerString = extractManufacturerString(from: service)
+            let productString = extractProductString(from: service)
+            let serialNumberString = extractSerialNumberString(from: service)
+            
+            logger.debug("Successfully recovered device with defaults", context: [
+                "busID": busID,
+                "deviceID": deviceID,
+                "vendorID": String(format: "0x%04x", vendorID),
+                "productID": String(format: "0x%04x", productID),
+                "missingProperty": missingProperty
+            ])
+            
+            return USBDevice(
+                busID: busID,
+                deviceID: deviceID,
+                vendorID: vendorID,
+                productID: productID,
+                deviceClass: deviceClass,
+                deviceSubClass: deviceSubClass,
+                deviceProtocol: deviceProtocol,
+                speed: speed,
+                manufacturerString: manufacturerString,
+                productString: productString,
+                serialNumberString: serialNumberString
+            )
+            
+        } catch {
+            logger.debug("Device recovery with defaults failed", context: [
+                "error": error.localizedDescription,
+                "missingProperty": missingProperty
+            ])
+            return nil
+        }
+    }
+    
+    /// Get description of available device data for logging
+    private func getAvailableDeviceDataDescription(_ device: USBDevice) -> String {
+        var available: [String] = []
+        
+        if device.vendorID != 0 { available.append("vendorID") }
+        if device.productID != 0 { available.append("productID") }
+        if device.deviceClass != 0 { available.append("deviceClass") }
+        if device.speed != .unknown { available.append("speed") }
+        if device.manufacturerString != nil { available.append("manufacturer") }
+        if device.productString != nil { available.append("product") }
+        if device.serialNumberString != nil { available.append("serial") }
+        
+        return available.isEmpty ? "minimal" : available.joined(separator: ", ")
+    }
+    
+
     
     public func getDevice(busID: String, deviceID: String) throws -> USBDevice? {
         return queue.sync {
@@ -789,16 +1192,41 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     // MARK: - Private Methods
     
-    /// Create USBDevice object from IOKit service
-    /// Converts IOKit service to USBDevice with proper bus/device ID generation
+    /// Create USBDevice object from IOKit service with comprehensive error recovery
+    /// Converts IOKit service to USBDevice with proper bus/device ID generation and retry logic
     private func createUSBDeviceFromService(_ service: io_service_t) throws -> USBDevice {
-        return try safeIOKitOperation("USB device creation") {
-            // Extract device properties using the comprehensive property extraction method
-            let properties = try extractDeviceProperties(from: service)
-            
-            // Generate bus and device IDs from IOKit locationID
+        return try executeWithRetry(operation: "USB device creation", config: .aggressive) {
+            return try safeIOKitOperation("USB device creation with recovery") {
+                logger.debug("Creating USBDevice from IOKit service with error recovery", context: [
+                    "service": service
+                ])
+                
+                // Use the enhanced device creation method with removal handling
+                return try createUSBDeviceWithDeviceRemovalHandling(service)
+            }
+        }
+    }
+    
+    /// Create USBDevice with graceful handling of device removal during property extraction
+    private func createUSBDeviceWithDeviceRemovalHandling(_ service: io_service_t) throws -> USBDevice {
+        // First, verify the service is still valid before proceeding
+        guard isServiceValid(service) else {
+            logger.warning("Device service is no longer valid, device may have been removed")
+            throw DeviceDiscoveryError.deviceNotFound("Device removed during property extraction")
+        }
+        
+        var partiallyExtractedData: [String: Any] = [:]
+        
+        do {
+            // Extract critical properties first (bus/device IDs) to enable partial recovery
+            logger.debug("Extracting critical device identification properties first")
             let busID = try getBusID(from: service)
             let deviceID = try getDeviceID(from: service)
+            partiallyExtractedData["busID"] = busID
+            partiallyExtractedData["deviceID"] = deviceID
+            
+            // Extract device properties using the comprehensive property extraction method
+            let properties = try extractDevicePropertiesWithRecovery(from: service, partialData: &partiallyExtractedData)
             
             return USBDevice(
                 busID: busID,
@@ -813,33 +1241,142 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                 productString: properties.productString,
                 serialNumberString: properties.serialNumberString
             )
+            
+        } catch let error as DeviceDiscoveryError {
+            // Handle device removal during property extraction
+            if isDeviceRemovalError(error) {
+                logger.warning("Device was removed during property extraction, attempting recovery", context: [
+                    "error": error.localizedDescription,
+                    "partialDataKeys": Array(partiallyExtractedData.keys),
+                    "recoveryAction": "creating_minimal_device"
+                ])
+                
+                // Try to create a minimal device from any successfully extracted data
+                if let minimalDevice = createMinimalDeviceFromPartialData(partiallyExtractedData) {
+                    logger.info("Successfully created minimal device from partial data", context: [
+                        "busID": minimalDevice.busID,
+                        "deviceID": minimalDevice.deviceID,
+                        "availableData": Array(partiallyExtractedData.keys)
+                    ])
+                    return minimalDevice
+                } else {
+                    logger.error("Could not create minimal device from partial data", context: [
+                        "partialDataKeys": Array(partiallyExtractedData.keys),
+                        "originalError": error.localizedDescription
+                    ])
+                    throw error
+                }
+            } else {
+                // Re-throw non-removal errors
+                throw error
+            }
         }
+    }
+    
+    /// Check if a service is still valid (device hasn't been removed)
+    private func isServiceValid(_ service: io_service_t) -> Bool {
+        // Try to get a basic property to verify the service is still accessible
+        guard let property = ioKit.registryEntryCreateCFProperty(service, "IOObjectClass" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
+            return false
+        }
+        
+        // Check if it's a USB device class
+        guard let className = property as? String else {
+            return false
+        }
+        
+        // Valid if it's a USB device or related class
+        return className.contains("USB") || className == "IOUSBDevice" || className == "IOUSBInterface"
+    }
+    
+    /// Check if an error indicates device removal
+    private func isDeviceRemovalError(_ error: DeviceDiscoveryError) -> Bool {
+        switch error {
+        case .ioKitError(let code, _):
+            let unsignedCode = UInt32(bitPattern: code)
+            switch unsignedCode {
+            case 0xe00002c0: // kIOReturnNoDevice
+                return true
+            case 0xe00002d8: // kIOReturnNotAttached
+                return true
+            case 0xe00002ee: // kIOReturnNotFound
+                return true
+            default:
+                return false
+            }
+        case .deviceNotFound(_):
+            return true
+        case .missingProperty(_):
+            // Could indicate device removal if critical properties are missing
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Create a minimal device from partially extracted data
+    private func createMinimalDeviceFromPartialData(_ partialData: [String: Any]) -> USBDevice? {
+        // Extract required fields with fallbacks
+        guard let busID = partialData["busID"] as? String,
+              let deviceID = partialData["deviceID"] as? String else {
+            return nil
+        }
+        
+        let vendorID = partialData["vendorID"] as? UInt16 ?? 0
+        let productID = partialData["productID"] as? UInt16 ?? 0
+        let deviceClass = partialData["deviceClass"] as? UInt8 ?? 0
+        let deviceSubClass = partialData["deviceSubClass"] as? UInt8 ?? 0
+        let deviceProtocol = partialData["deviceProtocol"] as? UInt8 ?? 0
+        let speed = partialData["speed"] as? USBSpeed ?? .unknown
+        let manufacturerString = partialData["manufacturerString"] as? String
+        let productString = partialData["productString"] as? String
+        let serialNumberString = partialData["serialNumberString"] as? String
+        
+        return USBDevice(
+            busID: busID,
+            deviceID: deviceID,
+            vendorID: vendorID,
+            productID: productID,
+            deviceClass: deviceClass,
+            deviceSubClass: deviceSubClass,
+            deviceProtocol: deviceProtocol,
+            speed: speed,
+            manufacturerString: manufacturerString,
+            productString: productString,
+            serialNumberString: serialNumberString
+        )
     }
     
     /// Extract comprehensive device properties from IOKit service
     /// Maps IOKit property keys to USBDevice struct fields with graceful error handling
     private func extractDeviceProperties(from service: io_service_t) throws -> DeviceProperties {
-        return try safeIOKitOperation("device property extraction") {
-            logger.debug("Starting device property extraction from IOKit service")
+        var partialData: [String: Any] = [:]
+        return try extractDevicePropertiesWithRecovery(from: service, partialData: &partialData)
+    }
+    
+    /// Extract device properties with recovery support for device removal during extraction
+    private func extractDevicePropertiesWithRecovery(from service: io_service_t, partialData: inout [String: Any]) throws -> DeviceProperties {
+        return try safeIOKitOperation("device property extraction with recovery") {
+            logger.debug("Starting device property extraction from IOKit service with recovery support")
             
-            // Extract required properties with detailed logging
+            // Extract required properties with detailed logging and recovery tracking
             logger.debug("Extracting required device properties")
-            let vendorID = try extractVendorID(from: service)
-            let productID = try extractProductID(from: service)
+            let vendorID = try extractVendorIDWithRecovery(from: service, partialData: &partialData)
+            let productID = try extractProductIDWithRecovery(from: service, partialData: &partialData)
             
             logger.debug("Extracting device class information")
-            let deviceClass = extractDeviceClass(from: service)
-            let deviceSubClass = extractDeviceSubClass(from: service)
-            let deviceProtocol = extractDeviceProtocol(from: service)
+            let deviceClass = extractDeviceClassWithRecovery(from: service, partialData: &partialData)
+            let deviceSubClass = extractDeviceSubClassWithRecovery(from: service, partialData: &partialData)
+            let deviceProtocol = extractDeviceProtocolWithRecovery(from: service, partialData: &partialData)
             
             logger.debug("Extracting device speed information")
-            let speed = extractUSBSpeed(from: service)
+            let speed = extractUSBSpeedWithRecovery(from: service, partialData: &partialData)
         
             // Extract optional string descriptors with detailed logging
             logger.debug("Extracting optional string descriptors")
-            let manufacturerString = extractManufacturerString(from: service)
-            let productString = extractProductString(from: service)
-            let serialNumberString = extractSerialNumberString(from: service)
+            let manufacturerString = extractManufacturerStringWithRecovery(from: service, partialData: &partialData)
+            let productString = extractProductStringWithRecovery(from: service, partialData: &partialData)
+            let serialNumberString = extractSerialNumberStringWithRecovery(from: service, partialData: &partialData)
             
             // Log missing optional properties as warnings
             var missingProperties: [String] = []
@@ -1145,6 +1682,326 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         return nil
     }
     
+    // MARK: - Recovery-Enabled Property Extraction Methods
+    
+    /// Extract vendor ID with recovery support for device removal
+    private func extractVendorIDWithRecovery(from service: io_service_t, partialData: inout [String: Any]) throws -> UInt16 {
+        logger.debug("Extracting vendor ID from device properties with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during vendor ID extraction")
+            throw DeviceDiscoveryError.deviceNotFound("Device removed during vendor ID extraction")
+        }
+        
+        do {
+            let vendorID = try getUInt16Property(from: service, key: kUSBVendorID)
+            partialData["vendorID"] = vendorID
+            logger.debug("Successfully extracted vendor ID with recovery", context: [
+                "vendorID": String(format: "0x%04x", vendorID),
+                "property": kUSBVendorID
+            ])
+            return vendorID
+        } catch {
+            logger.error("Failed to extract vendor ID - this is a critical property", context: [
+                "error": error.localizedDescription,
+                "property": kUSBVendorID,
+                "impact": "Device cannot be properly identified"
+            ])
+            throw DeviceDiscoveryError.missingProperty(kUSBVendorID)
+        }
+    }
+    
+    /// Extract product ID with recovery support for device removal
+    private func extractProductIDWithRecovery(from service: io_service_t, partialData: inout [String: Any]) throws -> UInt16 {
+        logger.debug("Extracting product ID from device properties with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during product ID extraction")
+            throw DeviceDiscoveryError.deviceNotFound("Device removed during product ID extraction")
+        }
+        
+        do {
+            let productID = try getUInt16Property(from: service, key: kUSBProductID)
+            partialData["productID"] = productID
+            logger.debug("Successfully extracted product ID with recovery", context: [
+                "productID": String(format: "0x%04x", productID),
+                "property": kUSBProductID
+            ])
+            return productID
+        } catch {
+            logger.error("Failed to extract product ID - this is a critical property", context: [
+                "error": error.localizedDescription,
+                "property": kUSBProductID,
+                "impact": "Device cannot be properly identified"
+            ])
+            throw DeviceDiscoveryError.missingProperty(kUSBProductID)
+        }
+    }
+    
+    /// Extract device class with recovery support for device removal
+    private func extractDeviceClassWithRecovery(from service: io_service_t, partialData: inout [String: Any]) -> UInt8 {
+        logger.debug("Extracting device class from properties with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during device class extraction, using default")
+            let defaultClass: UInt8 = 0x00
+            partialData["deviceClass"] = defaultClass
+            return defaultClass
+        }
+        
+        do {
+            let deviceClass = try getUInt8Property(from: service, key: kUSBDeviceClass)
+            partialData["deviceClass"] = deviceClass
+            logger.debug("Successfully extracted device class with recovery", context: [
+                "deviceClass": String(format: "0x%02x", deviceClass),
+                "property": kUSBDeviceClass,
+                "classDescription": getUSBClassDescription(deviceClass)
+            ])
+            return deviceClass
+        } catch {
+            logger.warning("Failed to extract device class, using default", context: [
+                "error": error.localizedDescription,
+                "property": kUSBDeviceClass,
+                "default": "0x00",
+                "defaultDescription": "Unspecified class",
+                "impact": "Device class information will be incomplete"
+            ])
+            let defaultClass: UInt8 = 0x00
+            partialData["deviceClass"] = defaultClass
+            return defaultClass
+        }
+    }
+    
+    /// Extract device subclass with recovery support for device removal
+    private func extractDeviceSubClassWithRecovery(from service: io_service_t, partialData: inout [String: Any]) -> UInt8 {
+        logger.debug("Extracting device subclass from properties with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during device subclass extraction, using default")
+            let defaultSubClass: UInt8 = 0x00
+            partialData["deviceSubClass"] = defaultSubClass
+            return defaultSubClass
+        }
+        
+        do {
+            let deviceSubClass = try getUInt8Property(from: service, key: kUSBDeviceSubClass)
+            partialData["deviceSubClass"] = deviceSubClass
+            logger.debug("Successfully extracted device subclass with recovery", context: [
+                "deviceSubClass": String(format: "0x%02x", deviceSubClass),
+                "property": kUSBDeviceSubClass
+            ])
+            return deviceSubClass
+        } catch {
+            logger.warning("Failed to extract device subclass, using default", context: [
+                "error": error.localizedDescription,
+                "property": kUSBDeviceSubClass,
+                "default": "0x00",
+                "defaultDescription": "Unspecified subclass",
+                "impact": "Device subclass information will be incomplete"
+            ])
+            let defaultSubClass: UInt8 = 0x00
+            partialData["deviceSubClass"] = defaultSubClass
+            return defaultSubClass
+        }
+    }
+    
+    /// Extract device protocol with recovery support for device removal
+    private func extractDeviceProtocolWithRecovery(from service: io_service_t, partialData: inout [String: Any]) -> UInt8 {
+        logger.debug("Extracting device protocol from properties with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during device protocol extraction, using default")
+            let defaultProtocol: UInt8 = 0x00
+            partialData["deviceProtocol"] = defaultProtocol
+            return defaultProtocol
+        }
+        
+        do {
+            let deviceProtocol = try getUInt8Property(from: service, key: kUSBDeviceProtocol)
+            partialData["deviceProtocol"] = deviceProtocol
+            logger.debug("Successfully extracted device protocol with recovery", context: [
+                "deviceProtocol": String(format: "0x%02x", deviceProtocol),
+                "property": kUSBDeviceProtocol
+            ])
+            return deviceProtocol
+        } catch {
+            logger.warning("Failed to extract device protocol, using default", context: [
+                "error": error.localizedDescription,
+                "property": kUSBDeviceProtocol,
+                "default": "0x00",
+                "defaultDescription": "Unspecified protocol",
+                "impact": "Device protocol information will be incomplete"
+            ])
+            let defaultProtocol: UInt8 = 0x00
+            partialData["deviceProtocol"] = defaultProtocol
+            return defaultProtocol
+        }
+    }
+    
+    /// Extract USB speed with recovery support for device removal
+    private func extractUSBSpeedWithRecovery(from service: io_service_t, partialData: inout [String: Any]) -> USBSpeed {
+        logger.debug("Extracting USB speed from device properties with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during USB speed extraction, using unknown")
+            let defaultSpeed = USBSpeed.unknown
+            partialData["speed"] = defaultSpeed
+            return defaultSpeed
+        }
+        
+        // Try multiple possible property keys for speed information
+        let speedKeys = ["Speed", "Device Speed"]
+        
+        for key in speedKeys {
+            logger.debug("Attempting to extract speed from property with recovery", context: [
+                "property": key
+            ])
+            
+            if let speed = tryExtractSpeed(from: service, key: key) {
+                partialData["speed"] = speed
+                logger.debug("Successfully extracted USB speed with recovery", context: [
+                    "property": key,
+                    "speed": speed.rawValue,
+                    "speedDescription": getUSBSpeedDescription(speed)
+                ])
+                return speed
+            } else {
+                logger.debug("Speed property not found or invalid", context: [
+                    "property": key
+                ])
+            }
+        }
+        
+        logger.warning("Could not determine USB speed from any known property", context: [
+            "attemptedProperties": speedKeys.joined(separator: ", "),
+            "fallback": "unknown",
+            "impact": "Speed information will be unavailable for this device"
+        ])
+        let defaultSpeed = USBSpeed.unknown
+        partialData["speed"] = defaultSpeed
+        return defaultSpeed
+    }
+    
+    /// Extract manufacturer string with recovery support for device removal
+    private func extractManufacturerStringWithRecovery(from service: io_service_t, partialData: inout [String: Any]) -> String? {
+        logger.debug("Extracting manufacturer string descriptor with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during manufacturer string extraction")
+            partialData["manufacturerString"] = nil
+            return nil
+        }
+        
+        // Try multiple possible property keys for manufacturer string
+        let manufacturerKeys = ["USB Vendor Name", "Manufacturer"]
+        
+        for key in manufacturerKeys {
+            logger.debug("Attempting to extract manufacturer from property with recovery", context: [
+                "property": key
+            ])
+            
+            if let manufacturer = getStringProperty(from: service, key: key) {
+                partialData["manufacturerString"] = manufacturer
+                logger.debug("Successfully found manufacturer string with recovery", context: [
+                    "property": key,
+                    "manufacturer": manufacturer,
+                    "length": manufacturer.count
+                ])
+                return manufacturer
+            }
+        }
+        
+        logger.debug("No manufacturer string found in any property", context: [
+            "attemptedProperties": manufacturerKeys.joined(separator: ", "),
+            "result": "nil"
+        ])
+        partialData["manufacturerString"] = nil
+        return nil
+    }
+    
+    /// Extract product string with recovery support for device removal
+    private func extractProductStringWithRecovery(from service: io_service_t, partialData: inout [String: Any]) -> String? {
+        logger.debug("Extracting product string descriptor with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during product string extraction")
+            partialData["productString"] = nil
+            return nil
+        }
+        
+        // Try multiple possible property keys for product string
+        let productKeys = ["USB Product Name", "Product"]
+        
+        for key in productKeys {
+            logger.debug("Attempting to extract product from property with recovery", context: [
+                "property": key
+            ])
+            
+            if let product = getStringProperty(from: service, key: key) {
+                partialData["productString"] = product
+                logger.debug("Successfully found product string with recovery", context: [
+                    "property": key,
+                    "product": product,
+                    "length": product.count
+                ])
+                return product
+            }
+        }
+        
+        logger.debug("No product string found in any property", context: [
+            "attemptedProperties": productKeys.joined(separator: ", "),
+            "result": "nil"
+        ])
+        partialData["productString"] = nil
+        return nil
+    }
+    
+    /// Extract serial number string with recovery support for device removal
+    private func extractSerialNumberStringWithRecovery(from service: io_service_t, partialData: inout [String: Any]) -> String? {
+        logger.debug("Extracting serial number string descriptor with recovery support")
+        
+        // Check if device is still valid before attempting extraction
+        guard isServiceValid(service) else {
+            logger.warning("Device service invalid during serial number string extraction")
+            partialData["serialNumberString"] = nil
+            return nil
+        }
+        
+        // Try multiple possible property keys for serial number string
+        let serialKeys = ["USB Serial Number", "Serial Number"]
+        
+        for key in serialKeys {
+            logger.debug("Attempting to extract serial from property with recovery", context: [
+                "property": key
+            ])
+            
+            if let serial = getStringProperty(from: service, key: key) {
+                partialData["serialNumberString"] = serial
+                logger.debug("Successfully found serial number string with recovery", context: [
+                    "property": key,
+                    "serial": serial,
+                    "length": serial.count
+                ])
+                return serial
+            }
+        }
+        
+        logger.debug("No serial number string found in any property", context: [
+            "attemptedProperties": serialKeys.joined(separator: ", "),
+            "result": "nil"
+        ])
+        partialData["serialNumberString"] = nil
+        return nil
+    }
+    
     private func getUInt16Property(from service: io_service_t, key: String) throws -> UInt16 {
         logger.debug("Attempting to extract UInt16 property", context: [
             "property": key
@@ -1389,46 +2246,85 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
                 return // Already started
             }
             
-            logger.info("Initializing USB device notification system")
+            logger.info("Initializing USB device notification system with error recovery")
             
-            // Ensure clean state before starting
-            ensureCleanNotificationState()
+            // Ensure clean state before starting with comprehensive cleanup
+            try ensureCleanNotificationStateWithRecovery()
             
-            logger.debug("Starting USB device notification setup")
-            
-            // Create notification port
-            logger.debug("Creating IOKit notification port")
-            let masterPort: mach_port_t
-            if #available(macOS 12.0, *) {
-                masterPort = kIOMainPortDefault
-            } else {
-                masterPort = kIOMasterPortDefault
-            }
-            notificationPort = ioKit.notificationPortCreate(masterPort)
-            guard let port = notificationPort else {
-                let error = handleNotificationError(KERN_FAILURE, operation: "IONotificationPortCreate")
-                logger.error("Failed to create IOKit notification port", context: [
-                    "error": error.localizedDescription,
-                    "impact": "Device monitoring will not be available"
-                ])
-                throw error
+            // Use retry logic for notification setup
+            try executeWithRetry(operation: "notification system setup") {
+                try setupNotificationSystemWithRecovery()
             }
             
-            logger.debug("Successfully created IOKit notification port")
-            
-            // Set notification port dispatch queue
-            ioKit.notificationPortSetDispatchQueue(port, queue)
-            logger.debug("Configured notification port with dispatch queue", context: [
-                "queueLabel": queue.label
+            isMonitoring = true
+            logger.info("USB device notification system started successfully with error recovery", context: [
+                "addedIterator": addedIterator,
+                "removedIterator": removedIterator,
+                "isMonitoring": isMonitoring
             ])
-            
-            // Set up device added notifications
-            logger.debug("Setting up device connection notifications")
-            guard let addedMatchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
-                let error = DeviceDiscoveryError.failedToCreateMatchingDictionary
-                logger.error("Failed to create matching dictionary for device connection notifications")
-                throw error
+        }
+    }
+    
+    /// Setup notification system with comprehensive error recovery
+    private func setupNotificationSystemWithRecovery() throws {
+        logger.debug("Starting USB device notification setup with recovery")
+        
+        // Create notification port with retry logic
+        logger.debug("Creating IOKit notification port with retry support")
+        let masterPort: mach_port_t
+        if #available(macOS 12.0, *) {
+            masterPort = kIOMainPortDefault
+        } else {
+            masterPort = kIOMasterPortDefault
+        }
+        
+        notificationPort = try executeWithRetry(operation: "IONotificationPortCreate") {
+            let port = ioKit.notificationPortCreate(masterPort)
+            guard let port = port else {
+                throw handleNotificationError(KERN_FAILURE, operation: "IONotificationPortCreate")
             }
+            return port
+        }
+        
+        guard let port = notificationPort else {
+            let error = handleNotificationError(KERN_FAILURE, operation: "IONotificationPortCreate")
+            logger.error("Failed to create IOKit notification port after retries", context: [
+                "error": error.localizedDescription,
+                "impact": "Device monitoring will not be available"
+            ])
+            throw error
+        }
+        
+        logger.debug("Successfully created IOKit notification port with retry support")
+        
+        // Set notification port dispatch queue
+        ioKit.notificationPortSetDispatchQueue(port, queue)
+        logger.debug("Configured notification port with dispatch queue", context: [
+            "queueLabel": queue.label
+        ])
+        
+        // Set up device added notifications with retry logic
+        try setupDeviceAddedNotificationsWithRecovery(port: port)
+        
+        // Set up device removed notifications with retry logic
+        try setupDeviceRemovedNotificationsWithRecovery(port: port)
+        
+        logger.debug("Consuming initial device notifications to prime iterators")
+        
+        // Consume initial notifications with error handling
+        consumeIteratorWithRecovery(addedIterator, isAddedNotification: true)
+        consumeIteratorWithRecovery(removedIterator, isAddedNotification: false)
+    }
+    
+    /// Setup device added notifications with comprehensive error recovery
+    private func setupDeviceAddedNotificationsWithRecovery(port: IONotificationPortRef) throws {
+        logger.debug("Setting up device connection notifications with recovery")
+        
+        _ = try executeWithRetry(operation: "device added notification setup") {
+            guard let addedMatchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
+                throw DeviceDiscoveryError.failedToCreateMatchingDictionary
+            }
+            
             let addedResult = ioKit.serviceAddMatchingNotification(
                 port,
                 kIOFirstMatchNotification,
@@ -1439,25 +2335,26 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             )
             
             guard addedResult == KERN_SUCCESS else {
-                let error = handleNotificationError(addedResult, operation: "IOServiceAddMatchingNotification (device added)")
-                logger.error("Failed to setup device connection notifications", context: [
-                    "error": error.localizedDescription,
-                    "kernReturn": addedResult
-                ])
-                throw error
+                throw handleNotificationError(addedResult, operation: "IOServiceAddMatchingNotification (device added)")
             }
             
-            logger.debug("Successfully setup device connection notifications", context: [
-                "iterator": addedIterator
-            ])
-            
-            // Set up device removed notifications
-            logger.debug("Setting up device disconnection notifications")
+            return addedResult
+        }
+        
+        logger.debug("Successfully setup device connection notifications with recovery", context: [
+            "iterator": addedIterator
+        ])
+    }
+    
+    /// Setup device removed notifications with comprehensive error recovery
+    private func setupDeviceRemovedNotificationsWithRecovery(port: IONotificationPortRef) throws {
+        logger.debug("Setting up device disconnection notifications with recovery")
+        
+        _ = try executeWithRetry(operation: "device removed notification setup") {
             guard let removedMatchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
-                let error = DeviceDiscoveryError.failedToCreateMatchingDictionary
-                logger.error("Failed to create matching dictionary for device disconnection notifications")
-                throw error
+                throw DeviceDiscoveryError.failedToCreateMatchingDictionary
             }
+            
             let removedResult = ioKit.serviceAddMatchingNotification(
                 port,
                 kIOTerminatedNotification,
@@ -1468,31 +2365,15 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
             )
             
             guard removedResult == KERN_SUCCESS else {
-                let error = handleNotificationError(removedResult, operation: "IOServiceAddMatchingNotification (device removed)")
-                logger.error("Failed to setup device disconnection notifications", context: [
-                    "error": error.localizedDescription,
-                    "kernReturn": removedResult
-                ])
-                throw error
+                throw handleNotificationError(removedResult, operation: "IOServiceAddMatchingNotification (device removed)")
             }
             
-            logger.debug("Successfully setup device disconnection notifications", context: [
-                "iterator": removedIterator
-            ])
-            
-            logger.debug("Consuming initial device notifications to prime iterators")
-            
-            // Consume initial notifications
-            consumeIterator(addedIterator, isAddedNotification: true)
-            consumeIterator(removedIterator, isAddedNotification: false)
-            
-            isMonitoring = true
-            logger.info("USB device notification system started successfully", context: [
-                "addedIterator": addedIterator,
-                "removedIterator": removedIterator,
-                "isMonitoring": isMonitoring
-            ])
+            return removedResult
         }
+        
+        logger.debug("Successfully setup device disconnection notifications with recovery", context: [
+            "iterator": removedIterator
+        ])
     }
     
     public func stopNotifications() {
@@ -1650,6 +2531,110 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
         logger.debug("Notification state is clean")
     }
     
+    /// Ensure clean notification state with comprehensive error recovery
+    /// Enhanced version with retry logic and better error handling
+    private func ensureCleanNotificationStateWithRecovery() throws {
+        logger.debug("Ensuring clean notification state with error recovery")
+        
+        var cleanupErrors: [String] = []
+        
+        // Check for any leftover notification port with retry cleanup
+        if notificationPort != nil {
+            logger.warning("Found leftover notification port, cleaning up with recovery")
+            do {
+                _ = try executeWithRetry(operation: "notification port cleanup") {
+                    cleanupNotificationPort()
+                    return true
+                }
+            } catch {
+                cleanupErrors.append("Failed to cleanup notification port: \(error.localizedDescription)")
+                logger.error("Failed to cleanup leftover notification port", context: [
+                    "error": error.localizedDescription
+                ])
+            }
+        }
+        
+        // Check for any leftover iterators with retry cleanup
+        if addedIterator != 0 {
+            logger.warning("Found leftover added iterator, cleaning up with recovery")
+            do {
+                _ = try executeWithRetry(operation: "added iterator cleanup") {
+                    let result = ioKit.objectRelease(addedIterator)
+                    guard result == KERN_SUCCESS else {
+                        throw DeviceDiscoveryError.ioKitError(result, "Failed to release added iterator")
+                    }
+                    addedIterator = 0
+                    return result
+                }
+            } catch {
+                cleanupErrors.append("Failed to cleanup added iterator: \(error.localizedDescription)")
+                logger.error("Failed to cleanup leftover added iterator", context: [
+                    "error": error.localizedDescription
+                ])
+            }
+        }
+        
+        if removedIterator != 0 {
+            logger.warning("Found leftover removed iterator, cleaning up with recovery")
+            do {
+                _ = try executeWithRetry(operation: "removed iterator cleanup") {
+                    let result = ioKit.objectRelease(removedIterator)
+                    guard result == KERN_SUCCESS else {
+                        throw DeviceDiscoveryError.ioKitError(result, "Failed to release removed iterator")
+                    }
+                    removedIterator = 0
+                    return result
+                }
+            } catch {
+                cleanupErrors.append("Failed to cleanup removed iterator: \(error.localizedDescription)")
+                logger.error("Failed to cleanup leftover removed iterator", context: [
+                    "error": error.localizedDescription
+                ])
+            }
+        }
+        
+        // Clear device cache if it has stale data
+        if !connectedDevices.isEmpty {
+            logger.warning("Found stale device cache, clearing with recovery")
+            connectedDevices.removeAll()
+        }
+        
+        if cleanupErrors.isEmpty {
+            logger.debug("Notification state is clean after recovery")
+        } else {
+            logger.warning("Notification state cleanup completed with some errors", context: [
+                "cleanupErrors": cleanupErrors,
+                "impact": "Some resources may not have been properly cleaned up"
+            ])
+            
+            // Don't throw error for cleanup issues - log and continue
+            // This allows the system to attempt to start notifications even if cleanup had issues
+        }
+    }
+    
+    /// Enhanced iterator consumption with error recovery
+    private func consumeIteratorWithRecovery(_ iterator: io_iterator_t, isAddedNotification: Bool) {
+        let eventType = isAddedNotification ? "connection" : "disconnection"
+        logger.debug("Starting to process \(eventType) notifications with recovery", context: [
+            "iterator": iterator,
+            "eventType": eventType
+        ])
+        
+        do {
+            _ = try executeWithRetry(operation: "iterator consumption", config: .default) {
+                consumeIterator(iterator, isAddedNotification: isAddedNotification)
+                return true
+            }
+        } catch {
+            logger.error("Failed to consume iterator notifications after retries", context: [
+                "eventType": eventType,
+                "iterator": iterator,
+                "error": error.localizedDescription,
+                "impact": "Some initial device notifications may be lost"
+            ])
+        }
+    }
+    
     /// Verify that notification resources are properly cleaned up
     /// Returns true if all resources are properly released
     private func verifyNotificationCleanup() -> Bool {
@@ -1730,67 +2715,165 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     // MARK: - Device Notification Handlers
     
-    /// Handle device connection events
+    /// Handle device connection events with comprehensive error recovery
     /// Creates USBDevice from IOKit service and triggers onDeviceConnected callback
     private func handleDeviceAddedNotification(service: io_service_t) throws {
-        logger.debug("Processing device connection notification", context: [
+        logger.debug("Processing device connection notification with error recovery", context: [
             "service": service
         ])
         
+        // Use retry logic for device creation during notifications
+        let deviceResult = try executeWithRetry(operation: "device connection notification", config: .aggressive) {
+            return try processDeviceConnectionWithRecovery(service: service)
+        }
+        
+        switch deviceResult {
+        case .success(let device):
+            handleSuccessfulDeviceConnection(device: device)
+            
+        case .recovered(let device):
+            handleRecoveredDeviceConnection(device: device)
+            
+        case .failed(let reason):
+            logger.warning("Failed to process device connection notification", context: [
+                "service": service,
+                "reason": reason,
+                "impact": "Device connection event will be lost"
+            ])
+            // Don't throw error for notification failures - log and continue
+        }
+    }
+    
+    /// Process device connection with comprehensive error recovery
+    private func processDeviceConnectionWithRecovery(service: io_service_t) throws -> DeviceConnectionResult {
         do {
             let device = try createUSBDeviceFromService(service)
-            let deviceKey = "\(device.busID):\(device.deviceID)"
-            
-            // Check if device is already in cache (duplicate notification)
-            if connectedDevices[deviceKey] != nil {
-                logger.debug("Device connection notification for already cached device", context: [
-                    "deviceKey": deviceKey,
-                    "action": "ignoring_duplicate"
-                ])
-                return
-            }
-            
-            // Cache the device for proper disconnection handling
-            connectedDevices[deviceKey] = device
-            
-            logger.info("USB device connected", context: [
-                "event": "device_connected",
-                "busID": device.busID,
-                "deviceID": device.deviceID,
-                "deviceKey": deviceKey,
-                "vendorID": String(format: "0x%04x", device.vendorID),
-                "productID": String(format: "0x%04x", device.productID),
-                "deviceClass": String(format: "0x%02x", device.deviceClass),
-                "deviceClassDescription": getUSBClassDescription(device.deviceClass),
-                "speed": device.speed.rawValue,
-                "speedDescription": getUSBSpeedDescription(device.speed),
-                "product": device.productString ?? "Unknown",
-                "manufacturer": device.manufacturerString ?? "Unknown",
-                "serial": device.serialNumberString ?? "None",
-                "cachedDeviceCount": connectedDevices.count
-            ])
-            
-            // Trigger the connection callback with complete device information
-            logger.debug("Triggering device connection callback")
-            onDeviceConnected?(device)
+            return .success(device)
             
         } catch let error as DeviceDiscoveryError {
-            logger.error("Failed to process device connection due to discovery error", context: [
-                "service": service,
-                "error": error.localizedDescription,
-                "errorType": "DeviceDiscoveryError",
-                "impact": "Device will not be available for use"
-            ])
-            throw error
+            // Attempt recovery based on error type
+            switch error {
+            case .deviceNotFound(_):
+                // Device was removed during notification processing
+                logger.debug("Attempting device recovery during connection notification", context: [
+                    "error": error.localizedDescription
+                ])
+                
+                if let recoveredDevice = attemptDeviceRecovery(service: service) {
+                    return .recovered(recoveredDevice)
+                } else {
+                    return .failed("Device removed during connection processing and recovery failed")
+                }
+                
+            case .ioKitError(_, _) where isDeviceRemovalError(error):
+                // Device was removed during notification processing
+                logger.debug("Attempting device recovery during connection notification", context: [
+                    "error": error.localizedDescription
+                ])
+                
+                if let recoveredDevice = attemptDeviceRecovery(service: service) {
+                    return .recovered(recoveredDevice)
+                } else {
+                    return .failed("Device removed during connection processing and recovery failed")
+                }
+                
+            case .missingProperty(let property):
+                // Try to create device with default values
+                logger.debug("Attempting device recovery with missing property during connection", context: [
+                    "missingProperty": property
+                ])
+                
+                if let recoveredDevice = attemptDeviceRecoveryWithDefaults(service: service, missingProperty: property) {
+                    return .recovered(recoveredDevice)
+                } else {
+                    return .failed("Missing critical property: \(property)")
+                }
+                
+            default:
+                return .failed("Device creation error: \(error.localizedDescription)")
+            }
+            
         } catch {
-            logger.error("Failed to process device connection due to unexpected error", context: [
-                "service": service,
-                "error": error.localizedDescription,
-                "errorType": String(describing: type(of: error)),
-                "impact": "Device will not be available for use"
-            ])
-            throw error
+            return .failed("Unexpected error: \(error.localizedDescription)")
         }
+    }
+    
+    /// Result type for device connection processing
+    private enum DeviceConnectionResult {
+        case success(USBDevice)
+        case recovered(USBDevice)
+        case failed(String)
+    }
+    
+    /// Handle successful device connection
+    private func handleSuccessfulDeviceConnection(device: USBDevice) {
+        let deviceKey = "\(device.busID):\(device.deviceID)"
+        
+        // Check if device is already in cache (duplicate notification)
+        if connectedDevices[deviceKey] != nil {
+            logger.debug("Device connection notification for already cached device", context: [
+                "deviceKey": deviceKey,
+                "action": "ignoring_duplicate"
+            ])
+            return
+        }
+        
+        // Cache the device for proper disconnection handling
+        connectedDevices[deviceKey] = device
+        
+        logger.info("USB device connected", context: [
+            "event": "device_connected",
+            "busID": device.busID,
+            "deviceID": device.deviceID,
+            "deviceKey": deviceKey,
+            "vendorID": String(format: "0x%04x", device.vendorID),
+            "productID": String(format: "0x%04x", device.productID),
+            "deviceClass": String(format: "0x%02x", device.deviceClass),
+            "deviceClassDescription": getUSBClassDescription(device.deviceClass),
+            "speed": device.speed.rawValue,
+            "speedDescription": getUSBSpeedDescription(device.speed),
+            "product": device.productString ?? "Unknown",
+            "manufacturer": device.manufacturerString ?? "Unknown",
+            "serial": device.serialNumberString ?? "None",
+            "cachedDeviceCount": connectedDevices.count
+        ])
+        
+        // Trigger the connection callback with complete device information
+        logger.debug("Triggering device connection callback")
+        onDeviceConnected?(device)
+    }
+    
+    /// Handle recovered device connection
+    private func handleRecoveredDeviceConnection(device: USBDevice) {
+        let deviceKey = "\(device.busID):\(device.deviceID)"
+        
+        // Check if device is already in cache (duplicate notification)
+        if connectedDevices[deviceKey] != nil {
+            logger.debug("Recovered device connection notification for already cached device", context: [
+                "deviceKey": deviceKey,
+                "action": "ignoring_duplicate"
+            ])
+            return
+        }
+        
+        // Cache the device for proper disconnection handling
+        connectedDevices[deviceKey] = device
+        
+        logger.info("USB device connected (recovered from partial failure)", context: [
+            "event": "device_connected_recovered",
+            "busID": device.busID,
+            "deviceID": device.deviceID,
+            "deviceKey": deviceKey,
+            "vendorID": String(format: "0x%04x", device.vendorID),
+            "productID": String(format: "0x%04x", device.productID),
+            "availableData": getAvailableDeviceDataDescription(device),
+            "cachedDeviceCount": connectedDevices.count,
+            "recoveryType": "connection_notification"
+        ])
+        
+        // Trigger the connection callback with recovered device information
+        logger.debug("Triggering device connection callback for recovered device")
+        onDeviceConnected?(device)
     }
     
     /// Handle device disconnection events
