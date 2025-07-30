@@ -12,7 +12,7 @@ import IOKit.usb
 public protocol IOKitInterface {
     // Service matching and enumeration
     func serviceMatching(_ name: String) -> CFMutableDictionary?
-    func serviceGetMatchingServices(_ masterPort: mach_port_t, _ matching: CFDictionary, _ existing: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t
+    func serviceGetMatchingServices(_ mainPort: mach_port_t, _ matching: CFDictionary, _ existing: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t
     func iteratorNext(_ iterator: io_iterator_t) -> io_service_t
     func objectRelease(_ object: io_object_t) -> kern_return_t
     
@@ -20,7 +20,7 @@ public protocol IOKitInterface {
     func registryEntryCreateCFProperty(_ entry: io_registry_entry_t, _ key: CFString, _ allocator: CFAllocator?, _ options: IOOptionBits) -> Unmanaged<CFTypeRef>?
     
     // Notification system
-    func notificationPortCreate(_ masterPort: mach_port_t) -> IONotificationPortRef?
+    func notificationPortCreate(_ mainPort: mach_port_t) -> IONotificationPortRef?
     func serviceAddMatchingNotification(_ notifyPort: IONotificationPortRef, _ notificationType: String, _ matching: CFDictionary, _ callback: IOServiceMatchingCallback?, _ refCon: UnsafeMutableRawPointer?, _ notification: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t
     func notificationPortGetRunLoopSource(_ notify: IONotificationPortRef) -> CFRunLoopSource?
     func notificationPortSetDispatchQueue(_ notify: IONotificationPortRef, _ queue: DispatchQueue?)
@@ -37,8 +37,8 @@ public class RealIOKitInterface: IOKitInterface {
         return IOServiceMatching(name)
     }
     
-    public func serviceGetMatchingServices(_ masterPort: mach_port_t, _ matching: CFDictionary, _ existing: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t {
-        return IOServiceGetMatchingServices(masterPort, matching, existing)
+    public func serviceGetMatchingServices(_ mainPort: mach_port_t, _ matching: CFDictionary, _ existing: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t {
+        return IOServiceGetMatchingServices(mainPort, matching, existing)
     }
     
     public func iteratorNext(_ iterator: io_iterator_t) -> io_service_t {
@@ -53,8 +53,8 @@ public class RealIOKitInterface: IOKitInterface {
         return IORegistryEntryCreateCFProperty(entry, key, allocator, options)
     }
     
-    public func notificationPortCreate(_ masterPort: mach_port_t) -> IONotificationPortRef? {
-        return IONotificationPortCreate(masterPort)
+    public func notificationPortCreate(_ mainPort: mach_port_t) -> IONotificationPortRef? {
+        return IONotificationPortCreate(mainPort)
     }
     
     public func serviceAddMatchingNotification(_ notifyPort: IONotificationPortRef, _ notificationType: String, _ matching: CFDictionary, _ callback: IOServiceMatchingCallback?, _ refCon: UnsafeMutableRawPointer?, _ notification: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t {
