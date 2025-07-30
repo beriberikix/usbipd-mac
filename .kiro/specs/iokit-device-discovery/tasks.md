@@ -124,15 +124,15 @@
     - **Commit**: `test(device): add ServerCoordinator integration tests`
     - _Requirements: 5.1, 5.5_
 
-- [ ] 8. Add error handling edge cases and resource management
-  - [ ] 8.1 Implement comprehensive error recovery
+- [x] 8. Add error handling edge cases and resource management
+  - [x] 8.1 Implement comprehensive error recovery
     - Add retry logic for transient IOKit failures during enumeration
     - Implement graceful handling of device removal during property extraction
     - Add resource cleanup for partial failures during device discovery
     - **Commit**: `feat(device): add error recovery and resilience`
     - _Requirements: 6.3, 6.6_
 
-  - [ ] 8.2 Add memory management and performance optimizations
+  - [x] 8.2 Add memory management and performance optimizations
     - Implement proper IOKit object lifecycle management with RAII patterns
     - Add device list caching to avoid repeated IOKit queries
     - Optimize notification handlers for minimal IOKit calls
@@ -140,7 +140,7 @@
     - _Requirements: 5.4, 6.3_
 
 - [ ] 9. Update existing placeholder implementation and integrate
-  - [ ] 9.1 Replace placeholder IOKitDeviceDiscovery implementation
+  - [-] 9.1 Replace placeholder IOKitDeviceDiscovery implementation
     - Remove placeholder code from existing IOKitDeviceDiscovery.swift
     - Integrate new implementation with existing DeviceDiscovery protocol
     - Update any missing error types in DeviceDiscoveryError enum
