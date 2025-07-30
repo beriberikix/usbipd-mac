@@ -139,15 +139,15 @@
     - **Commit**: `perf(device): optimize memory management and performance`
     - _Requirements: 5.4, 6.3_
 
-- [ ] 9. Update existing placeholder implementation and integrate
-  - [-] 9.1 Replace placeholder IOKitDeviceDiscovery implementation
+- [x] 9. Update existing placeholder implementation and integrate
+  - [x] 9.1 Replace placeholder IOKitDeviceDiscovery implementation
     - Remove placeholder code from existing IOKitDeviceDiscovery.swift
     - Integrate new implementation with existing DeviceDiscovery protocol
     - Update any missing error types in DeviceDiscoveryError enum
     - **Commit**: `feat(device): integrate IOKit implementation with existing system`
     - _Requirements: 5.1, 5.2_
 
-  - [ ] 9.2 Test end-to-end functionality with CLI
+  - [x] 9.2 Test end-to-end functionality with CLI
     - Test complete workflow: device discovery → CLI list → device binding
     - Verify device monitoring works with real USB device connect/disconnect
     - Test error scenarios with permission issues and IOKit failures
