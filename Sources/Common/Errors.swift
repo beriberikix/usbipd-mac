@@ -45,7 +45,7 @@ public enum DeviceDiscoveryError: Error {
 extension DeviceDiscoveryError: LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .ioKitError(let code, let message):
+        case let .ioKitError(code, message):
             return "IOKit error (code: \(code)): \(message)"
         case .deviceNotFound(let identifier):
             return "Device not found: \(identifier)"

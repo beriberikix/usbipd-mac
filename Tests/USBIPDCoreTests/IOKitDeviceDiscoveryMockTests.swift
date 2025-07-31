@@ -514,7 +514,7 @@ final class IOKitDeviceDiscoveryMockTests: XCTestCase {
         var callbackResults: [Bool] = []
         let resultsQueue = DispatchQueue(label: "test.results")
         
-        deviceDiscovery.onDeviceConnected = { device in
+        deviceDiscovery.onDeviceConnected = { _ in
             resultsQueue.async {
                 callbackResults.append(true)
                 expectation.fulfill()

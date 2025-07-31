@@ -78,7 +78,7 @@ internal struct DeviceCacheConfiguration {
 internal class DeviceListCache {
     private let config: DeviceCacheConfiguration
     private var cachedDevices: [USBDevice] = []
-    private var cacheTimestamp: Date = Date.distantPast
+    private var cacheTimestamp = Date.distantPast
     private let lock = NSLock()
     
     init(config: DeviceCacheConfiguration) {

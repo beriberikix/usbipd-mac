@@ -226,7 +226,8 @@ extension IOKitDeviceDiscovery {
             key as CFString, 
             kCFAllocatorDefault, 
             0
-        )?.takeRetainedValue() else {
+        )?
+            .takeRetainedValue() else {
             return nil
         }
         
@@ -248,7 +249,8 @@ extension IOKitDeviceDiscovery {
             key as CFString, 
             kCFAllocatorDefault, 
             0
-        )?.takeRetainedValue() else {
+        )?
+            .takeRetainedValue() else {
             return nil
         }
         
@@ -270,7 +272,8 @@ extension IOKitDeviceDiscovery {
             key as CFString, 
             kCFAllocatorDefault, 
             0
-        )?.takeRetainedValue() else {
+        )?
+            .takeRetainedValue() else {
             return nil
         }
         
@@ -292,7 +295,8 @@ extension IOKitDeviceDiscovery {
             key as CFString, 
             kCFAllocatorDefault, 
             0
-        )?.takeRetainedValue() else {
+        )?
+            .takeRetainedValue() else {
             return nil
         }
         

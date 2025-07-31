@@ -82,7 +82,6 @@ extension IOKitDeviceDiscovery {
                 }
                 
                 return result
-                
             } catch let error as DeviceDiscoveryError {
                 lastError = error
                 

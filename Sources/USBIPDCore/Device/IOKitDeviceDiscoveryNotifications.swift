@@ -213,7 +213,6 @@ extension IOKitDeviceDiscovery {
             DispatchQueue.main.async { [weak self] in
                 self?.onDeviceConnected?(device)
             }
-            
         } catch {
             logger.warning("Failed to process added device", context: [
                 "service": service,
@@ -251,7 +250,6 @@ extension IOKitDeviceDiscovery {
                     "deviceKey": deviceKey
                 ])
             }
-            
         } catch {
             // Device removal often fails to read properties since the device is gone
             // This is expected behavior, so we log at debug level
@@ -259,7 +257,6 @@ extension IOKitDeviceDiscovery {
                 "service": service,
                 "error": error.localizedDescription
             ])
-            
             // Try to find and remove the device from cache by service reference
             // This is a fallback when we can't read device properties
             for (_, _) in connectedDevices {

@@ -6,7 +6,7 @@ import Foundation
 @testable import USBIPDCore
 @testable import Common
 
-final class ServerCoordinatorDeviceDiscoveryIntegrationTests: XCTestCase {
+final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
     
     var mockNetworkService: MockNetworkService!
     var mockIOKitInterface: MockIOKitInterface!
@@ -231,7 +231,7 @@ final class ServerCoordinatorDeviceDiscoveryIntegrationTests: XCTestCase {
         mockIOKitInterface.shouldFailNotificationSetup = true
         mockIOKitInterface.notificationSetupError = DeviceDiscoveryError.ioKitError(KERN_FAILURE, "Test notification setup failure")
         
-        serverCoordinator.onError = { error in
+        serverCoordinator.onError = { _ in
             // Error callback for testing - we verify the error through the thrown exception
         }
         
@@ -293,7 +293,7 @@ final class ServerCoordinatorDeviceDiscoveryIntegrationTests: XCTestCase {
         var connectionAttempts = 0
         var successfulConnections = 0
         
-        ioKitDeviceDiscovery.onDeviceConnected = { device in
+        ioKitDeviceDiscovery.onDeviceConnected = { _ in
             connectionAttempts += 1
             successfulConnections += 1
         }

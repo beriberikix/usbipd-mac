@@ -133,8 +133,8 @@ public class MockIOKitInterface: IOKitInterface {
         return dict
     }
     
-    public func serviceGetMatchingServices(_ masterPort: mach_port_t, _ matching: CFDictionary, _ existing: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t {
-        serviceGetMatchingServicesCalls.append((masterPort, matching))
+    public func serviceGetMatchingServices(_ mainPort: mach_port_t, _ matching: CFDictionary, _ existing: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t {
+        serviceGetMatchingServicesCalls.append((mainPort, matching))
         
         if shouldFailGetMatchingServices {
             return getMatchingServicesError
@@ -221,8 +221,8 @@ public class MockIOKitInterface: IOKitInterface {
         return nil
     }
     
-    public func notificationPortCreate(_ masterPort: mach_port_t) -> IONotificationPortRef? {
-        notificationPortCreateCalls.append(masterPort)
+    public func notificationPortCreate(_ mainPort: mach_port_t) -> IONotificationPortRef? {
+        notificationPortCreateCalls.append(mainPort)
         
         if shouldFailNotificationPortCreate {
             return nil
