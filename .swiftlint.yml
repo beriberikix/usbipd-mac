@@ -36,6 +36,8 @@ disabled_rules:
   - type_body_length # Temporarily disabled to focus on core issues
   - cyclomatic_complexity # Temporarily disabled to focus on core issues
   - identifier_name # Temporarily disabled to focus on core issues
+  - vertical_parameter_alignment_on_call # Formatting preference, especially in tests
+  - multiline_arguments # Formatting preference, especially in tests
 
 # Rules to enable (opt-in)
 opt_in_rules:
@@ -61,7 +63,6 @@ opt_in_rules:
   - legacy_random
   - literal_expression_end_indentation
   - modifier_order
-  - multiline_arguments
   - multiline_function_chains
   - multiline_literal_brackets
   - multiline_parameters
@@ -80,7 +81,6 @@ opt_in_rules:
   - unneeded_parentheses_in_closure_argument
   - unused_import
   - unused_declaration
-  - vertical_parameter_alignment_on_call
   - vertical_whitespace_closing_braces
   - yoda_condition
 
