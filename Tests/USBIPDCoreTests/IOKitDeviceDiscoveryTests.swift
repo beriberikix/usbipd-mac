@@ -3,6 +3,7 @@
 
 import XCTest
 @testable import USBIPDCore
+@testable import Common
 
 final class IOKitDeviceDiscoveryTests: XCTestCase {
     
