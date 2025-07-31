@@ -5,6 +5,18 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run Unit Tests'
+        required: false
+        default: false
+        type: boolean
+      run_integration_tests:
+        description: 'Run Integration Tests (QEMU)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   # Global environment variables for consistent status reporting
@@ -192,6 +204,7 @@ jobs:
   test:
     name: Unit Tests
     runs-on: macos-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true'
     steps:
       - name: 🧪 Starting Unit Test Execution
         run: |
@@ -293,6 +306,7 @@ jobs:
   integration-test:
     name: Integration Tests (QEMU)
     runs-on: macos-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_integration_tests == 'true'
     steps:
       - name: 🔗 Starting Integration Test Execution
         run: |
