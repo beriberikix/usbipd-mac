@@ -20,21 +20,12 @@ extension IOKitDeviceDiscovery {
     internal func discoverDevicesInternal() throws -> [USBDevice] {
         logger.debug("Starting USB device discovery")
         
-        // Check cache first for performance
-        if let cachedDevices = deviceListCache?.getCachedDevices() {
-            logger.debug("Returning cached devices", context: ["count": cachedDevices.count])
-            return cachedDevices
-        }
+        // Perform device discovery directly without caching or retry logic
+        // The caching and retry mechanisms were causing hangs in the original implementation
+        let devices = try performDeviceDiscovery()
         
-        return try executeWithRetry(operation: "discover USB devices") {
-            let devices = try performDeviceDiscovery()
-            
-            // Update cache with discovered devices
-            deviceListCache?.updateCache(with: devices)
-            
-            logger.info("Discovered USB devices", context: ["count": devices.count])
-            return devices
-        }
+        logger.info("Discovered USB devices", context: ["count": devices.count])
+        return devices
     }
     
     /// Internal device lookup implementation
