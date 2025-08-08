@@ -65,6 +65,42 @@ public class MockDeviceClaimer: DeviceClaimer {
     /// Currently claimed devices (deviceID -> ClaimedDevice)
     private var claimedDevices: [String: ClaimedDevice] = [:]
     
+    /// Public access for tests
+    public var claimedDevicesPublic: [ClaimedDevice] {
+        get { Array(claimedDevices.values) }
+        set { 
+            claimedDevices.removeAll()
+            for device in newValue {
+                claimedDevices[device.deviceID] = device
+            }
+        }
+    }
+    
+    // MARK: - Test Call Tracking
+    
+    /// Whether operations should succeed (simplified for tests)
+    public var shouldSucceed = true
+    
+    /// Error to return for claim operations
+    public var claimError: Error?
+    
+    /// Error to return for release operations  
+    public var releaseError: Error?
+    
+    /// Result to return for claim operations
+    public var claimDeviceResult: ClaimedDevice?
+    
+    /// Track specific method calls
+    public var claimDeviceCalled = false
+    public var releaseDeviceCalled = false
+    public var getAllClaimedDevicesCalled = false
+    public var isDeviceClaimedCalled = false
+    public var restoreClaimedDevicesCalled = false
+    public var saveClaimStateCalled = false
+    
+    /// Device claimed status for tests
+    public var deviceClaimedStatus = false
+    
     /// Track method calls for test verification
     public var methodCalls: [String] = []
     
@@ -99,6 +135,7 @@ public class MockDeviceClaimer: DeviceClaimer {
     // MARK: - DeviceClaimer Protocol Implementation
     
     public func claimDevice(device: USBDevice) throws -> ClaimedDevice {
+        claimDeviceCalled = true
         methodCalls.append("claimDevice(\(device.busID)-\(device.deviceID))")
         claimAttempts += 1
         
@@ -109,7 +146,25 @@ public class MockDeviceClaimer: DeviceClaimer {
             Thread.sleep(forTimeInterval: configuration.claimDelay)
         }
         
-        // Check if claiming should fail
+        // Check simplified test failure condition first
+        if !shouldSucceed {
+            failedClaims += 1
+            if let error = claimError {
+                throw error
+            } else {
+                throw SystemExtensionError.deviceClaimFailed(deviceID, nil)
+            }
+        }
+        
+        // Return configured result if provided
+        if let result = claimDeviceResult {
+            claimedDevices[deviceID] = result
+            claimOperations.append((device: device, timestamp: Date()))
+            successfulClaims += 1
+            return result
+        }
+        
+        // Check if claiming should fail (legacy configuration)
         if !configuration.shouldSucceedClaiming {
             failedClaims += 1
             throw configuration.claimError
@@ -131,7 +186,7 @@ public class MockDeviceClaimer: DeviceClaimer {
             manufacturerString: device.manufacturerString,
             serialNumber: device.serialNumberString,
             claimTime: Date(),
-            claimMethod: .exclusiveAccess, // Default mock claim method
+            claimMethod: .exclusiveAccess,
             claimState: .claimed,
             deviceClass: device.deviceClass,
             deviceSubclass: device.deviceSubClass,
@@ -147,6 +202,7 @@ public class MockDeviceClaimer: DeviceClaimer {
     }
     
     public func releaseDevice(device: USBDevice) throws {
+        releaseDeviceCalled = true
         let deviceID = "\(device.busID)-\(device.deviceID)"
         methodCalls.append("releaseDevice(\(deviceID))")
         releaseAttempts += 1
@@ -156,7 +212,17 @@ public class MockDeviceClaimer: DeviceClaimer {
             Thread.sleep(forTimeInterval: configuration.releaseDelay)
         }
         
-        // Check if releasing should fail
+        // Check simplified test failure condition first
+        if !shouldSucceed {
+            failedReleases += 1
+            if let error = releaseError {
+                throw error
+            } else {
+                throw SystemExtensionError.deviceReleaseFailed(deviceID, nil)
+            }
+        }
+        
+        // Check if releasing should fail (legacy configuration)
         if !configuration.shouldSucceedReleasing {
             failedReleases += 1
             throw configuration.releaseError
@@ -175,8 +241,9 @@ public class MockDeviceClaimer: DeviceClaimer {
     }
     
     public func isDeviceClaimed(deviceID: String) -> Bool {
+        isDeviceClaimedCalled = true
         methodCalls.append("isDeviceClaimed(\(deviceID))")
-        return claimedDevices[deviceID] != nil
+        return deviceClaimedStatus || claimedDevices[deviceID] != nil
     }
     
     public func getClaimedDevice(deviceID: String) -> ClaimedDevice? {
@@ -185,11 +252,13 @@ public class MockDeviceClaimer: DeviceClaimer {
     }
     
     public func getAllClaimedDevices() -> [ClaimedDevice] {
+        getAllClaimedDevicesCalled = true
         methodCalls.append("getAllClaimedDevices")
         return Array(claimedDevices.values)
     }
     
     public func restoreClaimedDevices() throws {
+        restoreClaimedDevicesCalled = true
         methodCalls.append("restoreClaimedDevices")
         restoreOperations.append(Date())
         
@@ -205,6 +274,7 @@ public class MockDeviceClaimer: DeviceClaimer {
     }
     
     public func saveClaimState() throws {
+        saveClaimStateCalled = true
         methodCalls.append("saveClaimState")
         saveOperations.append(Date())
         
@@ -217,6 +287,16 @@ public class MockDeviceClaimer: DeviceClaimer {
     }
     
     // MARK: - Mock Control Methods
+    
+    /// Reset call flags for testing
+    public func resetCallFlags() {
+        claimDeviceCalled = false
+        releaseDeviceCalled = false
+        getAllClaimedDevicesCalled = false
+        isDeviceClaimedCalled = false
+        restoreClaimedDevicesCalled = false
+        saveClaimStateCalled = false
+    }
     
     /// Reset mock to current configuration
     public func resetToConfiguration() {

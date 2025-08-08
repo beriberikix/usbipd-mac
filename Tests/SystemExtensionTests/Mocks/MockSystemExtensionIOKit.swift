@@ -11,8 +11,8 @@ import USBIPDCore
 // MARK: - Enhanced Mock IOKit Interface for System Extension
 
 /// Enhanced IOKit mock interface with System Extension specific features
-/// Extends the base MockIOKitInterface with device claiming simulation
-public class MockSystemExtensionIOKit: MockIOKitInterface {
+/// Provides device claiming simulation for System Extension testing
+public class MockSystemExtensionIOKit {
     
     // MARK: - System Extension Mock State
     
@@ -43,16 +43,21 @@ public class MockSystemExtensionIOKit: MockIOKitInterface {
     /// Current claim method being tested
     public var currentClaimMethod: DeviceClaimMethod = .exclusiveAccess
     
+    // MARK: - Basic Mock Properties
+    
+    /// Mock service value for generating service identifiers  
+    public let mockServiceValue: UInt32 = 0x12345678
+    
+    /// Mock devices for testing
+    public var mockDevices: [USBDevice] = []
+    
     // MARK: - Enhanced Mock Configuration
     
-    override public init() {
-        super.init()
+    public init() {
         setupDefaultClaimableDevices()
     }
     
-    override public func reset() {
-        super.reset()
-        
+    public func reset() {
         claimableDevices.removeAll()
         alreadyClaimedDevices.removeAll()
         deviceClaimErrors.removeAll()
@@ -275,8 +280,24 @@ public class MockSystemExtensionIOKit: MockIOKitInterface {
     // MARK: - Private Helper Methods
     
     private func setupDefaultClaimableDevices() {
-        // By default, make all mock devices claimable
+        // Create some mock devices
         for i in 0..<5 {
+            let mockDevice = USBDevice(
+                busID: "1",
+                deviceID: String(i + 1),
+                vendorID: UInt16(0x1234 + i),
+                productID: UInt16(0x5678 + i),
+                deviceClass: 0x09,
+                deviceSubClass: 0x00,
+                deviceProtocol: 0x00,
+                speed: .high,
+                manufacturerString: "Mock Manufacturer \(i)",
+                productString: "Mock Device \(i)",
+                serialNumberString: "MOCK\(i)123"
+            )
+            mockDevices.append(mockDevice)
+            
+            // By default, make all mock devices claimable
             let service = io_service_t(mockServiceValue + UInt32(i))
             claimableDevices.insert(service)
         }
