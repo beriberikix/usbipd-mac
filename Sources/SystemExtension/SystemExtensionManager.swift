@@ -56,7 +56,7 @@ public class SystemExtensionManager {
         self.init(
             deviceClaimer: IOKitDeviceClaimer(),
             ipcHandler: XPCIPCHandler(),
-            statusMonitor: DefaultStatusMonitor(),
+            statusMonitor: ComprehensiveStatusMonitor(),
             config: SystemExtensionManagerConfig(),
             logger: logger
         )
