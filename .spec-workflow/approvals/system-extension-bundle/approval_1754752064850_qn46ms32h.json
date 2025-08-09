@@ -1,0 +1,21 @@
+{
+  "id": "approval_1754752064850_qn46ms32h",
+  "title": "Tasks Phase: system-extension-bundle - Ready for Review",
+  "filePath": ".spec-workflow/specs/system-extension-bundle/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-09T15:07:44.850Z",
+  "category": "spec",
+  "categoryName": "system-extension-bundle",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Folllw git workflow. First task should be to create a feature branch from main and publish to github. Commit each task with a useful message. Last task should be to create a PR and ensure CI finishes succesfully.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Folllw git workflow. First task should be to create a feature branch from main and publish to github. Commit each task with a useful message. Last task should be to create a PR and ensure CI finishes succesfully.\",\n      \"timestamp\": \"2025-08-09T15:09:26.010Z\",\n      \"id\": \"comment_1754752166010_4pgapf50q\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Folllw git workflow. First task should be to create a feature branch from main and publish to github. Commit each task with a useful message. Last task should be to create a PR and ensure CI finishes succesfully.\\n\\n\",\n  \"timestamp\": \"2025-08-09T15:09:58.276Z\"\n}",
+  "respondedAt": "2025-08-09T15:09:58.292Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Folllw git workflow. First task should be to create a feature branch from main and publish to github. Commit each task with a useful message. Last task should be to create a PR and ensure CI finishes succesfully.",
+      "timestamp": "2025-08-09T15:09:26.010Z",
+      "id": "comment_1754752166010_4pgapf50q"
+    }
+  ]
+}
