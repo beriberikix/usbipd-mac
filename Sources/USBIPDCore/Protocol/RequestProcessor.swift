@@ -9,6 +9,9 @@ public class RequestProcessor {
     /// Device discovery for USB device enumeration
     private let deviceDiscovery: DeviceDiscovery
     
+    /// Device claim manager for device claiming
+    private let deviceClaimManager: DeviceClaimManager
+    
     /// Logger for error and diagnostic information
     private let logger: ((String, LogLevel) -> Void)?
     
@@ -20,9 +23,10 @@ public class RequestProcessor {
         case error
     }
     
-    /// Initialize with device discovery
-    public init(deviceDiscovery: DeviceDiscovery, logger: ((String, LogLevel) -> Void)? = nil) {
+    /// Initialize with device discovery and device claim manager
+    public init(deviceDiscovery: DeviceDiscovery, deviceClaimManager: DeviceClaimManager, logger: ((String, LogLevel) -> Void)? = nil) {
         self.deviceDiscovery = deviceDiscovery
+        self.deviceClaimManager = deviceClaimManager
         self.logger = logger
     }
     
@@ -180,6 +184,47 @@ public class RequestProcessor {
                 "productID": String(format: "0x%04x", device.productID),
                 "product": device.productString ?? "Unknown"
             ])
+            
+            // Check if device is already claimed
+            let deviceIdentifier = "\(device.busID)-\(device.deviceID)"
+            if deviceClaimManager.isDeviceClaimed(deviceID: deviceIdentifier) {
+                log("Device is already claimed", .info, [
+                    "deviceID": deviceIdentifier,
+                    "busID": device.busID,
+                    "device": device.deviceID
+                ])
+                
+                // Device is already claimed, proceed with import
+                log("Proceeding with import of already claimed device", .debug)
+            } else {
+                // Attempt to claim the device
+                log("Attempting to claim device", .info, [
+                    "deviceID": deviceIdentifier,
+                    "busID": device.busID,
+                    "device": device.deviceID
+                ])
+                
+                do {
+                    let success = try deviceClaimManager.claimDevice(device)
+                    if success {
+                        log("Successfully claimed device", .info, [
+                            "deviceID": deviceIdentifier
+                        ])
+                    } else {
+                        log("Failed to claim device", .error, [
+                            "deviceID": deviceIdentifier
+                        ])
+                        throw DeviceError.deviceNotFound("Cannot import device: Failed to claim exclusive access")
+                    }
+                } catch {
+                    log("Failed to claim device", .error, [
+                        "deviceID": deviceIdentifier,
+                        "error": error.localizedDescription
+                    ])
+                    
+                    throw DeviceError.deviceNotFound("Cannot import device: Failed to claim exclusive access - \(error.localizedDescription)")
+                }
+            }
             
             // Create device info for the response
             log("Creating device info for response", .debug)

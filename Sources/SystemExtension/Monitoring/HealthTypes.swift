@@ -6,7 +6,7 @@ import Foundation
 // MARK: - Health Check Results
 
 /// Overall health status levels
-public enum HealthStatus: String, CaseIterable {
+public enum HealthStatus: String, CaseIterable, Codable {
     case healthy = "healthy"
     case warning = "warning"
     case critical = "critical"

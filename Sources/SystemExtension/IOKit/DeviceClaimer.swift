@@ -5,7 +5,6 @@ import Foundation
 import IOKit
 import IOKit.usb
 import Common
-import USBIPDCore
 
 // MARK: - Device Claimer Protocol
 
@@ -324,15 +323,17 @@ public class IOKitDeviceClaimer: DeviceClaimer {
         }
         
         // Add vendor ID and product ID to matching criteria
-        let vendorIDRef = CFNumberCreate(nil, .sInt16Type, &device.vendorID)
-        let productIDRef = CFNumberCreate(nil, .sInt16Type, &device.productID)
+        var vendorID = device.vendorID
+        var productID = device.productID
+        let vendorIDRef = CFNumberCreate(nil, .sInt16Type, &vendorID)
+        let productIDRef = CFNumberCreate(nil, .sInt16Type, &productID)
         
-        CFDictionarySetValue(matchingDict, kUSBVendorID as CFString, vendorIDRef)
-        CFDictionarySetValue(matchingDict, kUSBProductID as CFString, productIDRef)
+        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBVendorID as CFString).toOpaque(), Unmanaged.passRetained(vendorIDRef!).toOpaque())
+        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBProductID as CFString).toOpaque(), Unmanaged.passRetained(productIDRef!).toOpaque())
         
         // Get matching services
         var iterator: io_iterator_t = 0
-        let result = ioKit.serviceGetMatchingServices(kIOMainPortDefault, matchingDict, &iterator)
+        let result = ioKit.serviceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
         
         if result != KERN_SUCCESS {
             throw SystemExtensionError.ioKitError(result, "Failed to get matching USB services")
@@ -457,7 +458,7 @@ public class IOKitDeviceClaimer: DeviceClaimer {
         // 3. Verify no drivers are bound
         
         // For MVP, we'll throw an error as this is complex to implement
-        throw SystemExtensionError.operationNotSupported("Driver unbinding not implemented in MVP")
+        throw SystemExtensionError.internalError("Driver unbinding not implemented in MVP")
     }
     
     private func attemptIOKitMatching(service: io_service_t) throws {
@@ -500,7 +501,7 @@ public class IOKitDeviceClaimer: DeviceClaimer {
                         vendorID: savedDevice.vendorID,
                         productID: savedDevice.productID,
                         deviceClass: savedDevice.deviceClass,
-                        deviceSubclass: savedDevice.deviceSubclass,
+                        deviceSubClass: savedDevice.deviceSubclass,
                         deviceProtocol: savedDevice.deviceProtocol,
                         speed: .unknown, // We don't have speed info in saved state
                         manufacturerString: savedDevice.manufacturerString,

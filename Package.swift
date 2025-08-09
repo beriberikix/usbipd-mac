@@ -34,7 +34,7 @@ let package = Package(
             dependencies: ["USBIPDCore", "Common"]),
         .target(
             name: "USBIPDCore",
-            dependencies: ["Common"]),
+            dependencies: ["Common", "SystemExtension"]),
         .target(
             name: "Common",
             dependencies: []),

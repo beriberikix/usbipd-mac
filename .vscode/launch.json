@@ -1,0 +1,40 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Debug usbipd",
+            "program": "${workspaceFolder:usbipd-mac}/.build/debug/usbipd",
+            "preLaunchTask": "swift: Build Debug usbipd"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Release usbipd",
+            "program": "${workspaceFolder:usbipd-mac}/.build/release/usbipd",
+            "preLaunchTask": "swift: Build Release usbipd"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Debug QEMUTestServer",
+            "program": "${workspaceFolder:usbipd-mac}/.build/debug/QEMUTestServer",
+            "preLaunchTask": "swift: Build Debug QEMUTestServer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Release QEMUTestServer",
+            "program": "${workspaceFolder:usbipd-mac}/.build/release/QEMUTestServer",
+            "preLaunchTask": "swift: Build Release QEMUTestServer"
+        }
+    ]
+}

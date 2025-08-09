@@ -3,7 +3,6 @@
 
 import Foundation
 import Common
-import USBIPDCore
 
 // MARK: - System Extension Manager
 
@@ -157,7 +156,7 @@ public class SystemExtensionManager {
                 
             } catch {
                 // Clean up on startup failure
-                state = .error(error)
+                state = .error(error.localizedDescription)
                 try? cleanupAfterFailure()
                 
                 logger.error("Failed to start SystemExtensionManager", context: [
@@ -445,10 +444,10 @@ public class SystemExtensionManager {
         statistics.stopTime = Date()
     }
     
-    private func getHealthMetrics() -> HealthMetrics {
+    private func getHealthMetrics() -> SystemExtensionHealthMetrics {
         let ipcStats = ipcHandler.getStatistics()
         
-        return HealthMetrics(
+        return SystemExtensionHealthMetrics(
             successfulClaims: statistics.successfulClaims,
             failedClaims: statistics.failedClaims,
             activeConnections: ipcStats.acceptedConnections - ipcStats.disconnectedClients,
@@ -459,11 +458,13 @@ public class SystemExtensionManager {
     
     private func getMemoryUsage() -> Int {
         // Get current memory usage
-        let info = mach_task_basic_info()
+        var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
         
         let result = withUnsafeMutablePointer(to: &info) {
-            task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
         }
         
         if result == KERN_SUCCESS {
@@ -578,12 +579,12 @@ public class SystemExtensionManager {
 // MARK: - System Extension State
 
 /// Current state of the System Extension manager
-public enum SystemExtensionState {
+public enum SystemExtensionState: Equatable {
     case stopped
     case starting
     case running
     case stopping
-    case error(Error)
+    case error(String) // Changed from Error to String for Equatable conformance
     
     public var description: String {
         switch self {
@@ -591,7 +592,7 @@ public enum SystemExtensionState {
         case .starting: return "starting"
         case .running: return "running"
         case .stopping: return "stopping"
-        case .error(let error): return "error: \(error.localizedDescription)"
+        case .error(let error): return "error: \(error)"
         }
     }
 }
@@ -737,44 +738,3 @@ public protocol SystemExtensionRequestDelegate: AnyObject {
     func handleRequest(_ request: IPCRequest) -> IPCResponse
 }
 
-// MARK: - Status Monitor Protocol
-
-/// Protocol for system status monitoring
-public protocol StatusMonitor {
-    /// Start status monitoring
-    func startMonitoring() throws
-    
-    /// Stop status monitoring
-    func stopMonitoring()
-    
-    /// Check if monitoring is active
-    func isMonitoring() -> Bool
-}
-
-/// Default implementation of status monitoring
-public class DefaultStatusMonitor: StatusMonitor {
-    private var isActive = false
-    private let logger: Logger
-    
-    public init() {
-        self.logger = Logger(
-            config: LoggerConfig(level: .info),
-            subsystem: "com.usbipd.mac.system-extension",
-            category: "status-monitor"
-        )
-    }
-    
-    public func startMonitoring() throws {
-        logger.info("Starting status monitoring")
-        isActive = true
-    }
-    
-    public func stopMonitoring() {
-        logger.info("Stopping status monitoring")
-        isActive = false
-    }
-    
-    public func isMonitoring() -> Bool {
-        return isActive
-    }
-}

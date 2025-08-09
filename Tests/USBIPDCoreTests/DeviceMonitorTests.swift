@@ -2,6 +2,7 @@
 // Tests for USB device monitoring
 
 import XCTest
+import Common
 @testable import USBIPDCore
 
 final class DeviceMonitorTests: XCTestCase {

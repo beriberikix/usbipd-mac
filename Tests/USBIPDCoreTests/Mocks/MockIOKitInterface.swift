@@ -4,6 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.usb
+import Common
 @testable import USBIPDCore
 
 // MARK: - Mock IOKit Implementation

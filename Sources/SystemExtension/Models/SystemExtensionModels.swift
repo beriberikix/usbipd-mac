@@ -26,7 +26,7 @@ public struct SystemExtensionStatus: Codable {
     public let version: String
     
     /// Additional health metrics
-    public let healthMetrics: HealthMetrics
+    public let healthMetrics: SystemExtensionHealthMetrics
     
     public init(
         isRunning: Bool,
@@ -35,7 +35,7 @@ public struct SystemExtensionStatus: Codable {
         errorCount: Int,
         memoryUsage: Int,
         version: String,
-        healthMetrics: HealthMetrics
+        healthMetrics: SystemExtensionHealthMetrics
     ) {
         self.isRunning = isRunning
         self.claimedDevices = claimedDevices
@@ -47,8 +47,8 @@ public struct SystemExtensionStatus: Codable {
     }
 }
 
-/// Health metrics for System Extension monitoring
-public struct HealthMetrics: Codable {
+/// Health metrics for System Extension monitoring (legacy)
+public struct SystemExtensionHealthMetrics: Codable {
     /// Number of successful device claims
     public let successfulClaims: Int
     

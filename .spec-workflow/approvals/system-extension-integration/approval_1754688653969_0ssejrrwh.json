@@ -1,0 +1,20 @@
+{
+  "id": "approval_1754688653969_0ssejrrwh",
+  "title": "Tasks Phase: system-extension-integration - Ready for Review",
+  "filePath": ".spec-workflow/specs/system-extension-integration/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-08T21:30:53.969Z",
+  "category": "spec",
+  "categoryName": "system-extension-integration",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow standard git workflow. Create a commit with useful commit messages. Include commit message in task list. Also create a task to create PR and ensure Github Actions is succesful.\n\n",
+  "annotations": "{\n  \"decision\": \"rejected\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow standard git workflow. Create a commit with useful commit messages. Include commit message in task list. Also create a task to create PR and ensure Github Actions is succesful.\",\n      \"timestamp\": \"2025-08-08T21:35:51.404Z\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow standard git workflow. Create a commit with useful commit messages. Include commit message in task list. Also create a task to create PR and ensure Github Actions is succesful.\\n\\n\",\n  \"timestamp\": \"2025-08-08T21:36:27.463Z\"\n}",
+  "respondedAt": "2025-08-08T21:36:27.469Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow standard git workflow. Create a commit with useful commit messages. Include commit message in task list. Also create a task to create PR and ensure Github Actions is succesful.",
+      "timestamp": "2025-08-08T21:35:51.404Z"
+    }
+  ]
+}

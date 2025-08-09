@@ -40,7 +40,7 @@ public protocol IPCHandler {
 // MARK: - XPC-Based IPC Handler Implementation
 
 /// XPC-based implementation of IPC communication for System Extension
-public class XPCIPCHandler: IPCHandler {
+public class XPCIPCHandler: NSObject, IPCHandler {
     
     // MARK: - Properties
     
@@ -77,8 +77,8 @@ public class XPCIPCHandler: IPCHandler {
     
     // MARK: - Initialization
     
-    /// Initialize XPC IPC handler with default configuration
-    public convenience init() {
+    /// Initialize XPC IPC handler with default configuration  
+    public convenience override init() {
         let logger = Logger(
             config: LoggerConfig(level: .info),
             subsystem: "com.usbipd.mac.system-extension",
@@ -107,7 +107,9 @@ public class XPCIPCHandler: IPCHandler {
         )
         self.statistics = IPCStatistics()
         
-        // Configure JSON encoder/decoder
+        super.init()
+        
+        // Configure JSON encoder/decoder after super.init
         setupJSONCoding()
         
         logger.info("XPCIPCHandler initialized", context: [
