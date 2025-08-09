@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>{{BUNDLE_DISPLAY_NAME}}</string>
+	<key>CFBundleExecutable</key>
+	<string>{{EXECUTABLE_NAME}}</string>
+	<key>CFBundleIdentifier</key>
+	<string>{{BUNDLE_IDENTIFIER}}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>{{BUNDLE_NAME}}</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>{{VERSION_STRING}}</string>
+	<key>CFBundleVersion</key>
+	<string>{{BUILD_VERSION}}</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>{{MINIMUM_SYSTEM_VERSION}}</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.system-extension.driver-extension</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>{{PRINCIPAL_CLASS}}</string>
+	</dict>
+	<key>NSHumanReadableCopyright</key>
+	<string>{{COPYRIGHT_STRING}}</string>
+	<key>OSBundleUsageDescription</key>
+	<string>{{USAGE_DESCRIPTION}}</string>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<key>{{EXTENSION_NAME}}</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>{{BUNDLE_IDENTIFIER}}</string>
+			<key>IOClass</key>
+			<string>IOUserService</string>
+			<key>IOMatchCategory</key>
+			<string>{{EXTENSION_NAME}}</string>
+			<key>IOServiceCategory</key>
+			<string>{{EXTENSION_NAME}}</string>
+			<key>IOUserClass</key>
+			<string>{{PRINCIPAL_CLASS}}</string>
+			<!-- USB Device Matching Configuration -->
+			<key>bInterfaceClass</key>
+			<integer>{{USB_INTERFACE_CLASS}}</integer>
+			<key>idVendor</key>
+			<integer>{{USB_VENDOR_ID}}</integer>
+			<!-- Additional USB matching criteria can be specified here -->
+			<!-- <key>idProduct</key>
+			<integer>{{USB_PRODUCT_ID}}</integer> -->
+			<!-- <key>bInterfaceSubClass</key>
+			<integer>{{USB_INTERFACE_SUBCLASS}}</integer> -->
+			<!-- <key>bInterfaceProtocol</key>
+			<integer>{{USB_INTERFACE_PROTOCOL}}</integer> -->
+		</dict>
+	</dict>
+	<key>IOUserEntitlements</key>
+	<array>
+		<string>com.apple.developer.driverkit</string>
+		<string>com.apple.developer.driverkit.allow-any-userclient-access</string>
+		<string>com.apple.developer.driverkit.usb.transport</string>
+		<string>com.apple.developer.system-extension.install</string>
+	</array>
+</dict>
+</plist>
