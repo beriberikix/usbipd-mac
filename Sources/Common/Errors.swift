@@ -75,4 +75,5 @@ public enum ServerError: Error {
     case notRunning
     case initializationFailed(String)
     case configurationError(String)
+    case systemExtensionFailed(String)
 }
