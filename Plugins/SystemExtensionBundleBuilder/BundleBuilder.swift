@@ -133,9 +133,39 @@ struct BundleBuilder {
         # Set proper permissions
         chmod -R 755 "\(bundlePath.string)"
         echo "Bundle permissions set"
+        
+        # Code signing
+        \(createCodeSigningCommands(bundlePath: bundlePath, executablePath: macOSDir.appending("SystemExtension"), entitlementsPath: entitlementsFile.string).joined(separator: "\n"))
+        
+        # Development mode support
+        \(createDevelopmentModeCommands().joined(separator: "\n"))
         """
         
         return script
+    }
+    
+    /// Creates code signing commands for the bundle
+    private func createCodeSigningCommands(bundlePath: Path, executablePath: Path, entitlementsPath: String) -> [String] {
+        let signingConfig = CodeSigning.Configuration(
+            certificateIdentity: nil, // Auto-detect
+            developmentMode: true,
+            signBundle: true,
+            entitlementsPath: entitlementsPath
+        )
+        
+        let codeSigning = CodeSigning(configuration: signingConfig)
+        return codeSigning.createSigningCommands(bundlePath: bundlePath, executablePath: executablePath)
+    }
+    
+    /// Creates development mode support commands
+    private func createDevelopmentModeCommands() -> [String] {
+        let signingConfig = CodeSigning.Configuration(
+            developmentMode: true,
+            entitlementsPath: ""
+        )
+        
+        let codeSigning = CodeSigning(configuration: signingConfig)
+        return codeSigning.createDevelopmentModeCommands()
     }
 }
 
@@ -274,9 +304,39 @@ struct XcodeBundleBuilder {
         # Set proper permissions
         chmod -R 755 "\(bundlePath.string)"
         echo "Bundle permissions set (Xcode)"
+        
+        # Code signing (Xcode)
+        \(createXcodeCodeSigningCommands(bundlePath: bundlePath, executablePath: macOSDir.appending("SystemExtension"), entitlementsPath: entitlementsFile.string).joined(separator: "\n"))
+        
+        # Development mode support (Xcode)
+        \(createXcodeDevelopmentModeCommands().joined(separator: "\n"))
         """
         
         return script
+    }
+    
+    /// Creates code signing commands for Xcode builds
+    private func createXcodeCodeSigningCommands(bundlePath: Path, executablePath: Path, entitlementsPath: String) -> [String] {
+        let signingConfig = CodeSigning.Configuration(
+            certificateIdentity: nil, // Auto-detect
+            developmentMode: true,
+            signBundle: true,
+            entitlementsPath: entitlementsPath
+        )
+        
+        let xcodeCodeSigning = XcodeCodeSigning(configuration: signingConfig)
+        return xcodeCodeSigning.createSigningCommands(bundlePath: bundlePath, executablePath: executablePath)
+    }
+    
+    /// Creates development mode support commands for Xcode
+    private func createXcodeDevelopmentModeCommands() -> [String] {
+        let signingConfig = CodeSigning.Configuration(
+            developmentMode: true,
+            entitlementsPath: ""
+        )
+        
+        let xcodeCodeSigning = XcodeCodeSigning(configuration: signingConfig)
+        return xcodeCodeSigning.createDevelopmentModeCommands()
     }
 }
 #endif
