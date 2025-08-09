@@ -22,6 +22,9 @@ let package = Package(
         .library(
             name: "Common",
             targets: ["Common"]),
+        .library(
+            name: "SystemExtension",
+            targets: ["SystemExtension"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -31,7 +34,7 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         .executableTarget(
             name: "USBIPDCLI",
-            dependencies: ["USBIPDCore", "Common"]),
+            dependencies: ["USBIPDCore", "Common", "SystemExtension"]),
         .target(
             name: "USBIPDCore",
             dependencies: ["Common", "SystemExtension"]),
@@ -43,7 +46,11 @@ let package = Package(
             dependencies: ["Common"]),
         .target(
             name: "SystemExtension",
-            dependencies: ["Common"]),
+            dependencies: ["Common"],
+            linkerSettings: [
+                .linkedFramework("SystemExtensions"),
+                .linkedFramework("IOKit")
+            ]),
         .testTarget(
             name: "USBIPDCoreTests",
             dependencies: ["USBIPDCore"]),
@@ -52,7 +59,7 @@ let package = Package(
             dependencies: ["USBIPDCLI"]),
         .testTarget(
             name: "IntegrationTests",
-            dependencies: ["USBIPDCore", "QEMUTestServer"]),
+            dependencies: ["USBIPDCore", "QEMUTestServer", "USBIPDCLI", "SystemExtension", "Common"]),
         .testTarget(
             name: "SystemExtensionTests",
             dependencies: ["SystemExtension", "USBIPDCore", "Common"]),
