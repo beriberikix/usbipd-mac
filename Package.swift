@@ -22,7 +22,7 @@ let package = Package(
         .library(
             name: "Common",
             targets: ["Common"]),
-        .library(
+        .executable(
             name: "SystemExtension",
             targets: ["SystemExtension"]),
     ],
@@ -44,7 +44,7 @@ let package = Package(
         .executableTarget(
             name: "QEMUTestServer",
             dependencies: ["Common"]),
-        .target(
+        .executableTarget(
             name: "SystemExtension",
             dependencies: ["Common"],
             resources: [
