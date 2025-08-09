@@ -226,12 +226,11 @@ public class DeviceHealthTracker {
         // Check for devices with repeated failures
         for (deviceID, failureRecord) in deviceFailures where failureRecord.consecutiveFailures > 3 {
             issues.append(DeviceIssue(
-                    type: .communicationError,
-                    severity: .critical,
-                    description: "Device experiencing repeated failures",
-                    deviceID: deviceID
-                ))
-            }
+                type: .communicationError,
+                severity: .critical,
+                description: "Device experiencing repeated failures",
+                deviceID: deviceID
+            ))
         }
         
         // Check for stale operations (no successful operations recently)
