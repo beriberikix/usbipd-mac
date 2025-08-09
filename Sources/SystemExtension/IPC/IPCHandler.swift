@@ -78,7 +78,7 @@ public class XPCIPCHandler: NSObject, IPCHandler {
     // MARK: - Initialization
     
     /// Initialize XPC IPC handler with default configuration  
-    public convenience override init() {
+    override public convenience init() {
         let logger = Logger(
             config: LoggerConfig(level: .info),
             subsystem: "com.usbipd.mac.system-extension",
@@ -224,7 +224,6 @@ public class XPCIPCHandler: NSObject, IPCHandler {
                     "responseSize": responseData.count,
                     "duration": String(format: "%.2f", duration)
                 ])
-                
             } catch {
                 statistics.recordResponse(success: false, duration: 0)
                 logger.error("Failed to send IPC response", context: [
@@ -295,13 +294,8 @@ public class XPCIPCHandler: NSObject, IPCHandler {
         
         var timedOutRequests: [UUID] = []
         
-        for (requestID, _) in pendingRequests {
-            // In a real implementation, we would track request timestamps
-            // For now, we'll clean up requests that have been pending too long
-            // This is a simplified timeout mechanism
-            if pendingRequests.count > config.maxPendingRequests {
-                timedOutRequests.append(requestID)
-            }
+        for (requestID, _) in pendingRequests where pendingRequests.count > config.maxPendingRequests {
+            timedOutRequests.append(requestID)
         }
         
         for requestID in timedOutRequests {
@@ -376,7 +370,6 @@ public class XPCIPCHandler: NSObject, IPCHandler {
                 
                 // Delegate request handling to the System Extension manager
                 self.notifyRequestReceived(request)
-                
             } catch {
                 self.logger.error("Failed to handle incoming IPC request", context: [
                     "error": error.localizedDescription

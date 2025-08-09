@@ -163,7 +163,6 @@ public class ComprehensiveStatusMonitor: StatusMonitor {
                 ])
                 
                 logger.info("Status monitoring started successfully")
-                
             } catch {
                 logger.error("Failed to start status monitoring", context: [
                     "error": error.localizedDescription
@@ -503,7 +502,7 @@ public struct AlertThresholds {
     }
     
     public var description: String {
-        return "healthy>=\(healthyThreshold), warning>=\(warningThreshold), memory<\(memoryThreshold)MB, cpu<\(cpuThreshold*100)%"
+        return "healthy>=\(healthyThreshold), warning>=\(warningThreshold), memory<\(memoryThreshold)MB, cpu<\(cpuThreshold * 100)%"
     }
 }
 

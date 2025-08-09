@@ -128,12 +128,12 @@ public class ProcessHealthMonitor {
         
         do {
             // Test basic system calls
-            let _ = getpid()
-            let _ = Date()
+            _ = getpid()
+            _ = Date()
             
             // Test memory allocation
             let testData = Data(count: 1024)
-            let _ = testData.count
+            _ = testData.count
             
             return true
         } catch {

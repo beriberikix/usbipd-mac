@@ -171,19 +171,19 @@ public enum DeviceClaimMethod: String, Codable, CaseIterable {
 /// Current state of device claim
 public enum DeviceClaimState: String, Codable, CaseIterable {
     /// Device claim is pending
-    case pending = "pending"
+    case pending
     
     /// Device successfully claimed
-    case claimed = "claimed"
+    case claimed
     
     /// Device claim failed
-    case failed = "failed"
+    case failed
     
     /// Device released from claim
-    case released = "released"
+    case released
     
     /// Device disconnected while claimed
-    case disconnected = "disconnected"
+    case disconnected
 }
 
 // MARK: - IPC Communication
@@ -289,16 +289,16 @@ public enum IPCCommand: String, Codable, CaseIterable {
 /// IPC request priority levels
 public enum RequestPriority: String, Codable, CaseIterable {
     /// Low priority request
-    case low = "low"
+    case low
     
     /// Normal priority request
-    case normal = "normal"
+    case normal
     
     /// High priority request
-    case high = "high"
+    case high
     
     /// Critical priority request (e.g., shutdown)
-    case critical = "critical"
+    case critical
 }
 
 /// Result data for IPC responses
@@ -365,16 +365,16 @@ public struct DeviceClaimHistoryEntry: Codable {
 /// Types of device claim operations
 public enum ClaimOperation: String, Codable, CaseIterable {
     /// Device claim operation
-    case claim = "claim"
+    case claim
     
     /// Device release operation
-    case release = "release"
+    case release
     
     /// Device reconnection handling
-    case reconnect = "reconnect"
+    case reconnect
     
     /// Device restoration after crash
-    case restore = "restore"
+    case restore
 }
 
 // MARK: - System Extension Errors
@@ -448,19 +448,19 @@ extension SystemExtensionError: LocalizedError {
             return "Device not found: \(deviceID)"
         case .accessDenied(let reason):
             return "Access denied: \(reason)"
-        case .deviceClaimFailed(let deviceID, let code):
+        case let .deviceClaimFailed(deviceID, code):
             if let code = code {
                 return "Failed to claim device \(deviceID) (IOKit code: \(code))"
             } else {
                 return "Failed to claim device \(deviceID)"
             }
-        case .deviceReleaseFailed(let deviceID, let code):
+        case let .deviceReleaseFailed(deviceID, code):
             if let code = code {
                 return "Failed to release device \(deviceID) (IOKit code: \(code))"
             } else {
                 return "Failed to release device \(deviceID)"
             }
-        case .ioKitError(let code, let message):
+        case let .ioKitError(code, message):
             return "IOKit error (code: \(code)): \(message)"
         case .notAuthorized(let reason):
             return "System Extension not authorized: \(reason)"

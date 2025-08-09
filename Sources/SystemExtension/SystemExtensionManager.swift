@@ -153,7 +153,6 @@ public class SystemExtensionManager {
                 
                 state = .running
                 logger.info("SystemExtensionManager started successfully")
-                
             } catch {
                 // Clean up on startup failure
                 state = .error(error.localizedDescription)
@@ -257,7 +256,6 @@ public class SystemExtensionManager {
                 ])
                 
                 return claimedDevice
-                
             } catch {
                 statistics.recordDeviceClaim(success: false)
                 logger.error("Failed to claim device", context: [
@@ -286,7 +284,6 @@ public class SystemExtensionManager {
                 statistics.recordDeviceRelease(success: true)
                 
                 logger.info("Device released successfully", context: ["deviceID": deviceID])
-                
             } catch {
                 statistics.recordDeviceRelease(success: false)
                 logger.error("Failed to release device", context: [
@@ -393,7 +390,6 @@ public class SystemExtensionManager {
             ])
             
             statistics.restoredDevices = restoredDevices.count
-            
         } catch {
             logger.error("Failed to restore device claim state", context: [
                 "error": error.localizedDescription
@@ -504,7 +500,6 @@ public class SystemExtensionManager {
             ])
             
             return response
-            
         } catch let error as SystemExtensionError {
             let processingTime = Date().timeIntervalSince(startTime) * 1000
             

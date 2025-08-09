@@ -7,10 +7,10 @@ import Foundation
 
 /// Overall health status levels
 public enum HealthStatus: String, CaseIterable, Codable {
-    case healthy = "healthy"
-    case warning = "warning"
-    case critical = "critical"
-    case unknown = "unknown"
+    case healthy
+    case warning
+    case critical
+    case unknown
     
     public var color: String {
         switch self {
@@ -154,9 +154,9 @@ public enum ResourceIssueType: String, Codable, CaseIterable {
 }
 
 public enum IssueSeverity: String, Codable, CaseIterable {
-    case info = "info"
-    case warning = "warning"
-    case critical = "critical"
+    case info
+    case warning
+    case critical
     
     public var priority: Int {
         switch self {

@@ -203,7 +203,7 @@ class IPCHandlerTests: XCTestCase {
         let result = testableHandler.simulateSendResponse(request: testRequest, response: testResponse)
         
         switch result {
-        case .success():
+        case .success:
             XCTAssertTrue(true) // Response was successfully serialized
         case .failure(let error):
             XCTFail("Response serialization should succeed: \(error)")
@@ -222,7 +222,7 @@ class IPCHandlerTests: XCTestCase {
         let result = testableHandler.simulateSendResponse(request: testRequest, response: largeResponse)
         
         switch result {
-        case .success():
+        case .success:
             XCTFail("Large response should fail")
         case .failure(let error):
             if case SystemExtensionError.ipcError(let message) = error {
@@ -244,7 +244,7 @@ class IPCHandlerTests: XCTestCase {
         let result = testableHandler.simulateSendResponse(request: testRequest, response: failedResponse)
         
         switch result {
-        case .success():
+        case .success:
             XCTAssertTrue(true) // Error response was successfully serialized
         case .failure(let error):
             XCTFail("Error response serialization should succeed: \(error)")
@@ -403,7 +403,6 @@ class IPCHandlerTests: XCTestCase {
                     _ = try encoder.encode(response)
                     
                     expectation.fulfill()
-                    
                 } catch {
                     XCTFail("Concurrent serialization failed: \(error)")
                 }

@@ -248,7 +248,6 @@ public class IOKitDeviceClaimer: DeviceClaimer {
             ])
             
             return claimedDevice
-            
         } catch let error as SystemExtensionError {
             claimStats.recordFailedClaim()
             logger.error("Failed to claim device", context: [
@@ -299,7 +298,6 @@ public class IOKitDeviceClaimer: DeviceClaimer {
             try saveClaimStateInternal()
             
             logger.info("Successfully released device", context: ["deviceID": deviceID])
-            
         } catch let error as SystemExtensionError {
             logger.error("Failed to release device", context: [
                 "deviceID": deviceID,
@@ -366,12 +364,10 @@ public class IOKitDeviceClaimer: DeviceClaimer {
     
     private func verifyDeviceMatch(service: io_service_t, device: USBDevice) throws -> Bool {
         // Get device location ID for more precise matching
-        guard let locationIDProperty = ioKit.registryEntryCreateCFProperty(
-            service, 
-            "locationID" as CFString, 
-            kCFAllocatorDefault, 
-            0
-        )?.takeRetainedValue() else {
+        let locationIDProperty = ioKit.registryEntryCreateCFProperty(
+            service, "locationID" as CFString, kCFAllocatorDefault, 0
+        )
+        guard let locationIDValue = locationIDProperty?.takeRetainedValue() else {
             logger.debug("Could not get locationID for service verification")
             return false
         }
@@ -515,7 +511,6 @@ public class IOKitDeviceClaimer: DeviceClaimer {
                     logger.debug("Restored device claim", context: [
                         "deviceID": savedDevice.deviceID
                     ])
-                    
                 } catch {
                     failedCount += 1
                     logger.warning("Failed to restore device claim", context: [
@@ -530,7 +525,6 @@ public class IOKitDeviceClaimer: DeviceClaimer {
                 "restored": restoredCount,
                 "failed": failedCount
             ])
-            
         } catch {
             logger.error("Failed to restore claimed devices", context: [
                 "error": error.localizedDescription

@@ -526,7 +526,6 @@ final class SystemExtensionIntegrationTests: XCTestCase {
             } catch {
                 throw XCTSkip("System Extension not available for real device testing: \(error)")
             }
-            
         } catch {
             if error.localizedDescription.contains("No USB devices available") {
                 throw XCTSkip("No real USB devices available for testing")
