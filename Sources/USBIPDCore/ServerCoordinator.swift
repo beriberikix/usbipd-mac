@@ -337,7 +337,7 @@ public class ServerCoordinator: USBIPServer {
         case .deactivating:
             logger.warning("System Extension is deactivating")
             throw ServerError.systemExtensionFailed("System Extension is deactivating")
-        case .upgrading(let from, let to):
+        case let .upgrading(from, to):
             logger.info("System Extension is upgrading", context: ["from": from, "to": to])
             // Could wait for upgrade completion
         case .requiresReboot:
@@ -460,7 +460,7 @@ public class ServerCoordinator: USBIPServer {
             stateDescription = "deactivating"
         case .failed(let error):
             stateDescription = "failed: \(error)"
-        case .upgrading(let from, let to):
+        case let .upgrading(from, to):
             stateDescription = "upgrading from \(from) to \(to)"
         case .requiresReboot:
             stateDescription = "requires reboot"

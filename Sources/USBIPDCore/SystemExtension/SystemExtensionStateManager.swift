@@ -40,7 +40,7 @@ public class SystemExtensionStateManager {
     /// Initialize state manager with custom state directory
     /// - Parameter stateDirectory: Directory to store state files (optional)
     public init(stateDirectory: URL? = nil) {
-        let baseDirectory = stateDirectory ?? self.defaultStateDirectory()
+        let baseDirectory = stateDirectory ?? SystemExtensionStateManager.defaultStateDirectory()
         self.stateFilePath = baseDirectory.appendingPathComponent("system_extension_state.json")
         
         // Ensure state directory exists
@@ -298,8 +298,8 @@ public class SystemExtensionStateManager {
     
     // MARK: - Private Implementation
     
-    private func defaultStateDirectory() -> URL {
-        let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, 
+    private static func defaultStateDirectory() -> URL {
+        let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, 
                                                 in: .localDomainMask).first!
         return applicationSupport.appendingPathComponent("usbipd-mac")
     }
@@ -503,8 +503,14 @@ public struct HealthMetrics: Codable {
     public let failedClaims: Int
     public let averageResponseTime: TimeInterval
     
-    public init(memoryUsage: Int, cpuUsage: Double, activeConnections: Int, 
-                successfulClaims: Int, failedClaims: Int, averageResponseTime: TimeInterval) {
+    public init(
+        memoryUsage: Int,
+        cpuUsage: Double,
+        activeConnections: Int,
+        successfulClaims: Int,
+        failedClaims: Int,
+        averageResponseTime: TimeInterval
+    ) {
         self.memoryUsage = memoryUsage
         self.cpuUsage = cpuUsage
         self.activeConnections = activeConnections

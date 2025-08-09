@@ -2,53 +2,6 @@ import Foundation
 import SystemExtensions
 import Common
 
-/// Errors specific to System Extension installation
-public enum SystemExtensionInstallationError: Error, LocalizedError {
-    case bundleNotFound(String)
-    case installationFailed(String)
-    case userRejected
-    case requiresApproval
-    case replacingExtensionFailed(String)
-    case requestCreationFailed(String)
-    case invalidBundleIdentifier(String)
-    case systemError(String)
-    
-    public var errorDescription: String? {
-        switch self {
-        case .bundleNotFound(let path):
-            return "System Extension bundle not found at path: \(path)"
-        case .installationFailed(let reason):
-            return "System Extension installation failed: \(reason)"
-        case .userRejected:
-            return "User rejected System Extension installation"
-        case .requiresApproval:
-            return "System Extension requires user approval in System Preferences"
-        case .replacingExtensionFailed(let reason):
-            return "Failed to replace existing System Extension: \(reason)"
-        case .requestCreationFailed(let reason):
-            return "Failed to create System Extension request: \(reason)"
-        case .invalidBundleIdentifier(let identifier):
-            return "Invalid bundle identifier: \(identifier)"
-        case .systemError(let error):
-            return "System error during installation: \(error)"
-        }
-    }
-    
-    public var recoverySuggestion: String? {
-        switch self {
-        case .bundleNotFound:
-            return "Ensure the System Extension bundle is built and available at the specified path"
-        case .userRejected, .requiresApproval:
-            return "Open System Preferences > Security & Privacy > General and approve the System Extension"
-        case .replacingExtensionFailed:
-            return "Try uninstalling the existing System Extension first or restart the system"
-        case .invalidBundleIdentifier:
-            return "Check the System Extension bundle configuration and Info.plist"
-        default:
-            return "Check system logs for more details and ensure System Extension requirements are met"
-        }
-    }
-}
 
 /// Manages System Extension installation and lifecycle
 public class SystemExtensionInstaller: NSObject {
@@ -117,7 +70,7 @@ public class SystemExtensionInstaller: NSObject {
         
         guard status != .installing else {
             logger.warning("Installation already in progress")
-            completion(.failure(.installationFailed("Installation already in progress")))
+            completion(.failure(.internalError("Installation already in progress")))
             return
         }
         
@@ -140,10 +93,9 @@ public class SystemExtensionInstaller: NSObject {
             
             logger.info("Submitting System Extension activation request")
             OSSystemExtensionManager.shared.submitRequest(request)
-            
         } catch {
             logger.error("Failed to create activation request", context: ["error": error.localizedDescription])
-            let installError = SystemExtensionInstallationError.requestCreationFailed(error.localizedDescription)
+            let installError = SystemExtensionInstallationError.internalError("Request creation failed: \(error.localizedDescription)")
             status = .failed(installError.localizedDescription)
             completion(.failure(installError))
         }
@@ -156,7 +108,7 @@ public class SystemExtensionInstaller: NSObject {
         
         guard status != .installing else {
             logger.warning("Cannot uninstall during active installation")
-            completion(.failure(.installationFailed("Installation in progress")))
+            completion(.failure(.internalError("Installation in progress")))
             return
         }
         
@@ -170,10 +122,9 @@ public class SystemExtensionInstaller: NSObject {
             
             logger.info("Submitting System Extension deactivation request")
             OSSystemExtensionManager.shared.submitRequest(request)
-            
         } catch {
             logger.error("Failed to create deactivation request", context: ["error": error.localizedDescription])
-            let installError = SystemExtensionInstallationError.requestCreationFailed(error.localizedDescription)
+            let installError = SystemExtensionInstallationError.internalError("Request creation failed: \(error.localizedDescription)")
             status = .failed(installError.localizedDescription)
             completion(.failure(installError))
         }
@@ -198,7 +149,7 @@ public class SystemExtensionInstaller: NSObject {
         logger.debug("Creating System Extension activation request")
         
         guard !bundleIdentifier.isEmpty else {
-            throw SystemExtensionInstallationError.invalidBundleIdentifier("Empty bundle identifier")
+            throw SystemExtensionInstallationError.invalidBundle("Empty bundle identifier")
         }
         
         let request = OSSystemExtensionRequest.activationRequest(
@@ -216,7 +167,7 @@ public class SystemExtensionInstaller: NSObject {
         logger.debug("Creating System Extension deactivation request")
         
         guard !bundleIdentifier.isEmpty else {
-            throw SystemExtensionInstallationError.invalidBundleIdentifier("Empty bundle identifier")
+            throw SystemExtensionInstallationError.invalidBundle("Empty bundle identifier")
         }
         
         let request = OSSystemExtensionRequest.deactivationRequest(
@@ -292,7 +243,7 @@ extension SystemExtensionInstaller: OSSystemExtensionRequestDelegate {
             
         @unknown default:
             logger.warning("Unknown System Extension request result", context: ["result": String(describing: result)])
-            completeInstallation(with: .failure(.systemError("Unknown result: \(result)")))
+            completeInstallation(with: .failure(.unknownSystemError(OSStatus(-1), "Unknown result: \(result)")))
         }
     }
     
@@ -306,36 +257,36 @@ extension SystemExtensionInstaller: OSSystemExtensionRequestDelegate {
         if let osError = error as? OSSystemExtensionError {
             switch osError.code {
             case .unknown:
-                installationError = .systemError("Unknown system extension error")
+                installationError = .unknownSystemError(OSStatus(osError.code.rawValue), "Unknown system extension error")
             case .authorizationRequired:
                 installationError = .requiresApproval
             case .unsupportedParentBundleLocation:
-                installationError = .installationFailed("Unsupported parent bundle location")
+                installationError = .invalidBundle("Unsupported parent bundle location")
             case .extensionMissingIdentifier:
-                installationError = .invalidBundleIdentifier("Extension missing identifier")
+                installationError = .invalidBundle("Extension missing identifier")
             case .duplicateExtensionIdentifer:
-                installationError = .installationFailed("Extension with same identifier already exists")
+                installationError = .conflictingInstallation("Extension with same identifier already exists")
             case .missingEntitlement:
-                installationError = .installationFailed("Missing required entitlements")
+                installationError = .missingEntitlements(["Required system extension entitlement"])
             case .extensionNotFound:
                 installationError = .bundleNotFound(bundlePath)
             case .unknownExtensionCategory:
-                installationError = .installationFailed("Unknown extension category")
+                installationError = .invalidConfiguration("Unknown extension category")
             case .codeSignatureInvalid:
-                installationError = .installationFailed("Invalid code signature")
+                installationError = .invalidCodeSignature("Invalid code signature")
             case .validationFailed:
-                installationError = .installationFailed("Extension validation failed")
+                installationError = .invalidBundle("Extension validation failed")
             case .forbiddenBySystemPolicy:
-                installationError = .installationFailed("Forbidden by system policy")
+                installationError = .policyViolation("Forbidden by system policy")
             case .requestCanceled:
-                installationError = .installationFailed("Request was canceled")
+                installationError = .installationCancelled
             case .requestSuperseded:
-                installationError = .installationFailed("Request was superseded")
+                installationError = .internalError("Request was superseded")
             @unknown default:
-                installationError = .systemError("Unknown OSSystemExtensionError: \(osError.localizedDescription)")
+                installationError = .unknownSystemError(OSStatus(osError.code.rawValue), osError.localizedDescription)
             }
         } else {
-            installationError = .systemError(error.localizedDescription)
+            installationError = .internalError(error.localizedDescription)
         }
         
         completeInstallation(with: .failure(installationError))

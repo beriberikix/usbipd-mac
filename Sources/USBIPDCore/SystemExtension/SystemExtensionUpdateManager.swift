@@ -24,7 +24,7 @@ public class SystemExtensionUpdateManager {
     private let installer: SystemExtensionInstaller
     
     /// System Extension manager for lifecycle control
-    private weak var systemExtensionManager: SystemExtensionManager?
+    private weak var systemExtensionManager: SystemExtensionManagerProtocol?
     
     /// Update configuration
     private let config: UpdateConfiguration
@@ -51,7 +51,7 @@ public class SystemExtensionUpdateManager {
     ///   - config: Update configuration
     public init(stateManager: SystemExtensionStateManager,
                 installer: SystemExtensionInstaller,
-                systemExtensionManager: SystemExtensionManager,
+                systemExtensionManager: SystemExtensionManagerProtocol,
                 config: UpdateConfiguration = UpdateConfiguration()) {
         self.stateManager = stateManager
         self.installer = installer
@@ -343,20 +343,17 @@ public class SystemExtensionUpdateManager {
             return
         }
         
-        installer.installSystemExtension(bundlePath: operation.newBundlePath, bundleIdentifier: bundleIdentifier) { result in
+        // TODO: Implement proper installation method call when installer API is available
+        installer.install { result in
             switch result {
-            case .success(let installed):
-                if installed {
-                    // Update state with new bundle information
-                    self.stateManager.updateInstallationState(
-                        bundleIdentifier: bundleIdentifier,
-                        bundlePath: operation.newBundlePath,
-                        installationStatus: .installed
-                    )
-                    completion(true, nil)
-                } else {
-                    completion(false, UpdateError.installationFailed)
-                }
+            case .success:
+                // Update state with new bundle information
+                self.stateManager.updateInstallationState(
+                    bundleIdentifier: bundleIdentifier,
+                    bundlePath: operation.newBundlePath,
+                    installationStatus: .installed
+                )
+                completion(true, nil)
             case .failure(let error):
                 completion(false, error)
             }
@@ -600,7 +597,7 @@ public class SystemExtensionUpdateManager {
         }
     }
     
-    private func notifyExtensionOfUpdate(manager: SystemExtensionManager) {
+    private func notifyExtensionOfUpdate(manager: SystemExtensionManagerProtocol) {
         // This would typically send an IPC message to the System Extension
         // informing it of the impending update so it can prepare gracefully
         logger.debug("Notifying System Extension of impending update")

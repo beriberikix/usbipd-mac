@@ -24,7 +24,7 @@ public class SystemExtensionRecoveryManager {
     private let installer: SystemExtensionInstaller
     
     /// System Extension manager for lifecycle control
-    private weak var systemExtensionManager: SystemExtensionManager?
+    private weak var systemExtensionManager: SystemExtensionManagerProtocol?
     
     /// Recovery configuration
     private let config: RecoveryConfiguration
@@ -54,7 +54,7 @@ public class SystemExtensionRecoveryManager {
     ///   - config: Recovery configuration
     public init(stateManager: SystemExtensionStateManager,
                 installer: SystemExtensionInstaller,
-                systemExtensionManager: SystemExtensionManager,
+                systemExtensionManager: SystemExtensionManagerProtocol,
                 config: RecoveryConfiguration = RecoveryConfiguration()) {
         self.stateManager = stateManager
         self.installer = installer
@@ -308,10 +308,11 @@ public class SystemExtensionRecoveryManager {
             return
         }
         
-        installer.installSystemExtension(bundlePath: bundlePath, bundleIdentifier: bundleIdentifier) { result in
+        // TODO: Implement proper installation method call when installer API is available
+        installer.install { result in
             switch result {
-            case .success(let installed):
-                completion(installed, nil)
+            case .success:
+                completion(true, nil)
             case .failure(let error):
                 completion(false, error)
             }
