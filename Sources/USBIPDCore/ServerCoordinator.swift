@@ -24,6 +24,9 @@ public class ServerCoordinator: USBIPServer {
     /// Request processor for handling USB/IP protocol requests
     private let requestProcessor: RequestProcessor
     
+    /// Device claim manager for device claiming
+    private let deviceClaimManager: DeviceClaimManager
+    
     /// Server configuration
     private let config: ServerConfig
     
@@ -36,8 +39,8 @@ public class ServerCoordinator: USBIPServer {
     /// Callback for error events
     public var onError: ((Error) -> Void)?
     
-    /// Initialize with network service, device discovery, and configuration
-    public init(networkService: NetworkService, deviceDiscovery: DeviceDiscovery, config: ServerConfig = ServerConfig()) {
+    /// Initialize with network service, device discovery, and optional device claim manager
+    public init(networkService: NetworkService, deviceDiscovery: DeviceDiscovery, deviceClaimManager: DeviceClaimManager? = nil, config: ServerConfig = ServerConfig()) {
         self.networkService = networkService
         self.deviceDiscovery = deviceDiscovery
         self.config = config
@@ -50,8 +53,14 @@ public class ServerCoordinator: USBIPServer {
         )
         self.logger = Logger(config: loggerConfig, subsystem: "com.usbipd.mac", category: "server")
         
-        // Create request processor with configurable logging
-        self.requestProcessor = RequestProcessor(deviceDiscovery: deviceDiscovery) { [weak config] message, processorLevel in
+        // Use provided device claim manager or create a mock one
+        self.deviceClaimManager = deviceClaimManager ?? MockDeviceClaimManager()
+        
+        // Create request processor with device claim manager and configurable logging
+        self.requestProcessor = RequestProcessor(
+            deviceDiscovery: deviceDiscovery, 
+            deviceClaimManager: self.deviceClaimManager
+        ) { [weak config] message, processorLevel in
             guard let config = config else { return }
             
             // Convert RequestProcessor.LogLevel to ServerConfig.LogLevel
@@ -222,6 +231,8 @@ public class ServerCoordinator: USBIPServer {
             let timestamp = DateFormatter.logFormatter.string(from: Date())
             print("\(timestamp) [INFO] Starting USB/IP server on port \(config.port)")
             
+            // Device claim manager is already initialized and ready
+            
             // Start device discovery notifications
             try deviceDiscovery.startNotifications()
             
@@ -260,6 +271,8 @@ public class ServerCoordinator: USBIPServer {
         
         // Stop network service
         try networkService.stop()
+        
+        // Device claim manager cleanup (if needed) would happen in its own deinit
         
         isServerRunning = false
     }

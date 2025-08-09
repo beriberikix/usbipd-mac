@@ -4,6 +4,7 @@
 import Foundation
 import USBIPDCore
 import Common
+import SystemExtension
 
 // Logger for command operations
 private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "cli-commands")
@@ -160,14 +161,16 @@ public class ListCommand: Command {
 /// Bind command implementation
 public class BindCommand: Command {
     public let name = "bind"
-    public let description = "Bind a USB device to USB/IP"
+    public let description = "Bind a USB device to USB/IP through System Extension"
     
     private let deviceDiscovery: DeviceDiscovery
     private let serverConfig: ServerConfig
+    private let deviceClaimManager: DeviceClaimManager?
     
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig) {
+    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, deviceClaimManager: DeviceClaimManager? = nil) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
+        self.deviceClaimManager = deviceClaimManager
     }
     
     public func execute(with arguments: [String]) throws {
@@ -221,18 +224,73 @@ public class BindCommand: Command {
                 "product": device.productString ?? "Unknown"
             ])
             
-            // Add device to allowed devices in config
             let deviceIdentifier = "\(device.busID)-\(device.deviceID)"
+            
+            // Step 1: Validate System Extension is available and ready
+            print("Checking System Extension status...")
+            if let claimManager = deviceClaimManager {
+                logger.debug("System Extension available for device claiming")
+                
+                // Check if device is already claimed
+                if claimManager.isDeviceClaimed(deviceID: deviceIdentifier) {
+                    logger.info("Device already claimed by System Extension", context: ["deviceID": deviceIdentifier])
+                    print("Device \(busid) is already claimed by System Extension")
+                    
+                    // Add to config even if already claimed to ensure consistency
+                    serverConfig.allowDevice(deviceIdentifier)
+                    try serverConfig.save()
+                    
+                    print("Device \(busid) successfully bound: \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
+                    return
+                }
+                
+                // Step 2: Attempt to claim device through System Extension
+                print("Claiming device through System Extension...")
+                logger.debug("Attempting device claim", context: ["deviceID": deviceIdentifier])
+                
+                do {
+                    let claimSuccess = try claimManager.claimDevice(device)
+                    
+                    if claimSuccess {
+                        logger.info("Successfully claimed device through System Extension", context: ["deviceID": deviceIdentifier])
+                        print("✓ Device \(busid) successfully claimed by System Extension")
+                    } else {
+                        logger.error("System Extension failed to claim device", context: ["deviceID": deviceIdentifier])
+                        throw CommandHandlerError.deviceBindingFailed("System Extension failed to claim device \(busid)")
+                    }
+                } catch {
+                    logger.error("System Extension device claiming failed", context: [
+                        "deviceID": deviceIdentifier,
+                        "error": error.localizedDescription
+                    ])
+                    
+                    let errorMsg = "System Extension failed to claim device \(busid): \(error.localizedDescription)"
+                    print("✗ \(errorMsg)")
+                    throw CommandHandlerError.deviceBindingFailed(errorMsg)
+                }
+            } else {
+                logger.warning("System Extension not available, using configuration-only binding")
+                print("⚠ System Extension not available - device will be bound in configuration only")
+                print("Note: Device claiming through System Extension is not active")
+            }
+            
+            // Step 3: Add device to allowed devices in config
+            logger.debug("Adding device to allowed devices list", context: ["deviceIdentifier": deviceIdentifier])
             serverConfig.allowDevice(deviceIdentifier)
             
-            logger.debug("Added device to allowed devices list", context: ["deviceIdentifier": deviceIdentifier])
-            
-            // Save the updated configuration
+            // Step 4: Save the updated configuration
             logger.debug("Saving updated configuration")
             try serverConfig.save()
             
             logger.info("Successfully bound device", context: ["busid": busid])
-            print("Successfully bound device \(busid): \(device.vendorID.hexString):\(device.productID.hexString) (\(device.productString ?? "Unknown"))")
+            print("✓ Device \(busid) added to server configuration")
+            print("Successfully bound device \(busid): \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
+            
+            if deviceClaimManager != nil {
+                print("Device is now ready for USB/IP sharing with exclusive System Extension control")
+            } else {
+                print("Device is configured for USB/IP sharing (System Extension claiming not available)")
+            }
         } catch let deviceError as DeviceDiscoveryError {
             logger.error("Device discovery error during bind", context: ["error": deviceError.localizedDescription])
             throw CommandHandlerError.deviceBindingFailed(deviceError.localizedDescription)
@@ -248,25 +306,38 @@ public class BindCommand: Command {
     private func printHelp() {
         print("Usage: usbipd bind <busid>")
         print("")
+        print("Bind a USB device for sharing through USB/IP. This command:")
+        print("1. Claims exclusive access to the device through the System Extension")
+        print("2. Adds the device to the server's allowed device list")
+        print("3. Prepares the device for remote USB/IP connections")
+        print("")
         print("Arguments:")
         print("  busid           The bus ID of the USB device to bind (e.g., 1-1)")
+        print("                  Use 'usbipd list' to see available devices")
         print("")
         print("Options:")
         print("  -h, --help      Show this help message")
+        print("")
+        print("Notes:")
+        print("- Requires System Extension for exclusive device claiming")
+        print("- Device will be unavailable to host system while bound")
+        print("- Use 'usbipd unbind' to release the device")
     }
 }
 
 /// Unbind command implementation
 public class UnbindCommand: Command {
     public let name = "unbind"
-    public let description = "Unbind a USB device from USB/IP"
+    public let description = "Unbind a USB device from USB/IP and release System Extension claim"
     
     private let deviceDiscovery: DeviceDiscovery
     private let serverConfig: ServerConfig
+    private let deviceClaimManager: DeviceClaimManager?
     
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig) {
+    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, deviceClaimManager: DeviceClaimManager? = nil) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
+        self.deviceClaimManager = deviceClaimManager
     }
     
     public func execute(with arguments: [String]) throws {
@@ -294,20 +365,113 @@ public class UnbindCommand: Command {
         }
         
         do {
-            // Remove device from allowed devices in config
+            // Split busid into components for device lookup
+            let components = busid.split(separator: "-")
+            guard components.count >= 2 else {
+                logger.error("Invalid busid format after splitting", context: ["busid": busid])
+                throw CommandLineError.invalidArguments("Invalid busid format: \(busid)")
+            }
+            
+            let busPart = String(components[0])
+            let devicePart = String(components[1])
+            
+            logger.debug("Looking for device", context: ["busID": busPart, "deviceID": devicePart])
+            
+            // Step 1: Check if device is currently bound in config
+            let wasBound = serverConfig.allowedDevices.contains(busid)
+            logger.debug("Device binding status in config", context: ["busid": busid, "wasBound": wasBound])
+            
+            // Step 2: Attempt to release device through System Extension if available
+            if let claimManager = deviceClaimManager {
+                logger.debug("System Extension available for device release")
+                
+                let deviceIdentifier = busid
+                let isDeviceClaimed = claimManager.isDeviceClaimed(deviceID: deviceIdentifier)
+                
+                if isDeviceClaimed {
+                    print("Releasing device through System Extension...")
+                    logger.debug("Attempting device release", context: ["deviceID": deviceIdentifier])
+                    
+                    do {
+                        // Try to get the device info for release
+                        if let device = try deviceDiscovery.getDevice(busID: busPart, deviceID: devicePart) {
+                            try claimManager.releaseDevice(device)
+                            logger.info("Successfully released device through System Extension", context: ["deviceID": deviceIdentifier])
+                            print("✓ Device \(busid) successfully released by System Extension")
+                        } else {
+                            // Device may have been disconnected - still try to release by identifier
+                            logger.warning("Device not found during release, attempting cleanup", context: ["busid": busid])
+                            print("⚠ Device \(busid) not found, but attempting System Extension cleanup...")
+                            
+                            // For disconnected devices, we still need to try to clean up the claim
+                            // Create a minimal device object for cleanup
+                            let cleanupDevice = USBDevice(
+                                busID: busPart,
+                                deviceID: devicePart,
+                                vendorID: 0,
+                                productID: 0,
+                                deviceClass: 0,
+                                deviceSubClass: 0,
+                                deviceProtocol: 0,
+                                speed: .unknown,
+                                manufacturerString: nil,
+                                productString: nil,
+                                serialNumberString: nil
+                            )
+                            try claimManager.releaseDevice(cleanupDevice)
+                            logger.info("Successfully cleaned up disconnected device claim", context: ["deviceID": deviceIdentifier])
+                            print("✓ Cleaned up System Extension claim for disconnected device \(busid)")
+                        }
+                    } catch {
+                        logger.error("System Extension device release failed", context: [
+                            "deviceID": deviceIdentifier,
+                            "error": error.localizedDescription
+                        ])
+                        
+                        let errorMsg = "System Extension failed to release device \(busid): \(error.localizedDescription)"
+                        print("⚠ \(errorMsg)")
+                        print("Note: Device will still be removed from server configuration")
+                    }
+                } else if wasBound {
+                    logger.info("Device not claimed by System Extension but was bound in config", context: ["deviceID": deviceIdentifier])
+                    print("Device \(busid) was not claimed by System Extension")
+                } else {
+                    logger.info("Device was not bound or claimed", context: ["busid": busid])
+                }
+            } else if wasBound {
+                logger.warning("System Extension not available for device release")
+                print("⚠ System Extension not available - releasing from configuration only")
+                print("Note: Device claiming through System Extension is not active")
+            }
+            
+            // Step 3: Remove device from allowed devices in config
             logger.debug("Removing device from allowed devices list", context: ["busid": busid])
             let removed = serverConfig.disallowDevice(busid)
             
             if removed {
-                // Save the updated configuration
+                // Step 4: Save the updated configuration
                 logger.debug("Saving updated configuration")
                 try serverConfig.save()
-                logger.info("Successfully unbound device", context: ["busid": busid])
-                print("Successfully unbound device \(busid)")
+                logger.info("Successfully unbound device from configuration", context: ["busid": busid])
+                print("✓ Device \(busid) removed from server configuration")
+                
+                if deviceClaimManager != nil {
+                    print("Device \(busid) successfully unbound and released from System Extension control")
+                } else {
+                    print("Device \(busid) successfully unbound from USB/IP sharing")
+                }
             } else {
-                logger.info("Device was not bound", context: ["busid": busid])
-                print("Device \(busid) was not bound")
+                if wasBound || deviceClaimManager?.isDeviceClaimed(deviceID: busid) == true {
+                    logger.info("Device was claimed but not in config, still attempted release", context: ["busid": busid])
+                    print("✓ Device \(busid) System Extension claim released (was not bound in configuration)")
+                } else {
+                    logger.info("Device was not bound or claimed", context: ["busid": busid])
+                    print("Device \(busid) was not bound or claimed")
+                }
             }
+        } catch let deviceError as DeviceDiscoveryError {
+            logger.error("Device discovery error during unbind", context: ["error": deviceError.localizedDescription])
+            throw CommandHandlerError.deviceUnbindingFailed(deviceError.localizedDescription)
         } catch let configError as ServerError {
             logger.error("Server configuration error during unbind", context: ["error": configError.localizedDescription])
             throw CommandHandlerError.deviceUnbindingFailed(configError.localizedDescription)
@@ -320,11 +484,22 @@ public class UnbindCommand: Command {
     private func printHelp() {
         print("Usage: usbipd unbind <busid>")
         print("")
+        print("Unbind a USB device from USB/IP sharing. This command:")
+        print("1. Releases exclusive access to the device through the System Extension")
+        print("2. Removes the device from the server's allowed device list")
+        print("3. Makes the device available to the host system again")
+        print("")
         print("Arguments:")
         print("  busid           The bus ID of the USB device to unbind (e.g., 1-1)")
+        print("                  Use 'usbipd list' to see available devices")
         print("")
         print("Options:")
         print("  -h, --help      Show this help message")
+        print("")
+        print("Notes:")
+        print("- Handles both connected and disconnected devices gracefully")
+        print("- Device will become available to host system after unbinding")
+        print("- Use 'usbipd bind' to make the device shareable again")
     }
 }
 

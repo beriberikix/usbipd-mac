@@ -2,6 +2,7 @@
 // Output formatting for USB/IP daemon CLI
 
 import Foundation
+import Common
 import USBIPDCore
 
 /// Protocol for formatting output
