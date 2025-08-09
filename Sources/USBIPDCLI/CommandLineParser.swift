@@ -75,7 +75,7 @@ public class CommandLineParser {
             HelpCommand(parser: self),
             ListCommand(deviceDiscovery: deviceDiscovery, outputFormatter: outputFormatter),
             BindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, deviceClaimManager: deviceClaimManager),
-            UnbindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig),
+            UnbindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, deviceClaimManager: deviceClaimManager),
             AttachCommand(),
             DetachCommand(),
             DaemonCommand(server: server, serverConfig: serverConfig)
