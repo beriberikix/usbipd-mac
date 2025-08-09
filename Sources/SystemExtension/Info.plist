@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>USB/IP System Extension</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.usbipd.mac.system-extension</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>USB/IP System Extension</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.system-extension.driver-extension</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>SystemExtensionManager</string>
+	</dict>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2024 USB/IP for macOS. All rights reserved.</string>
+	<key>OSBundleUsageDescription</key>
+	<string>This System Extension provides exclusive access to USB devices for sharing over IP networks using the USB/IP protocol.</string>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<key>USBIPDSystemExtension</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.usbipd.mac.system-extension</string>
+			<key>IOClass</key>
+			<string>IOUserService</string>
+			<key>IOMatchCategory</key>
+			<string>USBIPDSystemExtension</string>
+			<key>IOServiceCategory</key>
+			<string>USBIPDSystemExtension</string>
+			<key>IOUserClass</key>
+			<string>SystemExtensionManager</string>
+			<key>bInterfaceClass</key>
+			<integer>255</integer>
+			<key>idVendor</key>
+			<integer>65535</integer>
+		</dict>
+	</dict>
+	<key>IOUserEntitlements</key>
+	<array>
+		<string>com.apple.developer.driverkit</string>
+		<string>com.apple.developer.driverkit.allow-any-userclient-access</string>
+		<string>com.apple.developer.driverkit.usb.transport</string>
+		<string>com.apple.developer.system-extension.install</string>
+	</array>
+</dict>
+</plist>

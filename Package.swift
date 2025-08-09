@@ -47,6 +47,10 @@ let package = Package(
         .target(
             name: "SystemExtension",
             dependencies: ["Common"],
+            resources: [
+                .copy("SystemExtension.entitlements"),
+                .copy("SYSTEM_EXTENSION_SETUP.md")
+            ],
             linkerSettings: [
                 .linkedFramework("SystemExtensions"),
                 .linkedFramework("IOKit")
