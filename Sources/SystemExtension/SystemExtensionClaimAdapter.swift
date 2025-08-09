@@ -28,4 +28,24 @@ public class SystemExtensionClaimAdapter: DeviceClaimManager {
     public func releaseDevice(_ device: USBDevice) throws {
         try systemExtensionManager.releaseDevice(device)
     }
+    
+    // MARK: - System Extension Status Access
+    
+    /// Get System Extension status information
+    /// - Returns: Current system extension status
+    public func getSystemExtensionStatus() -> SystemExtensionStatus {
+        return systemExtensionManager.getStatus()
+    }
+    
+    /// Perform System Extension health check
+    /// - Returns: True if system is healthy, false otherwise
+    public func performSystemExtensionHealthCheck() -> Bool {
+        return systemExtensionManager.performHealthCheck()
+    }
+    
+    /// Get System Extension statistics
+    /// - Returns: Current system extension statistics
+    public func getSystemExtensionStatistics() -> SystemExtensionStatistics {
+        return systemExtensionManager.getStatistics()
+    }
 }
