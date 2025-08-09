@@ -37,10 +37,10 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         .executableTarget(
             name: "USBIPDCLI",
-            dependencies: ["USBIPDCore", "Common", "SystemExtension"]),
+            dependencies: ["USBIPDCore", "Common"]),
         .target(
             name: "USBIPDCore",
-            dependencies: ["Common", "SystemExtension"]),
+            dependencies: ["Common"]),
         .target(
             name: "Common",
             dependencies: []),

@@ -438,11 +438,9 @@ final class BuildOutputVerificationTests: XCTestCase {
             if task.terminationStatus == 0 {
                 // Parse signing identity from output
                 let lines = output.components(separatedBy: .newlines)
-                for line in lines {
-                    if line.contains("Authority=") {
-                        let authority = line.replacingOccurrences(of: "Authority=", with: "").trimmingCharacters(in: .whitespaces)
-                        return .signed(authority)
-                    }
+                for line in lines where line.contains("Authority=") {
+                    let authority = line.replacingOccurrences(of: "Authority=", with: "").trimmingCharacters(in: .whitespaces)
+                    return .signed(authority)
                 }
                 return .signed("Unknown")
             } else if output.contains("not signed") {

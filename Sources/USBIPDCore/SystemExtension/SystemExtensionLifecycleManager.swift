@@ -326,7 +326,6 @@ public class SystemExtensionLifecycleManager {
             
             // Check IPC connectivity
             try checkIPCConnectivity()
-            
         } catch {
             isHealthy = false
             errorMessage = error.localizedDescription

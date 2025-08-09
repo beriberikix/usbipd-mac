@@ -4,7 +4,6 @@
 import Foundation
 import USBIPDCore
 import Common
-import SystemExtension
 
 /// Global server instance for signal handling
 private var globalServer: USBIPServer?

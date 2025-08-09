@@ -197,13 +197,13 @@ extension SystemExtensionInstallationError: LocalizedError {
             return "System Extension activation failed: \(reason)"
         case .deactivationFailed(let reason):
             return "System Extension deactivation failed: \(reason)"
-        case .upgradeFailed(let from, let to, let reason):
+        case let .upgradeFailed(from, to, reason):
             return "System Extension upgrade failed from \(from) to \(to): \(reason)"
         case .communicationFailure(let reason):
             return "System Extension communication failure: \(reason)"
         case .healthCheckFailed(let reason):
             return "System Extension health check failed: \(reason)"
-        case .unexpectedTermination(let exitCode, let reason):
+        case let .unexpectedTermination(exitCode, reason):
             let codeInfo = exitCode.map { " (exit code: \($0))" } ?? ""
             let reasonInfo = reason.map { ": \($0)" } ?? ""
             return "System Extension terminated unexpectedly\(codeInfo)\(reasonInfo)"
@@ -213,11 +213,11 @@ extension SystemExtensionInstallationError: LocalizedError {
             return "System Extension installation requires a system reboot to complete"
         case .systemResourcesUnavailable(let reason):
             return "System resources unavailable for System Extension: \(reason)"
-        case .versionIncompatible(let current, let required):
+        case let .versionIncompatible(current, required):
             return "System Extension version incompatible: current \(current), required \(required)"
-        case .macOSVersionIncompatible(let current, let minimum):
+        case let .macOSVersionIncompatible(current, minimum):
             return "macOS version incompatible: current \(current), minimum required \(minimum)"
-        case .architectureMismatch(let expected, let found):
+        case let .architectureMismatch(expected, found):
             return "Architecture mismatch: expected \(expected), found \(found)"
             
         // Network and IPC Errors
@@ -227,8 +227,8 @@ extension SystemExtensionInstallationError: LocalizedError {
             return "System Extension IPC timeout after \(timeout) seconds"
         case .messageProcessingFailed(let reason):
             return "System Extension message processing failed: \(reason)"
-        case .protocolVersionMismatch(let extension, let host):
-            return "Protocol version mismatch: extension \(extension), host \(host)"
+        case let .protocolVersionMismatch(`extension`, host):
+            return "Protocol version mismatch: extension \(`extension`), host \(host)"
             
         // Configuration Errors
         case .invalidConfiguration(let reason):
@@ -249,12 +249,12 @@ extension SystemExtensionInstallationError: LocalizedError {
             return "System Extension mock environment error: \(reason)"
             
         // Unknown and Internal Errors
-        case .unknownSystemError(let status, let message):
+        case let .unknownSystemError(status, message):
             let messageInfo = message.map { ": \($0)" } ?? ""
             return "Unknown system error \(status)\(messageInfo)"
         case .internalError(let reason):
             return "Internal System Extension error: \(reason)"
-        case .operationTimeout(let operation, let timeout):
+        case let .operationTimeout(operation, timeout):
             return "System Extension operation '\(operation)' timed out after \(timeout) seconds"
         }
     }
@@ -450,7 +450,7 @@ extension SystemExtensionInstallationError {
             case .authorizationRequired:
                 return .requiresApproval
             default:
-                return .unknownSystemError(osError.code.rawValue, osError.localizedDescription)
+                return .unknownSystemError(OSStatus(osError.code.rawValue), osError.localizedDescription)
             }
         }
         
@@ -463,7 +463,7 @@ extension SystemExtensionInstallationError {
         case "OSSystemExtensionErrorDomain":
             return from(systemExtensionError: error)
         case "NSOSStatusErrorDomain":
-            return .unknownSystemError(error.code, error.localizedDescription)
+            return .unknownSystemError(OSStatus(error.code), error.localizedDescription)
         default:
             return .internalError("NSError: \(error.localizedDescription)")
         }

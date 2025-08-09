@@ -162,7 +162,7 @@ struct BundleValidator {
         }
         
         // MacOS directory
-        guard FileManager.default.fileExists(atPath: macosDir.path, isDirectory: &isDirectory) && isDirectory.boolValue else {
+        if !FileManager.default.fileExists(atPath: macosDir.path, isDirectory: &isDirectory) || !isDirectory.boolValue {
             errors.append(.invalidBundleStructure("Missing Contents/MacOS directory"))
         }
         
@@ -356,7 +356,7 @@ struct BundleValidator {
     }
     
     private static func validateCodeSigning(bundleURL: URL) -> ValidationResult {
-        var errors: [ValidationError] = []
+        let errors: [ValidationError] = []
         var warnings: [ValidationWarning] = []
         
         // Check code signing using codesign tool

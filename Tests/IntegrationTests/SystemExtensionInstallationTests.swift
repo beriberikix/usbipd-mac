@@ -94,9 +94,11 @@ final class SystemExtensionInstallationTests: XCTestCase {
         
         // Load and validate Info.plist
         let plistData = try Data(contentsOf: infoPlistPath)
-        let plist = try PropertyListSerialization.propertyList(from: plistData, 
-                                                              options: [], 
-                                                              format: nil) as! [String: Any]
+        guard let plist = try PropertyListSerialization.propertyList(from: plistData, 
+                                                                    options: [], 
+                                                                    format: nil) as? [String: Any] else {
+            throw XCTError(.failureWhileWaiting)
+        }
         
         // Validate required Info.plist keys
         XCTAssertEqual(plist["CFBundleIdentifier"] as? String, bundleName,
@@ -130,9 +132,11 @@ final class SystemExtensionInstallationTests: XCTestCase {
         
         // Load and validate entitlements
         let entitlementsData = try Data(contentsOf: entitlementsPath)
-        let entitlements = try PropertyListSerialization.propertyList(from: entitlementsData,
-                                                                     options: [],
-                                                                     format: nil) as! [String: Any]
+        guard let entitlements = try PropertyListSerialization.propertyList(from: entitlementsData,
+                                                                           options: [],
+                                                                           format: nil) as? [String: Any] else {
+            throw XCTError(.failureWhileWaiting)
+        }
         
         // Validate required entitlements
         XCTAssertEqual(entitlements["com.apple.developer.system-extension.install"] as? Bool, true,
@@ -298,7 +302,7 @@ final class SystemExtensionInstallationTests: XCTestCase {
         let expectation = XCTestExpectation(description: "IPC failure handling")
         var errorReceived: Error?
         
-        systemExtensionManager.sendMessage("test") { response in
+        systemExtensionManager.sendMessage("test") { _ in
             XCTFail("Should not receive response when System Extension is not running")
             expectation.fulfill()
         } errorHandler: { error in

@@ -35,6 +35,24 @@
             "name": "Release QEMUTestServer",
             "program": "${workspaceFolder:usbipd-mac}/.build/release/QEMUTestServer",
             "preLaunchTask": "swift: Build Release QEMUTestServer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Debug SystemExtension",
+            "program": "${workspaceFolder:usbipd-mac}/.build/debug/SystemExtension",
+            "preLaunchTask": "swift: Build Debug SystemExtension"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Release SystemExtension",
+            "program": "${workspaceFolder:usbipd-mac}/.build/release/SystemExtension",
+            "preLaunchTask": "swift: Build Release SystemExtension"
         }
     ]
 }

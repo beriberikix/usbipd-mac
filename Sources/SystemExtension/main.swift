@@ -82,7 +82,6 @@ do {
     
     // Keep the extension running
     RunLoop.main.run()
-    
 } catch {
     logger.critical("Failed to start System Extension", context: [
         "error": error.localizedDescription
