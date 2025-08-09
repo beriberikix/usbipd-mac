@@ -92,7 +92,7 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing test utilities for async testing patterns_
   - _Requirements: 2.2, 2.5_
 
-- [-] 9. Update ServerCoordinator for System Extension integration
+- [x] 9. Update ServerCoordinator for System Extension integration
   - File: Sources/USBIPDCore/ServerCoordinator.swift (modify existing)
   - Add System Extension communication during device binding
   - Integrate device claiming requests into server lifecycle
@@ -103,7 +103,7 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing ServerCoordinator patterns and error handling_
   - _Requirements: 1.1, 3.1_
 
-- [ ] 10. Enhance bind command for System Extension integration
+- [x] 10. Enhance bind command for System Extension integration
   - File: Sources/USBIPDCLI/Commands.swift (modify existing BindCommand)
   - Add System Extension device claiming request to bind operation
   - Implement proper error handling for claiming failures

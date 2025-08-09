@@ -55,11 +55,15 @@ public class CommandLineParser {
     /// Server instance
     private let server: USBIPServer
     
+    /// Device claim manager for System Extension integration
+    private let deviceClaimManager: DeviceClaimManager?
+    
     /// Initialize a new command-line parser with dependencies
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, server: USBIPServer) {
+    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, server: USBIPServer, deviceClaimManager: DeviceClaimManager? = nil) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
         self.server = server
+        self.deviceClaimManager = deviceClaimManager
         registerCommands()
     }
     
@@ -70,7 +74,7 @@ public class CommandLineParser {
         let commands: [Command] = [
             HelpCommand(parser: self),
             ListCommand(deviceDiscovery: deviceDiscovery, outputFormatter: outputFormatter),
-            BindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig),
+            BindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, deviceClaimManager: deviceClaimManager),
             UnbindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig),
             AttachCommand(),
             DetachCommand(),
