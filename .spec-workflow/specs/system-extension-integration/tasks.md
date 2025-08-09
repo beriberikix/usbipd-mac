@@ -114,7 +114,7 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing BindCommand structure and error handling patterns_
   - _Requirements: 1.1, 1.4, 2.1_
 
-- [ ] 11. Enhance unbind command for System Extension integration
+- [x] 11. Enhance unbind command for System Extension integration
   - File: Sources/USBIPDCLI/Commands.swift (modify existing UnbindCommand)
   - Add System Extension device release request to unbind operation
   - Implement graceful device release with error handling
@@ -125,7 +125,7 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing UnbindCommand structure and error handling patterns_
   - _Requirements: 1.5, 3.3_
 
-- [ ] 12. Add System Extension status CLI command
+- [x] 12. Add System Extension status CLI command
   - File: Sources/USBIPDCLI/Commands.swift (add new StatusCommand)
   - Create new CLI command to query System Extension status
   - Display claimed devices, extension health, and error information
@@ -136,7 +136,7 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing CLI command patterns and OutputFormatter_
   - _Requirements: 4.1, 4.3, 4.5_
 
-- [ ] 13. Create System Extension integration tests
+- [x] 13. Create System Extension integration tests
   - File: Tests/IntegrationTests/SystemExtensionIntegrationTests.swift
   - Test complete bind → claim → share → release workflow
   - Validate System Extension lifecycle during server operations
@@ -147,7 +147,7 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing IntegrationTests patterns and QEMU test infrastructure_
   - _Requirements: 1.1, 3.3, 3.4_
 
-- [ ] 14. Update Package.swift dependencies
+- [x] 14. Update Package.swift dependencies
   - File: Package.swift (modify existing)
   - Add SystemExtension framework dependency to SystemExtension target
   - Update test target dependencies to include SystemExtension
@@ -157,7 +157,7 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing Package.swift structure and target definitions_
   - _Requirements: 2.1_
 
-- [ ] 15. Add System Extension entitlements and configuration
+- [x] 15. Add System Extension entitlements and configuration
   - File: Sources/SystemExtension/Info.plist (create new)
   - Define System Extension entitlements for USB device access
   - Configure extension bundle identifier and version info
@@ -167,7 +167,7 @@ The System Extension Integration implementation follows a phased approach that b
   - Commit: "feat(system-extension): add entitlements and configuration for macOS integration"
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 16. Final integration testing and validation
+- [x] 16. Final integration testing and validation
   - Files: Run comprehensive test suite across all targets
   - Execute complete CI pipeline with SwiftLint validation
   - Run integration tests with actual USB devices
@@ -178,10 +178,9 @@ The System Extension Integration implementation follows a phased approach that b
   - _Leverage: existing CI pipeline and test infrastructure_
   - _Requirements: All_
 
-- [ ] 17. Create pull request and validate CI
-  - Create feature branch: `git checkout -b feature/system-extension-integration`
+- [-] 17. Create pull request and validate CI
   - Commit all changes with proper commit messages as specified in tasks above
-  - Push branch: `git push -u origin feature/system-extension-integration`
+  - Push branch: `git push -u origin feature/system-extension`
   - Create pull request with comprehensive description
   - Ensure all GitHub Actions CI checks pass (SwiftLint, build, tests, integration tests)
   - Request code review from project maintainers
