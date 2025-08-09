@@ -11,8 +11,133 @@ usbipd-mac is a macOS implementation of the USB/IP protocol that allows sharing 
 - USB device sharing from macOS to other systems over network
 - Full compatibility with the USB/IP protocol specification
 - System Extensions integration for reliable device access and claiming
+- Automated System Extension bundle creation and deployment
 - Lightweight QEMU test server for validation
 - Docker enablement for USB device access from containers
+
+## System Extension Bundle Support
+
+This project includes full System Extension bundle support for secure USB device access on macOS. System Extensions provide a modern, secure way to access USB devices without requiring kernel extensions.
+
+### Requirements
+
+- **macOS 11.0+**: System Extensions are only supported on macOS Big Sur and later
+- **Code Signing**: System Extension bundles require valid Developer ID or development certificates
+- **User Approval**: First-time installation requires user approval in System Preferences
+
+### System Extension Bundle Creation
+
+The build system automatically creates System Extension bundles during compilation:
+
+```bash
+# Build creates SystemExtension.systemextension bundle automatically
+swift build
+
+# The bundle is created at:
+# .build/[arch]-apple-macosx/debug/SystemExtension.systemextension/
+```
+
+### Bundle Structure
+
+The generated System Extension bundle includes:
+
+```
+SystemExtension.systemextension/
+├── Contents/
+│   ├── Info.plist              # Bundle metadata and entitlements
+│   ├── MacOS/
+│   │   └── SystemExtension     # System Extension executable
+│   └── Resources/
+│       └── SystemExtension.entitlements
+```
+
+### Installation and Activation
+
+#### Development Mode
+
+For development and testing, enable System Extension development mode:
+
+```bash
+# Enable developer mode (requires reboot)
+systemextensionsctl developer on
+
+# Reset System Extensions if needed
+systemextensionsctl reset
+```
+
+#### Production Installation
+
+System Extensions are installed automatically when the USB/IP daemon starts:
+
+```bash
+# Install and activate System Extension
+sudo usbipd daemon --install-extension
+
+# Check System Extension status
+usbipd status
+```
+
+### System Extension Troubleshooting
+
+#### Common Issues
+
+**"System Extension Blocked"**
+- Open System Preferences > Privacy & Security > General
+- Click "Allow" next to the blocked System Extension notification
+- Restart the USB/IP daemon
+
+**"Extension Not Found"**
+```bash
+# Verify bundle exists
+ls -la .build/arm64-apple-macosx/debug/SystemExtension.systemextension
+
+# Check bundle signature
+codesign -v .build/arm64-apple-macosx/debug/SystemExtension.systemextension
+
+# View System Extension status
+systemextensionsctl list
+```
+
+**"Permission Denied"**
+```bash
+# Check System Extension is properly signed
+spctl -a -t install .build/arm64-apple-macosx/debug/SystemExtension.systemextension
+
+# Verify entitlements
+codesign -d --entitlements - .build/arm64-apple-macosx/debug/SystemExtension.systemextension
+```
+
+#### Development Troubleshooting
+
+**Build Issues:**
+```bash
+# Clean build if bundle creation fails
+swift package clean
+swift build
+
+# Check plugin execution
+swift build --verbose 2>&1 | grep "SystemExtensionBundleBuilder"
+```
+
+**Runtime Issues:**
+```bash
+# View System Extension logs
+log show --predicate 'subsystem == "com.usbipd.mac.system-extension"' --last 1h
+
+# Check USB/IP daemon logs
+log show --predicate 'subsystem == "com.usbipd.mac"' --last 1h
+```
+
+#### Advanced Troubleshooting
+
+For complex System Extension issues:
+
+1. **Reset System Extensions**: `systemextensionsctl reset` (requires reboot)
+2. **Check System Integrity**: `sudo spctl --assess --type install [bundle-path]`
+3. **Verify Code Signing**: `codesign -dv --verbose=4 [bundle-path]`
+4. **System Extension Logs**: Use Console.app and filter for "systemextensionsd"
+
+See [System Extension Setup Guide](Sources/SystemExtension/SYSTEM_EXTENSION_SETUP.md) for detailed development setup instructions.
 
 ## Project Status
 
@@ -20,25 +145,102 @@ This project is currently in early development. The core server functionality is
 
 ## Building the Project
 
+### Prerequisites
+
+- **Xcode 13+**: Required for System Extensions support and Swift Package Manager
+- **macOS 11.0+ SDK**: System Extensions require macOS Big Sur SDK or later  
+- **Code Signing**: Optional for development, required for distribution
+  - Development: Use Xcode automatic signing
+  - Production: Valid Developer ID certificate
+
+### Build Commands
+
 ```bash
-# Build using Swift Package Manager
+# Build using Swift Package Manager (creates System Extension bundle automatically)
 swift build
 
-# Build using Xcode
+# Build using Xcode (recommended for development)
 xcodebuild -scheme usbipd-mac build
+
+# Build specific products
+swift build --product usbipd              # CLI executable
+swift build --product SystemExtension     # System Extension executable
+swift build --product QEMUTestServer      # Test server
+```
+
+### Build Artifacts
+
+After building, the following artifacts are created:
+
+```
+.build/[arch]-apple-macosx/debug/
+├── usbipd                                      # Main CLI executable
+├── SystemExtension                             # System Extension executable
+├── SystemExtension.systemextension/            # Complete System Extension bundle
+│   ├── Contents/
+│   │   ├── Info.plist
+│   │   ├── MacOS/SystemExtension
+│   │   └── Resources/SystemExtension.entitlements
+└── QEMUTestServer                              # Test validation server
+```
+
+### Development Build Setup
+
+For development with System Extensions:
+
+```bash
+# Enable System Extension development mode
+sudo systemextensionsctl developer on
+
+# Build and install for development
+swift build
+sudo usbipd daemon --install-extension
+
+# Verify installation
+usbipd status
+systemextensionsctl list
 ```
 
 ## Running Tests
 
 ```bash
-# Run tests using Swift Package Manager
+# Run all tests using Swift Package Manager
 swift test
 
 # Run tests using Xcode
 xcodebuild -scheme usbipd-mac test
 
+# Run specific test suites
+swift test --filter USBIPDCoreTests          # Core functionality tests
+swift test --filter USBIPDCLITests           # CLI interface tests
+swift test --filter SystemExtensionTests     # System Extension tests
+swift test --filter IntegrationTests         # Integration tests
+
 # Run QEMU test server validation
 ./Scripts/run-qemu-tests.sh
+
+# Test System Extension functionality (requires development mode)
+swift test --filter IntegrationTests --verbose
+```
+
+### System Extension Testing
+
+Testing System Extension functionality requires special setup:
+
+```bash
+# Enable development mode for testing
+sudo systemextensionsctl developer on
+
+# Run System Extension integration tests
+swift test --filter SystemExtensionInstallationTests
+
+# Test bundle creation and validation
+swift test --filter BuildOutputVerificationTests
+
+# Manual System Extension testing
+usbipd status                    # Check System Extension status
+usbipd status --detailed         # Detailed health information
+usbipd status --health           # Health check only
 ```
 
 ## Continuous Integration
