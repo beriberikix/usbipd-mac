@@ -141,6 +141,42 @@ public struct USBIPMessageEncoder {
         )
         return try response.encode()
     }
+    
+    /// Encode a USB UNLINK request
+    public static func encodeUSBUnlinkRequest(
+        seqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32,
+        unlinkSeqnum: UInt32
+    ) throws -> Data {
+        let request = USBIPUnlinkRequest(
+            seqnum: seqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep,
+            unlinkSeqnum: unlinkSeqnum
+        )
+        return try request.encode()
+    }
+    
+    /// Encode a USB UNLINK response
+    public static func encodeUSBUnlinkResponse(
+        seqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32,
+        status: Int32
+    ) throws -> Data {
+        let response = USBIPUnlinkResponse(
+            seqnum: seqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep,
+            status: status
+        )
+        return try response.encode()
+    }
 }
 
 // MARK: - Message Decoder
@@ -182,8 +218,10 @@ public struct USBIPMessageDecoder {
             return try USBIPSubmitRequest.decode(from: data)
         case .submitReply:
             return try USBIPSubmitResponse.decode(from: data)
-        case .unlinkRequest, .unlinkReply:
-            throw USBIPProtocolError.unsupportedCommand(header.command.rawValue)
+        case .unlinkRequest:
+            return try USBIPUnlinkRequest.decode(from: data)
+        case .unlinkReply:
+            return try USBIPUnlinkResponse.decode(from: data)
         }
     }
     
@@ -289,6 +327,57 @@ public struct USBIPMessageDecoder {
             "seqnum": String(response.seqnum),
             "status": String(response.status),
             "actualLength": String(response.actualLength)
+        ])
+        return response
+    }
+    
+    /// Decode a USB UNLINK request with validation
+    public static func decodeUSBUnlinkRequest(from data: Data) throws -> USBIPUnlinkRequest {
+        logger.debug("Decoding USB UNLINK request", context: ["dataSize": data.count])
+        
+        // Validate minimum data length (header + command fields + reserved)
+        guard data.count >= 52 else {
+            logger.error("Invalid data length for USB UNLINK request", context: ["dataSize": data.count, "requiredSize": 52])
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        // Validate exact length for UNLINK request
+        guard data.count == 52 else {
+            logger.error("Invalid message format for USB UNLINK request", context: ["dataSize": data.count, "expectedSize": 52])
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        let request = try USBIPUnlinkRequest.decode(from: data)
+        logger.debug("Successfully decoded USB UNLINK request", context: [
+            "seqnum": String(request.seqnum),
+            "devid": String(request.devid),
+            "direction": String(request.direction),
+            "endpoint": String(format: "0x%02x", request.ep),
+            "unlinkSeqnum": String(request.unlinkSeqnum)
+        ])
+        return request
+    }
+    
+    /// Decode a USB UNLINK response with validation
+    public static func decodeUSBUnlinkResponse(from data: Data) throws -> USBIPUnlinkResponse {
+        logger.debug("Decoding USB UNLINK response", context: ["dataSize": data.count])
+        
+        // Validate minimum data length (header + response fields + reserved)
+        guard data.count >= 52 else {
+            logger.error("Invalid data length for USB UNLINK response", context: ["dataSize": data.count, "requiredSize": 52])
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        // Validate exact length for UNLINK response
+        guard data.count == 52 else {
+            logger.error("Invalid message format for USB UNLINK response", context: ["dataSize": data.count, "expectedSize": 52])
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        let response = try USBIPUnlinkResponse.decode(from: data)
+        logger.debug("Successfully decoded USB UNLINK response", context: [
+            "seqnum": String(response.seqnum),
+            "status": String(response.status)
         ])
         return response
     }

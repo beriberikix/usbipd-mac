@@ -691,3 +691,158 @@ public struct USBIPSubmitResponse: USBIPMessageCodable {
         )
     }
 }
+
+// MARK: - USB UNLINK Request/Response Messages
+
+/// USB/IP UNLINK request message (USBIP_CMD_UNLINK)
+public struct USBIPUnlinkRequest: USBIPMessageCodable {
+    public let header: USBIPHeader
+    public let seqnum: UInt32              // Unique request sequence number
+    public let devid: UInt32               // Device ID
+    public let direction: UInt32           // Transfer direction (0=OUT, 1=IN)
+    public let ep: UInt32                  // Endpoint address
+    public let unlinkSeqnum: UInt32        // Sequence number of request to unlink
+    
+    public init(
+        header: USBIPHeader = USBIPHeader(command: .unlinkRequest),
+        seqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32,
+        unlinkSeqnum: UInt32
+    ) {
+        self.header = header
+        self.seqnum = seqnum
+        self.devid = devid
+        self.direction = direction
+        self.ep = ep
+        self.unlinkSeqnum = unlinkSeqnum
+    }
+    
+    public func encode() throws -> Data {
+        var data = try header.encode()
+        
+        // USB/IP UNLINK command fields (20 bytes after header)
+        data.append(EndiannessConverter.writeUInt32ToData(seqnum))
+        data.append(EndiannessConverter.writeUInt32ToData(devid))
+        data.append(EndiannessConverter.writeUInt32ToData(direction))
+        data.append(EndiannessConverter.writeUInt32ToData(ep))
+        data.append(EndiannessConverter.writeUInt32ToData(unlinkSeqnum))
+        
+        // Reserved fields: 24 bytes for protocol alignment
+        data.append(contentsOf: [UInt8](repeating: 0, count: 24))
+        
+        return data
+    }
+    
+    public static func decode(from data: Data) throws -> USBIPUnlinkRequest {
+        // Validate minimum size: header (8) + command fields (20) + reserved (24) = 52 bytes
+        guard data.count >= 52 else {
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        // Decode header
+        let header = try USBIPHeader.decode(from: data.subdata(in: 0..<8))
+        
+        guard header.command == .unlinkRequest else {
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        // Decode command fields
+        let seqnum = try EndiannessConverter.readUInt32FromData(data, at: 8)
+        let devid = try EndiannessConverter.readUInt32FromData(data, at: 12)
+        let direction = try EndiannessConverter.readUInt32FromData(data, at: 16)
+        let ep = try EndiannessConverter.readUInt32FromData(data, at: 20)
+        let unlinkSeqnum = try EndiannessConverter.readUInt32FromData(data, at: 24)
+        
+        // Skip reserved fields (24 bytes at offset 28)
+        
+        return USBIPUnlinkRequest(
+            header: header,
+            seqnum: seqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep,
+            unlinkSeqnum: unlinkSeqnum
+        )
+    }
+}
+
+/// USB/IP UNLINK response message (USBIP_RET_UNLINK)
+public struct USBIPUnlinkResponse: USBIPMessageCodable {
+    public let header: USBIPHeader
+    public let seqnum: UInt32              // Matching request sequence number
+    public let devid: UInt32               // Device ID
+    public let direction: UInt32           // Transfer direction (0=OUT, 1=IN)
+    public let ep: UInt32                  // Endpoint address
+    public let status: Int32               // Unlink operation status (0=success, negative=error)
+    
+    public init(
+        header: USBIPHeader = USBIPHeader(command: .unlinkReply),
+        seqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32,
+        status: Int32
+    ) {
+        self.header = header
+        self.seqnum = seqnum
+        self.devid = devid
+        self.direction = direction
+        self.ep = ep
+        self.status = status
+    }
+    
+    public func encode() throws -> Data {
+        var data = try header.encode()
+        
+        // USB/IP UNLINK response fields (20 bytes after header)
+        data.append(EndiannessConverter.writeUInt32ToData(seqnum))
+        data.append(EndiannessConverter.writeUInt32ToData(devid))
+        data.append(EndiannessConverter.writeUInt32ToData(direction))
+        data.append(EndiannessConverter.writeUInt32ToData(ep))
+        
+        // Status is signed 32-bit integer
+        data.append(withUnsafeBytes(of: status.bigEndian) { Data($0) })
+        
+        // Reserved fields: 24 bytes for protocol alignment
+        data.append(contentsOf: [UInt8](repeating: 0, count: 24))
+        
+        return data
+    }
+    
+    public static func decode(from data: Data) throws -> USBIPUnlinkResponse {
+        // Validate minimum size: header (8) + response fields (20) + reserved (24) = 52 bytes
+        guard data.count >= 52 else {
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        // Decode header
+        let header = try USBIPHeader.decode(from: data.subdata(in: 0..<8))
+        
+        guard header.command == .unlinkReply else {
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        // Decode response fields
+        let seqnum = try EndiannessConverter.readUInt32FromData(data, at: 8)
+        let devid = try EndiannessConverter.readUInt32FromData(data, at: 12)
+        let direction = try EndiannessConverter.readUInt32FromData(data, at: 16)
+        let ep = try EndiannessConverter.readUInt32FromData(data, at: 20)
+        
+        // Status is signed 32-bit integer
+        let statusRaw = try EndiannessConverter.readUInt32FromData(data, at: 24)
+        let status = Int32(bitPattern: statusRaw)
+        
+        // Skip reserved fields (24 bytes at offset 28)
+        
+        return USBIPUnlinkResponse(
+            header: header,
+            seqnum: seqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep,
+            status: status
+        )
+    }
+}
