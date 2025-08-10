@@ -4,6 +4,7 @@
 import Foundation
 import USBIPDCore
 import Common
+import SystemExtension
 
 // Logger for command operations
 private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "cli-commands")
