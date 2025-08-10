@@ -72,9 +72,9 @@ let package = Package(
             dependencies: ["USBIPDCLI"]),
         .testTarget(
             name: "IntegrationTests",
-            dependencies: ["USBIPDCore", "QEMUTestServer", "USBIPDCLI", "SystemExtension", "Common"]),
+            dependencies: ["USBIPDCore", "QEMUTestServer", "USBIPDCLI", "Common"]),
         .testTarget(
             name: "SystemExtensionTests",
-            dependencies: ["SystemExtension", "USBIPDCore", "Common"]),
+            dependencies: ["SystemExtension", "Common"]),
     ]
 )
