@@ -4,7 +4,6 @@
 import Foundation
 import USBIPDCore
 import Common
-import SystemExtension
 
 /// Global server instance for signal handling
 private var globalServer: USBIPServer?
@@ -85,7 +84,7 @@ func main() {
     logger.debug("Created TCPServer instance")
     
     // Create System Extension manager and device claim manager
-    let systemExtensionManager = SystemExtensionManager()
+    let systemExtensionManager = USBIPDCore.SystemExtensionManager()
     let deviceClaimManager = SystemExtensionClaimAdapter(systemExtensionManager: systemExtensionManager)
     logger.debug("Created SystemExtensionManager and DeviceClaimManager")
     
@@ -99,7 +98,7 @@ func main() {
     logger.debug("Created ServerCoordinator instance with DeviceClaimManager")
     
     // Set up server error handling
-    server.onError = { error in
+    server.onError = { (error: Error) in
         logger.error("Server error", context: ["error": error.localizedDescription])
         
         // For critical errors, attempt graceful shutdown

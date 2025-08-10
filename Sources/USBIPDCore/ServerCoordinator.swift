@@ -3,6 +3,7 @@
 
 import Foundation
 import Common
+import SystemExtensions
 
 /// Extension for DateFormatter to provide consistent log formatting
 extension DateFormatter {
@@ -11,6 +12,19 @@ extension DateFormatter {
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         return formatter
     }()
+}
+
+/// System Extension lifecycle status information
+public struct SystemExtensionLifecycleStatus {
+    public let enabled: Bool
+    public let state: String
+    public let health: String?
+    
+    public init(enabled: Bool, state: String, health: String? = nil) {
+        self.enabled = enabled
+        self.state = state
+        self.health = health
+    }
 }
 
 /// Server coordinator that implements the USBIPServer protocol
@@ -36,14 +50,46 @@ public class ServerCoordinator: USBIPServer {
     /// Flag indicating if the server is running
     private var isServerRunning = false
     
+    /// System Extension installer for managing System Extension lifecycle
+    private let systemExtensionInstaller: SystemExtensionInstaller?
+    
+    /// System Extension lifecycle manager for health monitoring and management
+    private let systemExtensionLifecycleManager: SystemExtensionLifecycleManager?
+    
+    /// Flag indicating if System Extension management is enabled
+    private let systemExtensionEnabled: Bool
+    
     /// Callback for error events
     public var onError: ((Error) -> Void)?
     
     /// Initialize with network service, device discovery, and optional device claim manager
-    public init(networkService: NetworkService, deviceDiscovery: DeviceDiscovery, deviceClaimManager: DeviceClaimManager? = nil, config: ServerConfig = ServerConfig()) {
+    public init(networkService: NetworkService, 
+               deviceDiscovery: DeviceDiscovery, 
+               deviceClaimManager: DeviceClaimManager? = nil, 
+               config: ServerConfig = ServerConfig(),
+               systemExtensionBundlePath: String? = nil,
+               systemExtensionBundleIdentifier: String? = nil) {
         self.networkService = networkService
         self.deviceDiscovery = deviceDiscovery
         self.config = config
+        
+        // Initialize System Extension components if paths are provided
+        if let bundlePath = systemExtensionBundlePath,
+           let bundleIdentifier = systemExtensionBundleIdentifier {
+            self.systemExtensionEnabled = true
+            self.systemExtensionInstaller = SystemExtensionInstaller(
+                bundleIdentifier: bundleIdentifier,
+                bundlePath: bundlePath
+            )
+            self.systemExtensionLifecycleManager = SystemExtensionLifecycleManager(
+                installer: self.systemExtensionInstaller!,
+                healthConfig: SystemExtensionLifecycleManager.HealthConfig()
+            )
+        } else {
+            self.systemExtensionEnabled = false
+            self.systemExtensionInstaller = nil
+            self.systemExtensionLifecycleManager = nil
+        }
         
         // Initialize logger with appropriate configuration
         let loggerConfig = LoggerConfig(
@@ -117,6 +163,7 @@ public class ServerCoordinator: USBIPServer {
         }
         
         setupCallbacks()
+        setupSystemExtensionCallbacks()
     }
     
     /// Set up callbacks for network and device events
@@ -217,6 +264,101 @@ public class ServerCoordinator: USBIPServer {
         }
     }
     
+    /// Set up System Extension lifecycle callbacks
+    private func setupSystemExtensionCallbacks() {
+        guard systemExtensionEnabled,
+              let lifecycleManager = systemExtensionLifecycleManager else {
+            logger.debug("System Extension management disabled")
+            return
+        }
+        
+        // Set up lifecycle delegate
+        lifecycleManager.delegate = self
+        
+        logger.info("System Extension lifecycle callbacks configured")
+    }
+    
+    /// Activate System Extension if enabled
+    private func activateSystemExtension() throws {
+        guard let lifecycleManager = systemExtensionLifecycleManager else {
+            throw ServerError.initializationFailed("System Extension lifecycle manager not initialized")
+        }
+        
+        logger.info("Activating System Extension")
+        
+        // Create a semaphore to wait for activation completion
+        let semaphore = DispatchSemaphore(value: 0)
+        var activationError: SystemExtensionInstallationError?
+        
+        lifecycleManager.activate { result in
+            switch result {
+            case .success:
+                break // Success, no error
+            case .failure(let error):
+                activationError = error
+            }
+            semaphore.signal()
+        }
+        
+        // Wait for activation to complete (with timeout)
+        let timeoutResult = semaphore.wait(timeout: .now() + 30) // 30 second timeout
+        
+        if timeoutResult == .timedOut {
+            throw ServerError.initializationFailed("System Extension activation timed out")
+        }
+        
+        if let error = activationError {
+            logger.error("System Extension activation failed", context: ["error": error.localizedDescription])
+            
+            // Handle specific errors that might require user intervention
+            switch error {
+            case .requiresApproval:
+                logger.info("System Extension requires user approval in System Preferences")
+                // Continue with server startup - System Extension will be available once approved
+            case .userRejected:
+                throw ServerError.initializationFailed("System Extension installation was rejected by user")
+            default:
+                throw ServerError.initializationFailed("System Extension activation failed: \(error.localizedDescription)")
+            }
+        }
+        
+        logger.info("System Extension activation completed")
+    }
+    
+    /// Check System Extension status before device operations
+    private func checkSystemExtensionStatus() throws {
+        guard systemExtensionEnabled,
+              let lifecycleManager = systemExtensionLifecycleManager else {
+            return // System Extension not enabled, skip check
+        }
+        
+        let state = lifecycleManager.state
+        
+        switch state {
+        case .active:
+            // System Extension is active, all good
+            break
+        case .failed(let error):
+            logger.error("System Extension failed", context: ["error": error])
+            throw ServerError.systemExtensionFailed("System Extension failed: \(error)")
+        case .inactive:
+            logger.warning("System Extension is not active")
+            throw ServerError.systemExtensionFailed("System Extension is not active")
+        case .activating:
+            logger.info("System Extension is still activating")
+            // Could wait or continue with limited functionality
+        case .deactivating:
+            logger.warning("System Extension is deactivating")
+            throw ServerError.systemExtensionFailed("System Extension is deactivating")
+        case let .upgrading(from, to):
+            logger.info("System Extension is upgrading", context: ["from": from, "to": to])
+            // Could wait for upgrade completion
+        case .requiresReboot:
+            logger.warning("System Extension requires system reboot")
+            throw ServerError.systemExtensionFailed("System Extension requires system reboot")
+        }
+    }
+    
     /// Start the USB/IP server
     public func start() throws {
         guard !isServerRunning else {
@@ -232,6 +374,11 @@ public class ServerCoordinator: USBIPServer {
             print("\(timestamp) [INFO] Starting USB/IP server on port \(config.port)")
             
             // Device claim manager is already initialized and ready
+            
+            // Activate System Extension if enabled
+            if systemExtensionEnabled {
+                try activateSystemExtension()
+            }
             
             // Start device discovery notifications
             try deviceDiscovery.startNotifications()
@@ -272,13 +419,123 @@ public class ServerCoordinator: USBIPServer {
         // Stop network service
         try networkService.stop()
         
+        // Deactivate System Extension if enabled
+        if systemExtensionEnabled {
+            deactivateSystemExtension()
+        }
+        
         // Device claim manager cleanup (if needed) would happen in its own deinit
         
         isServerRunning = false
     }
     
+    /// Deactivate System Extension if enabled
+    private func deactivateSystemExtension() {
+        guard let lifecycleManager = systemExtensionLifecycleManager else {
+            return
+        }
+        
+        logger.info("Deactivating System Extension")
+        
+        // Deactivate asynchronously - don't block server shutdown
+        lifecycleManager.deactivate { result in
+            switch result {
+            case .success:
+                self.logger.info("System Extension deactivated successfully")
+            case .failure(let error):
+                self.logger.error("System Extension deactivation failed", context: ["error": error.localizedDescription])
+                // Don't throw error during shutdown - just log it
+            }
+        }
+    }
+    
     /// Check if the server is running
     public func isRunning() -> Bool {
         return isServerRunning
+    }
+    
+    /// Get System Extension status information
+    public func getSystemExtensionStatus() -> SystemExtensionLifecycleStatus {
+        guard systemExtensionEnabled,
+              let lifecycleManager = systemExtensionLifecycleManager else {
+            return SystemExtensionLifecycleStatus(enabled: false, state: "disabled", health: nil)
+        }
+        
+        let stateDescription: String
+        switch lifecycleManager.state {
+        case .inactive:
+            stateDescription = "inactive"
+        case .activating:
+            stateDescription = "activating"
+        case .active:
+            stateDescription = "active"
+        case .deactivating:
+            stateDescription = "deactivating"
+        case .failed(let error):
+            stateDescription = "failed: \(error)"
+        case let .upgrading(from, to):
+            stateDescription = "upgrading from \(from) to \(to)"
+        case .requiresReboot:
+            stateDescription = "requires reboot"
+        }
+        
+        let healthStatus = lifecycleManager.healthStatus
+        let healthDescription = "healthy: \(healthStatus.isHealthy), failures: \(healthStatus.consecutiveFailures), uptime: \(Int(healthStatus.uptime))s"
+        
+        return SystemExtensionLifecycleStatus(enabled: true, state: stateDescription, health: healthDescription)
+    }
+}
+
+// MARK: - SystemExtensionLifecycleDelegate
+
+extension ServerCoordinator: SystemExtensionLifecycleDelegate {
+    public func lifecycleManager(_ manager: SystemExtensionLifecycleManager,
+                               didChangeState oldState: SystemExtensionLifecycleManager.LifecycleState,
+                               to newState: SystemExtensionLifecycleManager.LifecycleState) {
+        
+        logger.info("System Extension state changed", context: [
+            "from": String(describing: oldState),
+            "to": String(describing: newState)
+        ])
+        
+        // Handle state changes that might affect server operations
+        switch newState {
+        case .active:
+            logger.info("System Extension is now active and ready for device operations")
+            
+        case .failed(let error):
+            logger.error("System Extension failed", context: ["error": error])
+            onError?(ServerError.systemExtensionFailed(error))
+            
+        case .requiresReboot:
+            logger.warning("System Extension requires system reboot to complete installation")
+            
+        default:
+            break // Other states are handled by logging above
+        }
+    }
+    
+    public func lifecycleManager(_ manager: SystemExtensionLifecycleManager,
+                               didUpdateHealth healthStatus: SystemExtensionLifecycleManager.HealthStatus) {
+        
+        if !healthStatus.isHealthy {
+            logger.warning("System Extension health check failed", context: [
+                "consecutiveFailures": healthStatus.consecutiveFailures,
+                "lastError": healthStatus.lastError ?? "unknown",
+                "uptime": healthStatus.uptime
+            ])
+        } else {
+            logger.debug("System Extension health check passed", context: [
+                "uptime": healthStatus.uptime,
+                "restartCount": healthStatus.restartCount
+            ])
+        }
+        
+        // Log restart events
+        if healthStatus.restartCount > 0 {
+            logger.info("System Extension has been restarted", context: [
+                "restartCount": healthStatus.restartCount
+            ])
+        }
     }
 }

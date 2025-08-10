@@ -1,7 +1,6 @@
 import Foundation
 import USBIPDCore
 import Common
-import SystemExtension
 
 // Logger for command operations
 private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "cli-commands")
@@ -11,10 +10,12 @@ public class StatusCommand: Command {
     public let description = "Show System Extension status and device information"
     
     private let deviceClaimManager: DeviceClaimManager?
+    private let serverCoordinator: ServerCoordinator?
     private let outputFormatter: OutputFormatter
     
-    public init(deviceClaimManager: DeviceClaimManager? = nil, outputFormatter: OutputFormatter = DefaultOutputFormatter()) {
+    public init(deviceClaimManager: DeviceClaimManager? = nil, serverCoordinator: ServerCoordinator? = nil, outputFormatter: OutputFormatter = DefaultOutputFormatter()) {
         self.deviceClaimManager = deviceClaimManager
+        self.serverCoordinator = serverCoordinator
         self.outputFormatter = outputFormatter
     }
     
@@ -190,10 +191,85 @@ public class StatusCommand: Command {
                 print("")
                 print("Note: Detailed status information requires full System Extension integration")
             }
-        } catch {
-            logger.error("Failed to get system status", context: ["error": error.localizedDescription])
-            throw CommandHandlerError.operationNotSupported("Failed to retrieve System Extension status: \(error.localizedDescription)")
+            
+            // Display System Extension lifecycle status from ServerCoordinator
+            if let coordinator = serverCoordinator {
+                displaySystemExtensionLifecycleStatus(coordinator: coordinator, showDetailed: showDetailed)
+            }
         }
+    }
+    
+    private func displaySystemExtensionLifecycleStatus(coordinator: ServerCoordinator, showDetailed: Bool) {
+        let status = coordinator.getSystemExtensionStatus()
+        
+        print("")
+        print("System Extension Lifecycle")
+        print("=========================")
+        print("")
+        
+        if !status.enabled {
+            print("❌ System Extension Management: Disabled")
+            print("")
+            print("System Extension lifecycle management is not active.")
+            print("The daemon is running without advanced System Extension features.")
+            print("")
+            print("To enable System Extension management:")
+            print("1. Configure System Extension bundle path and identifier")
+            print("2. Restart the USB/IP daemon with System Extension support")
+            print("3. Ensure proper code signing and entitlements")
+            return
+        }
+        
+        print("✅ System Extension Management: Enabled")
+        print("📍 State: \(status.state)")
+        
+        if let health = status.health {
+            print("💊 Health: \(health)")
+            
+            if showDetailed {
+                print("")
+                print("Lifecycle Details")
+                print("-----------------")
+                if status.state.contains("active") {
+                    print("✅ System Extension is running normally")
+                    print("✅ Health monitoring is active")
+                    print("✅ Automatic recovery is enabled")
+                } else if status.state.contains("failed") {
+                    print("❌ System Extension has failed")
+                    print("⚠️  Check system logs for detailed error information")
+                    print("💡 Try restarting the daemon to recover")
+                } else if status.state.contains("activating") {
+                    print("⏳ System Extension is starting up")
+                    print("💡 This may take a few moments")
+                } else if status.state.contains("upgrading") {
+                    print("🔄 System Extension is being updated")
+                    print("💡 Wait for upgrade to complete")
+                } else if status.state.contains("reboot") {
+                    print("🔄 System reboot required")
+                    print("💡 Restart your system to complete installation")
+                }
+                
+                print("")
+                print("Troubleshooting")
+                print("---------------")
+                if status.state.contains("failed") {
+                    print("• Check system logs: log show --predicate 'subsystem == \"com.github.usbipd-mac\"' --last 1h")
+                    print("• Verify System Extension is properly signed")
+                    print("• Check System Preferences > Security & Privacy for blocked extensions")
+                    print("• Try: systemextensionsctl reset (requires reboot)")
+                } else if status.state.contains("inactive") {
+                    print("• System Extension may require user approval")
+                    print("• Check System Preferences > Security & Privacy > General")
+                    print("• Verify bundle path and identifier configuration")
+                } else if !health.contains("healthy: true") {
+                    print("• System Extension health checks are failing")
+                    print("• Check for resource constraints (memory, file descriptors)")
+                    print("• Verify IPC communication is working")
+                }
+            }
+        }
+        
+        print("")
     }
     
     private func printHelp() {

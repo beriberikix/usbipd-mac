@@ -22,9 +22,12 @@ let package = Package(
         .library(
             name: "Common",
             targets: ["Common"]),
-        .library(
+        .executable(
             name: "SystemExtension",
             targets: ["SystemExtension"]),
+        .plugin(
+            name: "SystemExtensionBundleBuilder",
+            targets: ["SystemExtensionBundleBuilder"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -34,27 +37,32 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         .executableTarget(
             name: "USBIPDCLI",
-            dependencies: ["USBIPDCore", "Common", "SystemExtension"]),
+            dependencies: ["USBIPDCore", "Common"]),
         .target(
             name: "USBIPDCore",
-            dependencies: ["Common", "SystemExtension"]),
+            dependencies: ["Common"]),
         .target(
             name: "Common",
             dependencies: []),
         .executableTarget(
             name: "QEMUTestServer",
             dependencies: ["Common"]),
-        .target(
+        .executableTarget(
             name: "SystemExtension",
-            dependencies: ["Common"],
+            dependencies: ["Common", "USBIPDCore"],
+            exclude: ["Info.plist"],
             resources: [
                 .copy("SystemExtension.entitlements"),
-                .copy("SYSTEM_EXTENSION_SETUP.md")
+                .copy("SYSTEM_EXTENSION_SETUP.md"),
+                .copy("Info.plist.template")
             ],
             linkerSettings: [
                 .linkedFramework("SystemExtensions"),
                 .linkedFramework("IOKit")
             ]),
+        .plugin(
+            name: "SystemExtensionBundleBuilder",
+            capability: .buildTool()),
         .testTarget(
             name: "USBIPDCoreTests",
             dependencies: ["USBIPDCore"]),
@@ -66,6 +74,6 @@ let package = Package(
             dependencies: ["USBIPDCore", "QEMUTestServer", "USBIPDCLI", "SystemExtension", "Common"]),
         .testTarget(
             name: "SystemExtensionTests",
-            dependencies: ["SystemExtension", "USBIPDCore", "Common"]),
+            dependencies: ["SystemExtension", "Common"]),
     ]
 )

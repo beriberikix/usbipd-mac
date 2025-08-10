@@ -1,0 +1,21 @@
+{
+  "id": "approval_1754749903840_7yxqcr670",
+  "title": "Requirements Phase: system-extension-bundle - Ready for Review",
+  "filePath": ".spec-workflow/specs/system-extension-bundle/requirements.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-09T14:31:43.841Z",
+  "category": "spec",
+  "categoryName": "system-extension-bundle",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Remove focus and requirements around Docker\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Remove focus and requirements around Docker\",\n      \"timestamp\": \"2025-08-09T14:51:06.848Z\",\n      \"id\": \"comment_1754751066848_zllbaj93g\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Remove focus and requirements around Docker\\n\\n\",\n  \"timestamp\": \"2025-08-09T14:51:10.732Z\"\n}",
+  "respondedAt": "2025-08-09T14:51:10.744Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Remove focus and requirements around Docker",
+      "timestamp": "2025-08-09T14:51:06.848Z",
+      "id": "comment_1754751066848_zllbaj93g"
+    }
+  ]
+}

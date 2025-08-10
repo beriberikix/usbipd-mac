@@ -732,4 +732,3 @@ public protocol SystemExtensionRequestDelegate: AnyObject {
     /// - Returns: IPC response
     func handleRequest(_ request: IPCRequest) -> IPCResponse
 }
-
