@@ -42,6 +42,7 @@ disabled_rules:
   - pattern_matching_keywords # Temporarily disabled to pass CI
   - multiline_parameters_brackets # Temporarily disabled to pass CI
   - vertical_parameter_alignment # Temporarily disabled to pass CI
+  - force_cast # Acceptable for IOKit type-checked CF casts
 
 # Rules to enable (opt-in)
 opt_in_rules:
