@@ -5,6 +5,7 @@ import Foundation
 import IOKit
 import IOKit.usb
 import Common
+import USBIPDCore
 
 // MARK: - Device Claimer Protocol
 

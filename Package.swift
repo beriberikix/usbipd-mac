@@ -49,7 +49,7 @@ let package = Package(
             dependencies: ["Common"]),
         .executableTarget(
             name: "SystemExtension",
-            dependencies: ["Common"],
+            dependencies: ["Common", "USBIPDCore"],
             exclude: ["Info.plist"],
             resources: [
                 .copy("SystemExtension.entitlements"),

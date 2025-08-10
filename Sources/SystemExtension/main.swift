@@ -3,6 +3,7 @@
 
 import Foundation
 import Common
+import USBIPDCore
 
 /// Set up signal handling for graceful shutdown
 /// - Parameters:

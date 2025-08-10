@@ -4,6 +4,7 @@
 import Foundation
 import XPC
 import Common
+import USBIPDCore
 
 // MARK: - IPC Handler Protocol
 
