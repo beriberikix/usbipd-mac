@@ -4,6 +4,18 @@
 import Foundation
 import Common
 
+/// Protocol for handling USB SUBMIT and UNLINK requests
+public protocol USBRequestHandlerProtocol {
+    /// Handle a USB SUBMIT request and return response data
+    func handleSubmitRequest(_ data: Data) throws -> Data
+    
+    /// Handle a USB UNLINK request and return response data  
+    func handleUnlinkRequest(_ data: Data) throws -> Data
+    
+    /// Validate that a device is accessible for USB operations
+    func validateDeviceAccess(_ busID: String) throws -> Bool
+}
+
 /// Processes USB/IP protocol requests and generates responses
 public class RequestProcessor {
     /// Device discovery for USB device enumeration
@@ -11,6 +23,9 @@ public class RequestProcessor {
     
     /// Device claim manager for device claiming
     private let deviceClaimManager: DeviceClaimManager
+    
+    /// USB request handler for SUBMIT/UNLINK operations (will be injected later)
+    private var usbRequestHandler: USBRequestHandlerProtocol?
     
     /// Logger for error and diagnostic information
     private let logger: ((String, LogLevel) -> Void)?
@@ -28,6 +43,11 @@ public class RequestProcessor {
         self.deviceDiscovery = deviceDiscovery
         self.deviceClaimManager = deviceClaimManager
         self.logger = logger
+    }
+    
+    /// Set the USB request handler for processing SUBMIT/UNLINK requests
+    public func setUSBRequestHandler(_ handler: USBRequestHandlerProtocol) {
+        self.usbRequestHandler = handler
     }
     
     /// Process incoming request data and generate a response
@@ -50,6 +70,14 @@ public class RequestProcessor {
             case .requestDeviceImport:
                 log("Processing device import request", .debug)
                 return try handleDeviceImportRequest(data)
+                
+            case .submitRequest:
+                log("Processing USB SUBMIT request", .debug)
+                return try handleSubmitRequest(data)
+                
+            case .unlinkRequest:
+                log("Processing USB UNLINK request", .debug)
+                return try handleUnlinkRequest(data)
                 
             default:
                 // We should not receive reply messages as requests
@@ -285,6 +313,50 @@ public class RequestProcessor {
             
             log("Sending error response for device import request", .info, ["busID": request.busID])
             return try USBIPMessageEncoder.encode(response)
+        }
+    }
+    
+    /// Handle a USB SUBMIT request for actual USB I/O operations
+    private func handleSubmitRequest(_ data: Data) throws -> Data {
+        log("Handling USB SUBMIT request", .debug)
+        
+        // Ensure USB request handler is available
+        guard let handler = usbRequestHandler else {
+            log("USB request handler not available", .error)
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        do {
+            // Delegate to the USB request handler
+            return try handler.handleSubmitRequest(data)
+        } catch {
+            log("Error in USB SUBMIT request handling: \(error.localizedDescription)", .error)
+            
+            // Create error response if handler fails
+            // This will be implemented when USB message types are available
+            throw error
+        }
+    }
+    
+    /// Handle a USB UNLINK request for cancelling USB operations
+    private func handleUnlinkRequest(_ data: Data) throws -> Data {
+        log("Handling USB UNLINK request", .debug)
+        
+        // Ensure USB request handler is available
+        guard let handler = usbRequestHandler else {
+            log("USB request handler not available", .error)
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        do {
+            // Delegate to the USB request handler
+            return try handler.handleUnlinkRequest(data)
+        } catch {
+            log("Error in USB UNLINK request handling: \(error.localizedDescription)", .error)
+            
+            // Create error response if handler fails
+            // This will be implemented when USB message types are available
+            throw error
         }
     }
     
