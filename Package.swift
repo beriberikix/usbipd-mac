@@ -59,8 +59,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("SystemExtensions"),
                 .linkedFramework("IOKit")
-            ],
-),
+            ]),
         .plugin(
             name: "SystemExtensionBundleBuilder",
             capability: .buildTool()),
