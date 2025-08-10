@@ -14,6 +14,15 @@ public enum USBTransferType: UInt8 {
     case interrupt = 3
 }
 
+/// URB (USB Request Block) processing status
+public enum URBStatus {
+    case pending        // Request created but not yet started
+    case inProgress     // Request is being processed
+    case completed      // Request completed successfully
+    case cancelled      // Request was cancelled
+    case failed         // Request failed with error
+}
+
 /// USB transfer direction
 public enum USBTransferDirection: UInt32 {
     case out = 0    // Host to device
@@ -95,7 +104,7 @@ public struct USBRequestBlock {
 /// USB transfer completion result
 public struct USBTransferResult {
     /// USB completion status code
-    public let status: Int32
+    public let status: USBStatus
     
     /// Actual number of bytes transferred
     public let actualLength: UInt32
@@ -113,7 +122,7 @@ public struct USBTransferResult {
     public let startFrame: UInt32
     
     public init(
-        status: Int32,
+        status: USBStatus,
         actualLength: UInt32,
         errorCount: UInt32 = 0,
         data: Data? = nil,
@@ -257,6 +266,12 @@ public enum USBRequestError: Error {
     case timeoutInvalid(UInt32)
     case concurrentRequestLimit
     case requestCancelled(UInt32)
+    case timeout
+    case deviceNotAvailable
+    case invalidParameters
+    case tooManyRequests
+    case duplicateRequest
+    case cancelled
 }
 
 extension USBRequestError: LocalizedError {
@@ -282,6 +297,18 @@ extension USBRequestError: LocalizedError {
             return "Concurrent request limit exceeded"
         case .requestCancelled(let seqnum):
             return "USB request cancelled: \(seqnum)"
+        case .timeout:
+            return "USB transfer timed out"
+        case .deviceNotAvailable:
+            return "USB device not available"
+        case .invalidParameters:
+            return "Invalid USB request parameters"
+        case .tooManyRequests:
+            return "Too many concurrent USB requests"
+        case .duplicateRequest:
+            return "Duplicate USB request sequence number"
+        case .cancelled:
+            return "USB request was cancelled"
         }
     }
 }
