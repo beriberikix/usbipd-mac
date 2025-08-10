@@ -196,9 +196,6 @@ public class StatusCommand: Command {
             if let coordinator = serverCoordinator {
                 displaySystemExtensionLifecycleStatus(coordinator: coordinator, showDetailed: showDetailed)
             }
-        } catch {
-            logger.error("Failed to get system status", context: ["error": error.localizedDescription])
-            throw CommandHandlerError.operationNotSupported("Failed to retrieve System Extension status: \(error.localizedDescription)")
         }
     }
     

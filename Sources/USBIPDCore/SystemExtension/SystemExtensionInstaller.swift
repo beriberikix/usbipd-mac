@@ -2,7 +2,6 @@ import Foundation
 import SystemExtensions
 import Common
 
-
 /// Manages System Extension installation and lifecycle
 public class SystemExtensionInstaller: NSObject {
     

@@ -486,9 +486,11 @@ final class SystemExtensionInstallationTests: XCTestCase {
 
 extension SystemExtensionManager {
     
-    func sendMessage(_ message: String, 
-                    responseHandler: @escaping (String) -> Void,
-                    errorHandler: ((Error) -> Void)? = nil) {
+    func sendMessage(
+        _ message: String,
+        responseHandler: @escaping (String) -> Void,
+        errorHandler: ((Error) -> Void)? = nil
+    ) {
         // Mock IPC message sending for testing
         
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {

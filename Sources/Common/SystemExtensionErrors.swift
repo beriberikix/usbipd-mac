@@ -138,27 +138,27 @@ public enum SystemExtensionInstallationError: Error, Equatable {
              (.requiresReboot, .requiresReboot),
              (.developmentModeDisabled, .developmentModeDisabled):
             return true
-        case (.policyViolation(let lhsReason), .policyViolation(let rhsReason)):
+        case let (.policyViolation(lhsReason), .policyViolation(rhsReason)):
             return lhsReason == rhsReason
-        case (.insufficientPrivileges(let lhsReason), .insufficientPrivileges(let rhsReason)):
+        case let (.insufficientPrivileges(lhsReason), .insufficientPrivileges(rhsReason)):
             return lhsReason == rhsReason
-        case (.activationFailed(let lhsReason), .activationFailed(let rhsReason)):
+        case let (.activationFailed(lhsReason), .activationFailed(rhsReason)):
             return lhsReason == rhsReason
-        case (.deactivationFailed(let lhsReason), .deactivationFailed(let rhsReason)):
+        case let (.deactivationFailed(lhsReason), .deactivationFailed(rhsReason)):
             return lhsReason == rhsReason
-        case (.upgradeFailed(let lhsFrom, let lhsTo, let lhsReason), .upgradeFailed(let rhsFrom, let rhsTo, let rhsReason)):
+        case let (.upgradeFailed(lhsFrom, lhsTo, lhsReason), .upgradeFailed(rhsFrom, rhsTo, rhsReason)):
             return lhsFrom == rhsFrom && lhsTo == rhsTo && lhsReason == rhsReason
-        case (.unexpectedTermination(let lhsCode, let lhsReason), .unexpectedTermination(let rhsCode, let rhsReason)):
+        case let (.unexpectedTermination(lhsCode, lhsReason), .unexpectedTermination(rhsCode, rhsReason)):
             return lhsCode == rhsCode && lhsReason == rhsReason
-        case (.versionIncompatible(let lhsCurrent, let lhsRequired), .versionIncompatible(let rhsCurrent, let rhsRequired)):
+        case let (.versionIncompatible(lhsCurrent, lhsRequired), .versionIncompatible(rhsCurrent, rhsRequired)):
             return lhsCurrent == rhsCurrent && lhsRequired == rhsRequired
-        case (.macOSVersionIncompatible(let lhsCurrent, let lhsMinimum), .macOSVersionIncompatible(let rhsCurrent, let rhsMinimum)):
+        case let (.macOSVersionIncompatible(lhsCurrent, lhsMinimum), .macOSVersionIncompatible(rhsCurrent, rhsMinimum)):
             return lhsCurrent == rhsCurrent && lhsMinimum == rhsMinimum
-        case (.architectureMismatch(let lhsExpected, let lhsFound), .architectureMismatch(let rhsExpected, let rhsFound)):
+        case let (.architectureMismatch(lhsExpected, lhsFound), .architectureMismatch(rhsExpected, rhsFound)):
             return lhsExpected == rhsExpected && lhsFound == rhsFound
-        case (.unknownSystemError(let lhsStatus, let lhsMessage), .unknownSystemError(let rhsStatus, let rhsMessage)):
+        case let (.unknownSystemError(lhsStatus, lhsMessage), .unknownSystemError(rhsStatus, rhsMessage)):
             return lhsStatus == rhsStatus && lhsMessage == rhsMessage
-        case (.operationTimeout(let lhsOp, let lhsTimeout), .operationTimeout(let rhsOp, let rhsTimeout)):
+        case let (.operationTimeout(lhsOp, lhsTimeout), .operationTimeout(rhsOp, rhsTimeout)):
             return lhsOp == rhsOp && lhsTimeout == rhsTimeout
         default:
             // For other cases with associated values, compare string representations
