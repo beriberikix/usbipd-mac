@@ -615,7 +615,7 @@ public class SystemExtensionUpdateManager {
         // For now, simulate the operation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             // Simulate 95% success rate for updates (higher than recovery)
-            let success = arc4random_uniform(100) < 95
+            let success = UInt32.random(in: 0..<100) < 95
             completion(success)
         }
     }

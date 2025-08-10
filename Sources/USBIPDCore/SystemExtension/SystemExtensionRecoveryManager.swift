@@ -395,7 +395,7 @@ public class SystemExtensionRecoveryManager {
         // For now, simulate the operation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             // Simulate 90% success rate
-            let success = arc4random_uniform(100) < 90
+            let success = UInt32.random(in: 0..<100) < 90
             completion(success)
         }
     }
@@ -625,9 +625,9 @@ private enum RecoveryStep {
 
 /// Communication failure severity
 public enum CommunicationFailureSeverity: String {
-    case transient = "transient"
-    case persistent = "persistent"
-    case critical = "critical"
+    case transient
+    case persistent
+    case critical
 }
 
 /// Recovery operation

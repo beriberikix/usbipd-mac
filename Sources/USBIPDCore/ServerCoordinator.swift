@@ -14,6 +14,19 @@ extension DateFormatter {
     }()
 }
 
+/// System Extension lifecycle status information
+public struct SystemExtensionLifecycleStatus {
+    public let enabled: Bool
+    public let state: String
+    public let health: String?
+    
+    public init(enabled: Bool, state: String, health: String? = nil) {
+        self.enabled = enabled
+        self.state = state
+        self.health = health
+    }
+}
+
 /// Server coordinator that implements the USBIPServer protocol
 public class ServerCoordinator: USBIPServer {
     /// Network service for handling client connections
@@ -442,10 +455,10 @@ public class ServerCoordinator: USBIPServer {
     }
     
     /// Get System Extension status information
-    public func getSystemExtensionStatus() -> (enabled: Bool, state: String, health: String?) {
+    public func getSystemExtensionStatus() -> SystemExtensionLifecycleStatus {
         guard systemExtensionEnabled,
               let lifecycleManager = systemExtensionLifecycleManager else {
-            return (enabled: false, state: "disabled", health: nil)
+            return SystemExtensionLifecycleStatus(enabled: false, state: "disabled", health: nil)
         }
         
         let stateDescription: String
@@ -469,7 +482,7 @@ public class ServerCoordinator: USBIPServer {
         let healthStatus = lifecycleManager.healthStatus
         let healthDescription = "healthy: \(healthStatus.isHealthy), failures: \(healthStatus.consecutiveFailures), uptime: \(Int(healthStatus.uptime))s"
         
-        return (enabled: true, state: stateDescription, health: healthDescription)
+        return SystemExtensionLifecycleStatus(enabled: true, state: stateDescription, health: healthDescription)
     }
 }
 

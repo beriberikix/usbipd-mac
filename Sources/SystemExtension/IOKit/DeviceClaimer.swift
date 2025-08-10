@@ -534,12 +534,13 @@ public class IOKitDeviceClaimer: DeviceClaimer {
         // This is a basic indication of active drivers
         
         // Try to get a property that would indicate driver binding
-        if let className = ioKit.registryEntryCreateCFProperty(
+        let classProperty = ioKit.registryEntryCreateCFProperty(
             service,
             "IOClass" as CFString,
             kCFAllocatorDefault,
             0
-        )?.takeRetainedValue() {
+        )
+        if let className = classProperty?.takeRetainedValue() {
             let classNameStr = "\(className)"
             logger.debug("USB device class", context: ["className": classNameStr])
             
@@ -558,21 +559,27 @@ public class IOKitDeviceClaimer: DeviceClaimer {
         logger.debug("Attempting IOKit matching for USB device service")
         
         // Get device properties for matching information
-        let vendorIDProperty = ioKit.registryEntryCreateCFProperty(
+        let vendorProperty = ioKit.registryEntryCreateCFProperty(
             service, "idVendor" as CFString, kCFAllocatorDefault, 0
-        )?.takeRetainedValue()
+        )
+        let vendorIDProperty = vendorProperty?.takeRetainedValue()
         
-        let productIDProperty = ioKit.registryEntryCreateCFProperty(
+        let productProperty = ioKit.registryEntryCreateCFProperty(
             service, "idProduct" as CFString, kCFAllocatorDefault, 0
-        )?.takeRetainedValue()
+        )
+        let productIDProperty = productProperty?.takeRetainedValue()
         
         var vendorID: UInt16 = 0
         var productID: UInt16 = 0
         
         if let vendorNum = vendorIDProperty,
-           let productNum = productIDProperty {
-            CFNumberGetValue((vendorNum as! CFNumber), .sInt16Type, &vendorID)
-            CFNumberGetValue((productNum as! CFNumber), .sInt16Type, &productID)
+           let productNum = productIDProperty,
+           CFGetTypeID(vendorNum) == CFNumberGetTypeID(),
+           CFGetTypeID(productNum) == CFNumberGetTypeID() {
+            let vendorNumber = vendorNum as! CFNumber
+            let productNumber = productNum as! CFNumber
+            CFNumberGetValue(vendorNumber, .sInt16Type, &vendorID)
+            CFNumberGetValue(productNumber, .sInt16Type, &productID)
         } else {
             logger.warning("Could not retrieve device identifiers for matching")
         }
@@ -627,12 +634,13 @@ public class IOKitDeviceClaimer: DeviceClaimer {
         }
         
         // Step 5: Verify our matching took effect
-        let currentCategory = ioKit.registryEntryCreateCFProperty(
+        let categoryProperty = ioKit.registryEntryCreateCFProperty(
             service,
             "IOMatchCategory" as CFString,
             kCFAllocatorDefault,
             0
-        )?.takeRetainedValue()
+        )
+        let currentCategory = categoryProperty?.takeRetainedValue()
         
         if let category = currentCategory {
             let categoryStr = "\(category)"
