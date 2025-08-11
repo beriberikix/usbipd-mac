@@ -254,33 +254,14 @@ public class RequestProcessor {
                 }
             }
             
-            // Create device info for the response
-            log("Creating device info for response", .debug)
-            let deviceInfo = USBIPDeviceInfo(
-                path: "/sys/devices/\(device.busID)/\(device.deviceID)",
-                busID: device.busID,
-                busnum: UInt32(Int(device.busID.split(separator: "-").last ?? "0") ?? 0),
-                devnum: UInt32(Int(device.deviceID.split(separator: ".").last ?? "0") ?? 0),
-                speed: UInt32(device.speed.rawValue),
-                vendorID: device.vendorID,
-                productID: device.productID,
-                deviceClass: device.deviceClass,
-                deviceSubClass: device.deviceSubClass,
-                deviceProtocol: device.deviceProtocol,
-                configurationCount: 1, // Default value for MVP
-                configurationValue: 1, // Default value for MVP
-                interfaceCount: 1      // Default value for MVP
-            )
-            
-            // Create and encode the response
+            // Create and encode the response (success)
             log("Creating device import response", .debug)
             let response = DeviceImportResponse(
                 header: USBIPHeader(
                     command: .replyDeviceImport,
                     status: 0 // Success
                 ),
-                status: 0, // Success
-                deviceInfo: deviceInfo
+                returnCode: 0 // Success
             )
             
             log("Sending successful device import response", .info, [
@@ -307,8 +288,7 @@ public class RequestProcessor {
                     command: .replyDeviceImport,
                     status: 1 // Error
                 ),
-                status: 1, // Error
-                deviceInfo: nil
+                returnCode: 1 // Error
             )
             
             log("Sending error response for device import request", .info, ["busID": request.busID])

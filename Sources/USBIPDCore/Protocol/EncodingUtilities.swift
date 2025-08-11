@@ -79,8 +79,8 @@ public struct USBIPMessageEncoder {
     }
     
     /// Encode a device import response
-    public static func encodeDeviceImportResponse(status: UInt32, deviceInfo: USBIPDeviceInfo?) throws -> Data {
-        let response = DeviceImportResponse(status: status, deviceInfo: deviceInfo)
+    public static func encodeDeviceImportResponse(returnCode: UInt32) throws -> Data {
+        let response = DeviceImportResponse(returnCode: returnCode)
         return try response.encode()
     }
     
@@ -145,17 +145,17 @@ public struct USBIPMessageEncoder {
     /// Encode a USB UNLINK request
     public static func encodeUSBUnlinkRequest(
         seqnum: UInt32,
+        unlinkSeqnum: UInt32,
         devid: UInt32,
         direction: UInt32,
-        ep: UInt32,
-        unlinkSeqnum: UInt32
+        ep: UInt32
     ) throws -> Data {
         let request = USBIPUnlinkRequest(
             seqnum: seqnum,
+            unlinkSeqnum: unlinkSeqnum,
             devid: devid,
             direction: direction,
-            ep: ep,
-            unlinkSeqnum: unlinkSeqnum
+            ep: ep
         )
         return try request.encode()
     }
@@ -163,6 +163,7 @@ public struct USBIPMessageEncoder {
     /// Encode a USB UNLINK response
     public static func encodeUSBUnlinkResponse(
         seqnum: UInt32,
+        unlinkSeqnum: UInt32,
         devid: UInt32,
         direction: UInt32,
         ep: UInt32,
@@ -170,6 +171,7 @@ public struct USBIPMessageEncoder {
     ) throws -> Data {
         let response = USBIPUnlinkResponse(
             seqnum: seqnum,
+            unlinkSeqnum: unlinkSeqnum,
             devid: devid,
             direction: direction,
             ep: ep,
@@ -279,13 +281,13 @@ public struct USBIPMessageDecoder {
     
     /// Decode a device import response with validation
     public static func decodeDeviceImportResponse(from data: Data) throws -> DeviceImportResponse {
-        // Validate minimum data length (header + status)
+        // Validate minimum data length (header + returnCode)
         guard data.count >= 12 else {
             throw USBIPProtocolError.invalidDataLength
         }
         
-        // Validate expected lengths: 12 bytes (error response) or 324 bytes (success response)
-        guard data.count == 12 || data.count == 324 else {
+        // Validate expected length: 12 bytes (header + returnCode)
+        guard data.count == 12 else {
             throw USBIPProtocolError.invalidMessageFormat
         }
         
@@ -490,6 +492,17 @@ public struct EndiannessConverter {
             throw USBIPProtocolError.invalidDataLength
         }
         return fromNetworkByteOrder(value)
+    }
+    
+    /// Write Int32 to Data in network byte order
+    public static func writeInt32ToData(_ value: Int32) -> Data {
+        return writeUInt32ToData(UInt32(bitPattern: value))
+    }
+    
+    /// Read Int32 from Data in network byte order
+    public static func readInt32FromData(_ data: Data, at offset: Int) throws -> Int32 {
+        let value = try readUInt32FromData(data, at: offset)
+        return Int32(bitPattern: value)
     }
 }
 
