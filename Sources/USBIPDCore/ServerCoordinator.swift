@@ -131,15 +131,10 @@ public class ServerCoordinator: USBIPServer {
         // Initialize concurrent processing infrastructure
         self.requestProcessingQueue = DispatchQueue(
             label: "com.usbipd.request-processing", 
-            qos: .userInitiated, 
+            qos: DispatchQoS(qosClass: config.usbRequestQoS, relativePriority: 0), 
             attributes: .concurrent
         )
-        // Use configuration value when available, fallback to reasonable default
-        if let maxRequests = config.maxConcurrentRequests {
-            self.maxConcurrentRequestsPerClient = maxRequests
-        } else {
-            self.maxConcurrentRequestsPerClient = 16 // Default limit
-        }
+        self.maxConcurrentRequestsPerClient = config.maxConcurrentRequests
         
         // Initialize System Extension components if paths are provided
         if let bundlePath = systemExtensionBundlePath,
@@ -633,14 +628,5 @@ extension ServerCoordinator: SystemExtensionLifecycleDelegate {
                 "restartCount": healthStatus.restartCount
             ])
         }
-    }
-}
-
-// MARK: - ServerConfig Extension (Temporary until task 4.3)
-
-extension ServerConfig {
-    /// Maximum concurrent requests per client connection (temporary property)
-    var maxConcurrentRequests: Int? {
-        return nil // Will be implemented in task 4.3
     }
 }
