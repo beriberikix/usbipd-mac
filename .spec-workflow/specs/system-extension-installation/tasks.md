@@ -96,7 +96,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: Sources/Common/Logger.swift_
   - _Requirements: 2.1, 2.2, 4.1_
 
-- [-] 4.2 Implement code signing workflows
+- [x] 4.2 Implement code signing workflows
   - File: Sources/USBIPDCore/SystemExtension/CodeSigning/CodeSigningManager.swift (continue)
   - Add codesign command generation and execution
   - Implement bundle and executable signing methods
@@ -105,7 +105,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - Git commit: "feat: implement code signing and verification workflows"
   - _Requirements: 1.2, 4.2, 4.3_
 
-- [ ] 4.3 Add development mode and unsigned bundle support
+- [-] 4.3 Add development mode and unsigned bundle support
   - File: Sources/USBIPDCore/SystemExtension/CodeSigning/CodeSigningManager.swift (continue)
   - Implement fallback logic for unsigned development bundles
   - Add development mode detection and guidance

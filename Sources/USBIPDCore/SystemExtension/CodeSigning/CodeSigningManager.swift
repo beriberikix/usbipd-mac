@@ -570,6 +570,291 @@ public class CodeSigningManager {
         return flags
     }
     
+    // MARK: - Development Mode Support
+    
+    /// Checks if macOS Developer Mode is enabled for System Extensions
+    /// - Returns: True if developer mode is enabled, false otherwise
+    public func isDeveloperModeEnabled() -> Bool {
+        logger.debug("Checking developer mode status")
+        
+        // Use systemextensionsctl to check developer mode status
+        let process = Process()
+        process.launchPath = "/usr/bin/systemextensionsctl"
+        process.arguments = ["developer"]
+        
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: outputData, encoding: .utf8) ?? ""
+            
+            let isDeveloperMode = output.lowercased().contains("developer mode: on") || 
+                                 output.lowercased().contains("enabled")
+            
+            logger.debug("Developer mode status", context: ["enabled": isDeveloperMode])
+            return isDeveloperMode
+            
+        } catch {
+            logger.warning("Failed to check developer mode status", context: ["error": error.localizedDescription])
+            return false
+        }
+    }
+    
+    /// Creates an unsigned bundle for development when no certificates are available
+    /// - Parameters:
+    ///   - bundlePath: Path to the System Extension bundle
+    ///   - skipSigning: Whether to skip signing entirely
+    /// - Returns: Development signing result
+    /// - Throws: CodeSigningError if bundle preparation fails
+    public func createDevelopmentBundle(
+        at bundlePath: String,
+        skipSigning: Bool = false
+    ) throws -> DevelopmentBundleResult {
+        logger.info("Creating development bundle", context: ["bundle": bundlePath, "skipSigning": skipSigning])
+        
+        guard FileManager.default.fileExists(atPath: bundlePath) else {
+            throw CodeSigningError.bundleNotFound(bundlePath)
+        }
+        
+        let startTime = Date()
+        var warnings: [String] = []
+        
+        // Check if developer mode is enabled
+        let developerModeEnabled = isDeveloperModeEnabled()
+        if !developerModeEnabled {
+            warnings.append("Developer mode is not enabled. Enable with: systemextensionsctl developer on")
+        }
+        
+        // Try to find certificates even for development
+        let availableCertificates = (try? detectAvailableCertificates()) ?? []
+        
+        let result: DevelopmentBundleResult
+        
+        if skipSigning || availableCertificates.isEmpty {
+            // Create unsigned bundle
+            logger.info("Creating unsigned development bundle")
+            
+            warnings.append("Bundle will be unsigned - only suitable for development with SIP disabled")
+            warnings.append("For production use, install proper Apple Developer certificates")
+            
+            result = DevelopmentBundleResult(
+                bundlePath: bundlePath,
+                isSigned: false,
+                certificate: nil,
+                developerModeEnabled: developerModeEnabled,
+                preparationTime: Date().timeIntervalSince(startTime),
+                warnings: warnings,
+                signingStatus: .unsigned,
+                recommendedActions: generateRecommendedActions(
+                    developerModeEnabled: developerModeEnabled,
+                    hasCertificates: false
+                )
+            )
+            
+        } else {
+            // Try to sign with available certificate for better development experience
+            logger.info("Attempting to sign development bundle with available certificate")
+            
+            do {
+                let signingResult = try signBundle(at: bundlePath)
+                
+                result = DevelopmentBundleResult(
+                    bundlePath: bundlePath,
+                    isSigned: signingResult.success,
+                    certificate: signingResult.certificate,
+                    developerModeEnabled: developerModeEnabled,
+                    preparationTime: Date().timeIntervalSince(startTime),
+                    warnings: warnings,
+                    signingStatus: signingResult.success ? .signed : .signingFailed,
+                    recommendedActions: generateRecommendedActions(
+                        developerModeEnabled: developerModeEnabled,
+                        hasCertificates: true,
+                        signingSucceeded: signingResult.success
+                    )
+                )
+                
+            } catch {
+                logger.warning("Signing failed, creating unsigned bundle", context: ["error": error.localizedDescription])
+                
+                warnings.append("Code signing failed: \(error.localizedDescription)")
+                warnings.append("Bundle will be unsigned - only suitable for development with SIP disabled")
+                
+                result = DevelopmentBundleResult(
+                    bundlePath: bundlePath,
+                    isSigned: false,
+                    certificate: nil,
+                    developerModeEnabled: developerModeEnabled,
+                    preparationTime: Date().timeIntervalSince(startTime),
+                    warnings: warnings,
+                    signingStatus: .signingFailed,
+                    recommendedActions: generateRecommendedActions(
+                        developerModeEnabled: developerModeEnabled,
+                        hasCertificates: true,
+                        signingSucceeded: false
+                    )
+                )
+            }
+        }
+        
+        logger.info("Development bundle preparation completed", context: [
+            "signed": result.isSigned,
+            "developerMode": result.developerModeEnabled,
+            "warnings": result.warnings.count
+        ])
+        
+        return result
+    }
+    
+    /// Generates comprehensive signing status report for development workflows
+    /// - Returns: Development environment status report
+    public func getDevelopmentStatus() -> DevelopmentStatusReport {
+        logger.debug("Generating development status report")
+        
+        let startTime = Date()
+        
+        // Check developer mode
+        let developerModeEnabled = isDeveloperModeEnabled()
+        
+        // Detect certificates
+        let certificates = (try? detectAvailableCertificates()) ?? []
+        
+        // Check SIP status
+        let sipStatus = getSIPStatus()
+        
+        // Generate recommendations
+        let recommendations = generateDevelopmentRecommendations(
+            developerMode: developerModeEnabled,
+            certificates: certificates,
+            sipStatus: sipStatus
+        )
+        
+        return DevelopmentStatusReport(
+            developerModeEnabled: developerModeEnabled,
+            availableCertificates: certificates,
+            sipStatus: sipStatus,
+            canInstallUnsigned: !sipStatus.isEnabled,
+            canInstallSigned: !certificates.isEmpty,
+            recommendations: recommendations,
+            generationTime: Date().timeIntervalSince(startTime)
+        )
+    }
+    
+    // MARK: - Private Development Mode Methods
+    
+    private func generateRecommendedActions(
+        developerModeEnabled: Bool,
+        hasCertificates: Bool,
+        signingSucceeded: Bool? = nil
+    ) -> [String] {
+        var actions: [String] = []
+        
+        if !developerModeEnabled {
+            actions.append("Enable Developer Mode: sudo systemextensionsctl developer on")
+        }
+        
+        if !hasCertificates {
+            actions.append("Install Apple Developer certificates through Xcode or Apple Developer portal")
+            actions.append("Consider disabling SIP for unsigned development: csrutil disable")
+        } else if let signingSucceeded = signingSucceeded, !signingSucceeded {
+            actions.append("Check certificate validity and keychain access permissions")
+            actions.append("Verify certificate is suitable for System Extension signing")
+        }
+        
+        if !developerModeEnabled || !hasCertificates {
+            actions.append("Review System Extension setup documentation")
+        }
+        
+        return actions
+    }
+    
+    private func generateDevelopmentRecommendations(
+        developerMode: Bool,
+        certificates: [CodeSigningCertificate],
+        sipStatus: SIPStatus
+    ) -> [DevelopmentRecommendation] {
+        var recommendations: [DevelopmentRecommendation] = []
+        
+        if !developerMode {
+            recommendations.append(DevelopmentRecommendation(
+                priority: .high,
+                category: .developerMode,
+                title: "Enable Developer Mode",
+                description: "System Extension developer mode is not enabled",
+                action: "Run: sudo systemextensionsctl developer on",
+                impact: "Required for loading unsigned System Extensions during development"
+            ))
+        }
+        
+        if certificates.isEmpty {
+            recommendations.append(DevelopmentRecommendation(
+                priority: .medium,
+                category: .certificates,
+                title: "Install Development Certificates",
+                description: "No code signing certificates found in keychain",
+                action: "Install Apple Developer certificates through Xcode",
+                impact: "Enables proper code signing for System Extensions"
+            ))
+        } else {
+            // Check certificate expiration
+            let expiredCerts = certificates.filter { $0.expirationDate < Date() }
+            if !expiredCerts.isEmpty {
+                recommendations.append(DevelopmentRecommendation(
+                    priority: .high,
+                    category: .certificates,
+                    title: "Renew Expired Certificates",
+                    description: "\(expiredCerts.count) certificate(s) have expired",
+                    action: "Renew certificates through Apple Developer portal",
+                    impact: "Prevents signing failures and enables proper System Extension deployment"
+                ))
+            }
+        }
+        
+        if sipStatus.isEnabled && certificates.isEmpty {
+            recommendations.append(DevelopmentRecommendation(
+                priority: .low,
+                category: .systemConfiguration,
+                title: "Consider SIP Configuration",
+                description: "SIP is enabled but no signing certificates available",
+                action: "Either install certificates OR disable SIP for unsigned development",
+                impact: "Enables unsigned System Extension loading for development"
+            ))
+        }
+        
+        return recommendations
+    }
+    
+    private func getSIPStatus() -> SIPStatus {
+        let process = Process()
+        process.launchPath = "/usr/bin/csrutil"
+        process.arguments = ["status"]
+        
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: outputData, encoding: .utf8) ?? ""
+            
+            let isEnabled = output.lowercased().contains("enabled")
+            let details = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            return SIPStatus(isEnabled: isEnabled, details: details)
+            
+        } catch {
+            logger.warning("Failed to check SIP status", context: ["error": error.localizedDescription])
+            return SIPStatus(isEnabled: true, details: "Unable to determine SIP status")
+        }
+    }
+    
     private func extractValueBetween(_ string: String, start: String, end: String) -> String {
         guard let startRange = string.range(of: start),
               let endRange = string.range(of: end, range: startRange.upperBound..<string.endIndex) else {
@@ -667,6 +952,132 @@ public struct BundleSigningInfo {
         self.codeSigningFlags = codeSigningFlags
         self.rawOutput = rawOutput
     }
+}
+
+/// Result of development bundle preparation
+public struct DevelopmentBundleResult {
+    public let bundlePath: String
+    public let isSigned: Bool
+    public let certificate: CodeSigningCertificate?
+    public let developerModeEnabled: Bool
+    public let preparationTime: TimeInterval
+    public let warnings: [String]
+    public let signingStatus: DevelopmentSigningStatus
+    public let recommendedActions: [String]
+    
+    public init(
+        bundlePath: String,
+        isSigned: Bool,
+        certificate: CodeSigningCertificate?,
+        developerModeEnabled: Bool,
+        preparationTime: TimeInterval,
+        warnings: [String],
+        signingStatus: DevelopmentSigningStatus,
+        recommendedActions: [String]
+    ) {
+        self.bundlePath = bundlePath
+        self.isSigned = isSigned
+        self.certificate = certificate
+        self.developerModeEnabled = developerModeEnabled
+        self.preparationTime = preparationTime
+        self.warnings = warnings
+        self.signingStatus = signingStatus
+        self.recommendedActions = recommendedActions
+    }
+}
+
+/// Development environment status report
+public struct DevelopmentStatusReport {
+    public let developerModeEnabled: Bool
+    public let availableCertificates: [CodeSigningCertificate]
+    public let sipStatus: SIPStatus
+    public let canInstallUnsigned: Bool
+    public let canInstallSigned: Bool
+    public let recommendations: [DevelopmentRecommendation]
+    public let generationTime: TimeInterval
+    
+    public init(
+        developerModeEnabled: Bool,
+        availableCertificates: [CodeSigningCertificate],
+        sipStatus: SIPStatus,
+        canInstallUnsigned: Bool,
+        canInstallSigned: Bool,
+        recommendations: [DevelopmentRecommendation],
+        generationTime: TimeInterval
+    ) {
+        self.developerModeEnabled = developerModeEnabled
+        self.availableCertificates = availableCertificates
+        self.sipStatus = sipStatus
+        self.canInstallUnsigned = canInstallUnsigned
+        self.canInstallSigned = canInstallSigned
+        self.recommendations = recommendations
+        self.generationTime = generationTime
+    }
+}
+
+/// Development bundle signing status
+public enum DevelopmentSigningStatus: String, CaseIterable {
+    /// Bundle is properly signed
+    case signed = "signed"
+    
+    /// Bundle is unsigned (for development)
+    case unsigned = "unsigned"
+    
+    /// Signing process failed
+    case signingFailed = "signing_failed"
+}
+
+/// System Integrity Protection status
+public struct SIPStatus {
+    public let isEnabled: Bool
+    public let details: String
+    
+    public init(isEnabled: Bool, details: String) {
+        self.isEnabled = isEnabled
+        self.details = details
+    }
+}
+
+/// Development environment recommendation
+public struct DevelopmentRecommendation {
+    public let priority: RecommendationPriority
+    public let category: RecommendationCategory
+    public let title: String
+    public let description: String
+    public let action: String
+    public let impact: String
+    
+    public init(
+        priority: RecommendationPriority,
+        category: RecommendationCategory,
+        title: String,
+        description: String,
+        action: String,
+        impact: String
+    ) {
+        self.priority = priority
+        self.category = category
+        self.title = title
+        self.description = description
+        self.action = action
+        self.impact = impact
+    }
+}
+
+/// Recommendation priority levels
+public enum RecommendationPriority: String, CaseIterable {
+    case low = "low"
+    case medium = "medium"
+    case high = "high"
+    case critical = "critical"
+}
+
+/// Recommendation categories
+public enum RecommendationCategory: String, CaseIterable {
+    case developerMode = "developer_mode"
+    case certificates = "certificates"
+    case systemConfiguration = "system_configuration"
+    case permissions = "permissions"
 }
 
 /// Command execution result
