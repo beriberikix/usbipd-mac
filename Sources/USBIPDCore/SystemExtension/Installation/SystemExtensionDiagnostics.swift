@@ -748,6 +748,511 @@ public final class SystemExtensionDiagnostics {
         return false // Placeholder - would implement actual IPC test
     }
     
+    // MARK: - Comprehensive Diagnostic Reporting
+    
+    /// Analyzes installation issues and provides specific remediation steps
+    /// - Returns: Array of installation issues with detailed analysis
+    public func analyzeInstallationIssues() -> [InstallationIssue] {
+        logger.info("Starting installation issue analysis")
+        
+        var issues: [InstallationIssue] = []
+        
+        // Analyze System Extension status
+        let extensionStatus = checkSystemExtensionStatus()
+        if extensionStatus.status != .healthy {
+            issues.append(InstallationIssue(
+                issueType: .systemExtensionNotLoaded,
+                severity: extensionStatus.status == .error ? .critical : .warning,
+                title: "System Extension Status Issue",
+                description: extensionStatus.message,
+                affectedComponents: ["System Extension Framework"],
+                detectedConditions: extensionStatus.details,
+                rootCause: analyzeSystemExtensionRootCause(from: extensionStatus),
+                remediationSteps: generateSystemExtensionRemediationSteps(from: extensionStatus),
+                automatedFixAvailable: false,
+                relatedLogEntries: getRelatedLogEntries(for: .systemExtensionNotLoaded),
+                estimatedResolutionTime: "5-15 minutes"
+            ))
+        }
+        
+        // Analyze bundle issues
+        let bundleStatus = checkBundleIntegrity()
+        if bundleStatus.status != .healthy {
+            issues.append(InstallationIssue(
+                issueType: .bundleIntegrityFailed,
+                severity: .critical,
+                title: "Bundle Integrity Issue",
+                description: bundleStatus.message,
+                affectedComponents: ["System Extension Bundle"],
+                detectedConditions: bundleStatus.details,
+                rootCause: "System Extension bundle is missing, corrupted, or has structural issues",
+                remediationSteps: [
+                    "1. Rebuild the System Extension: swift build --product SystemExtension",
+                    "2. Verify bundle structure in .build directory",
+                    "3. Check for build errors in compilation output",
+                    "4. Ensure proper code signing if required"
+                ],
+                automatedFixAvailable: false,
+                relatedLogEntries: getRelatedLogEntries(for: .bundleIntegrityFailed),
+                estimatedResolutionTime: "10-30 minutes"
+            ))
+        }
+        
+        // Analyze permission issues
+        let permissionStatus = checkSystemPermissions()
+        if permissionStatus.status == .warning || permissionStatus.status == .error {
+            issues.append(InstallationIssue(
+                issueType: .insufficientPermissions,
+                severity: permissionStatus.status == .error ? .critical : .warning,
+                title: "Permission Configuration Issue",
+                description: permissionStatus.message,
+                affectedComponents: ["System Permissions", "Privacy Settings"],
+                detectedConditions: permissionStatus.details,
+                rootCause: analyzePermissionRootCause(from: permissionStatus),
+                remediationSteps: generatePermissionRemediationSteps(from: permissionStatus),
+                automatedFixAvailable: false,
+                relatedLogEntries: getRelatedLogEntries(for: .insufficientPermissions),
+                estimatedResolutionTime: "5-10 minutes"
+            ))
+        }
+        
+        // Analyze IOKit integration
+        let ioKitStatus = checkIOKitIntegration()
+        if ioKitStatus.status != .healthy {
+            issues.append(InstallationIssue(
+                issueType: .ioKitIntegrationFailed,
+                severity: .critical,
+                title: "IOKit Integration Issue",
+                description: ioKitStatus.message,
+                affectedComponents: ["IOKit Framework", "USB Services"],
+                detectedConditions: ioKitStatus.details,
+                rootCause: "IOKit framework is not accessible or USB services are unavailable",
+                remediationSteps: [
+                    "1. Check system integrity: sudo fsck -f /",
+                    "2. Reset USB subsystem: sudo kextunload -b com.apple.iokit.IOUSBFamily && sudo kextload -b com.apple.iokit.IOUSBFamily",
+                    "3. Restart the system if issues persist",
+                    "4. Verify macOS version compatibility"
+                ],
+                automatedFixAvailable: false,
+                relatedLogEntries: getRelatedLogEntries(for: .ioKitIntegrationFailed),
+                estimatedResolutionTime: "15-45 minutes"
+            ))
+        }
+        
+        // Check for System Extension conflicts
+        let conflicts = detectSystemExtensionConflicts()
+        if !conflicts.isEmpty {
+            issues.append(InstallationIssue(
+                issueType: .systemExtensionConflict,
+                severity: .warning,
+                title: "System Extension Conflicts",
+                description: "Multiple System Extensions may be conflicting",
+                affectedComponents: ["System Extension Framework"],
+                detectedConditions: ["conflicting_extensions": conflicts.joined(separator: ", ")],
+                rootCause: "Multiple System Extensions with similar functionality are installed",
+                remediationSteps: [
+                    "1. List all installed System Extensions: systemextensionsctl list",
+                    "2. Remove conflicting extensions: systemextensionsctl uninstall <bundle-id>",
+                    "3. Restart the system after removal",
+                    "4. Reinstall the desired System Extension"
+                ],
+                automatedFixAvailable: false,
+                relatedLogEntries: getRelatedLogEntries(for: .systemExtensionConflict),
+                estimatedResolutionTime: "10-20 minutes"
+            ))
+        }
+        
+        // Check for developer mode issues
+        if !getDeveloperModeStatus() {
+            let hasSignedBundles = checkForSignedBundles()
+            if !hasSignedBundles {
+                issues.append(InstallationIssue(
+                    issueType: .developerModeRequired,
+                    severity: .warning,
+                    title: "Developer Mode Required",
+                    description: "Unsigned System Extensions require Developer Mode to be enabled",
+                    affectedComponents: ["System Extension Framework", "Security Policy"],
+                    detectedConditions: ["developer_mode": "disabled", "signed_bundles": "none_found"],
+                    rootCause: "Developer Mode is disabled and no signed System Extension bundles are available",
+                    remediationSteps: [
+                        "1. Enable Developer Mode: sudo systemextensionsctl developer on",
+                        "2. Restart the system to apply changes",
+                        "3. Or alternatively, obtain proper code signing certificates",
+                        "4. Rebuild with signed certificates if available"
+                    ],
+                    automatedFixAvailable: false,
+                    relatedLogEntries: getRelatedLogEntries(for: .developerModeRequired),
+                    estimatedResolutionTime: "5-10 minutes"
+                ))
+            }
+        }
+        
+        logger.info("Installation issue analysis completed", context: ["issues_found": issues.count])
+        return issues
+    }
+    
+    /// Detects conflicts between System Extensions
+    /// - Returns: Array of conflicting System Extension bundle identifiers
+    public func detectSystemExtensionConflicts() -> [String] {
+        let installedExtensions = getInstalledSystemExtensions()
+        var conflicts: [String] = []
+        
+        // Look for multiple USB/IOKit related System Extensions
+        let usbRelatedKeywords = ["usb", "iokit", "device", "hardware"]
+        let usbExtensions = installedExtensions.filter { ext in
+            usbRelatedKeywords.contains { keyword in
+                ext.identifier.lowercased().contains(keyword)
+            }
+        }
+        
+        if usbExtensions.count > 1 {
+            conflicts.append(contentsOf: usbExtensions.map { $0.identifier })
+        }
+        
+        return conflicts
+    }
+    
+    /// Generates formatted diagnostic report
+    /// - Parameter format: Output format for the report
+    /// - Returns: Formatted diagnostic report string
+    public func generateDiagnosticReport(format: DiagnosticReportFormat = .text) -> String {
+        let healthReport = performHealthCheck()
+        let installationIssues = analyzeInstallationIssues()
+        let logAnalysis = analyzeSystemLogs(lookbackHours: 24)
+        
+        switch format {
+        case .text:
+            return generateTextReport(healthReport: healthReport, issues: installationIssues, logAnalysis: logAnalysis)
+        case .json:
+            return generateJSONReport(healthReport: healthReport, issues: installationIssues, logAnalysis: logAnalysis)
+        case .markdown:
+            return generateMarkdownReport(healthReport: healthReport, issues: installationIssues, logAnalysis: logAnalysis)
+        }
+    }
+    
+    // MARK: - Report Generation
+    
+    private func generateTextReport(healthReport: SystemExtensionHealthReport, issues: [InstallationIssue], logAnalysis: SystemExtensionLogAnalysis) -> String {
+        var report = ""
+        
+        // Header
+        report += "=== System Extension Diagnostic Report ===\n"
+        report += "Generated: \(ISO8601DateFormatter().string(from: Date()))\n"
+        report += "Overall Health: \(healthReport.overallHealth.displayName)\n\n"
+        
+        // Health Check Summary
+        report += "--- Health Check Results ---\n"
+        for check in healthReport.healthChecks {
+            let statusIcon = check.status == .healthy ? "✓" : check.status == .warning ? "⚠" : "✗"
+            report += "\(statusIcon) \(check.title): \(check.message)\n"
+            
+            if !check.details.isEmpty {
+                for (key, value) in check.details {
+                    report += "  • \(key): \(value)\n"
+                }
+            }
+            
+            if !check.recommendations.isEmpty {
+                report += "  Recommendations:\n"
+                for recommendation in check.recommendations {
+                    report += "    - \(recommendation)\n"
+                }
+            }
+            report += "\n"
+        }
+        
+        // Installation Issues
+        if !issues.isEmpty {
+            report += "--- Installation Issues (\(issues.count)) ---\n"
+            for (index, issue) in issues.enumerated() {
+                let severityIcon = issue.severity == .critical ? "🔴" : issue.severity == .warning ? "🟡" : "🔵"
+                report += "\(index + 1). \(severityIcon) \(issue.title)\n"
+                report += "   Description: \(issue.description)\n"
+                report += "   Root Cause: \(issue.rootCause)\n"
+                report += "   Estimated Resolution Time: \(issue.estimatedResolutionTime)\n"
+                
+                if !issue.remediationSteps.isEmpty {
+                    report += "   Resolution Steps:\n"
+                    for step in issue.remediationSteps {
+                        report += "     \(step)\n"
+                    }
+                }
+                report += "\n"
+            }
+        }
+        
+        // Log Analysis Summary
+        if !logAnalysis.logEntries.isEmpty || !logAnalysis.errorPatterns.isEmpty {
+            report += "--- Log Analysis ---\n"
+            report += "Log Entries Analyzed: \(logAnalysis.logEntries.count)\n"
+            report += "Error Patterns Found: \(logAnalysis.errorPatterns.count)\n"
+            report += "Warning Patterns Found: \(logAnalysis.warningPatterns.count)\n\n"
+            
+            // Recent errors
+            let recentErrors = logAnalysis.errorPatterns.prefix(5)
+            if !recentErrors.isEmpty {
+                report += "Recent Error Patterns:\n"
+                for error in recentErrors {
+                    report += "  • \(error.keyword): \(error.message.prefix(100))...\n"
+                }
+                report += "\n"
+            }
+        }
+        
+        // Performance Metrics
+        if !healthReport.performanceMetrics.isEmpty {
+            report += "--- Performance Metrics ---\n"
+            for (metric, value) in healthReport.performanceMetrics {
+                let formattedValue = metric.contains("time") || metric.contains("duration") ? 
+                    String(format: "%.2fs", value) : String(format: "%.2f", value)
+                report += "• \(metric.replacingOccurrences(of: "_", with: " ").capitalized): \(formattedValue)\n"
+            }
+            report += "\n"
+        }
+        
+        // Recommendations Summary
+        if !healthReport.recommendations.isEmpty {
+            report += "--- Priority Recommendations ---\n"
+            for (index, recommendation) in healthReport.recommendations.enumerated() {
+                report += "\(index + 1). \(recommendation)\n"
+            }
+        }
+        
+        return report
+    }
+    
+    private func generateJSONReport(healthReport: SystemExtensionHealthReport, issues: [InstallationIssue], logAnalysis: SystemExtensionLogAnalysis) -> String {
+        let reportData: [String: Any] = [
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "overall_health": healthReport.overallHealth.rawValue,
+            "health_checks": healthReport.healthChecks.map { check in
+                [
+                    "type": check.checkType.rawValue,
+                    "status": check.status.rawValue,
+                    "title": check.title,
+                    "message": check.message,
+                    "details": check.details,
+                    "recommendations": check.recommendations
+                ]
+            },
+            "installation_issues": issues.map { issue in
+                [
+                    "type": issue.issueType.rawValue,
+                    "severity": issue.severity.rawValue,
+                    "title": issue.title,
+                    "description": issue.description,
+                    "root_cause": issue.rootCause,
+                    "remediation_steps": issue.remediationSteps,
+                    "estimated_resolution_time": issue.estimatedResolutionTime
+                ]
+            },
+            "log_analysis": [
+                "entries_count": logAnalysis.logEntries.count,
+                "error_patterns_count": logAnalysis.errorPatterns.count,
+                "warning_patterns_count": logAnalysis.warningPatterns.count,
+                "analysis_time": logAnalysis.analysisTime
+            ],
+            "performance_metrics": healthReport.performanceMetrics,
+            "recommendations": healthReport.recommendations
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: reportData, options: [.prettyPrinted]),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return "{\"error\": \"Failed to serialize diagnostic report\"}"
+        }
+        
+        return jsonString
+    }
+    
+    private func generateMarkdownReport(healthReport: SystemExtensionHealthReport, issues: [InstallationIssue], logAnalysis: SystemExtensionLogAnalysis) -> String {
+        var report = ""
+        
+        // Header
+        report += "# System Extension Diagnostic Report\n\n"
+        report += "**Generated:** \(ISO8601DateFormatter().string(from: Date()))\n"
+        report += "**Overall Health:** \(healthReport.overallHealth.displayName)\n\n"
+        
+        // Health Check Results
+        report += "## Health Check Results\n\n"
+        for check in healthReport.healthChecks {
+            let statusEmoji = check.status == .healthy ? "✅" : check.status == .warning ? "⚠️" : "❌"
+            report += "### \(statusEmoji) \(check.title)\n\n"
+            report += "**Status:** \(check.message)\n\n"
+            
+            if !check.details.isEmpty {
+                report += "**Details:**\n"
+                for (key, value) in check.details {
+                    report += "- **\(key):** \(value)\n"
+                }
+                report += "\n"
+            }
+            
+            if !check.recommendations.isEmpty {
+                report += "**Recommendations:**\n"
+                for recommendation in check.recommendations {
+                    report += "- \(recommendation)\n"
+                }
+                report += "\n"
+            }
+        }
+        
+        // Installation Issues
+        if !issues.isEmpty {
+            report += "## Installation Issues (\(issues.count))\n\n"
+            for (index, issue) in issues.enumerated() {
+                let severityEmoji = issue.severity == .critical ? "🔴" : issue.severity == .warning ? "🟡" : "🔵"
+                report += "### \(index + 1). \(severityEmoji) \(issue.title)\n\n"
+                report += "**Description:** \(issue.description)\n\n"
+                report += "**Root Cause:** \(issue.rootCause)\n\n"
+                report += "**Estimated Resolution Time:** \(issue.estimatedResolutionTime)\n\n"
+                
+                if !issue.remediationSteps.isEmpty {
+                    report += "**Resolution Steps:**\n"
+                    for step in issue.remediationSteps {
+                        report += "\(step)\n"
+                    }
+                    report += "\n"
+                }
+            }
+        }
+        
+        // Log Analysis
+        if !logAnalysis.logEntries.isEmpty || !logAnalysis.errorPatterns.isEmpty {
+            report += "## Log Analysis\n\n"
+            report += "- **Log Entries Analyzed:** \(logAnalysis.logEntries.count)\n"
+            report += "- **Error Patterns Found:** \(logAnalysis.errorPatterns.count)\n"
+            report += "- **Warning Patterns Found:** \(logAnalysis.warningPatterns.count)\n\n"
+        }
+        
+        // Recommendations
+        if !healthReport.recommendations.isEmpty {
+            report += "## Priority Recommendations\n\n"
+            for (index, recommendation) in healthReport.recommendations.enumerated() {
+                report += "\(index + 1). \(recommendation)\n"
+            }
+        }
+        
+        return report
+    }
+    
+    // MARK: - Helper Methods for Issue Analysis
+    
+    private func analyzeSystemExtensionRootCause(from result: HealthCheckResult) -> String {
+        if result.details["State"] == "Deactivated" {
+            return "System Extension is installed but not activated, likely due to user approval pending or system policy restrictions"
+        } else if result.status == .error {
+            return "System Extension is not installed or installation failed"
+        } else {
+            return "System Extension state is unclear, may require user intervention or system restart"
+        }
+    }
+    
+    private func generateSystemExtensionRemediationSteps(from result: HealthCheckResult) -> [String] {
+        if result.status == .error {
+            return [
+                "1. Install the System Extension: swift build && Scripts/install-extension.sh",
+                "2. Check system logs for installation errors",
+                "3. Ensure proper permissions and Developer Mode if needed",
+                "4. Restart the system if installation appears successful but extension is not active"
+            ]
+        } else if result.details["State"] == "Deactivated" {
+            return [
+                "1. Restart the System Extension: systemextensionsctl reset",
+                "2. Check System Preferences > Privacy & Security for approval requests",
+                "3. Approve the System Extension if prompted",
+                "4. Verify system logs for activation errors"
+            ]
+        } else {
+            return result.recommendations
+        }
+    }
+    
+    private func analyzePermissionRootCause(from result: HealthCheckResult) -> String {
+        let details = result.details
+        var causes: [String] = []
+        
+        if details["Full Disk Access"] == "Not granted" {
+            causes.append("Full Disk Access permission not granted")
+        }
+        if details["System Extension Access"] == "Restricted" {
+            causes.append("System Extension access is restricted")
+        }
+        if details["SIP Status"] == "Enabled" && details["System Extension Access"] == "Restricted" {
+            causes.append("System Integrity Protection may be blocking unsigned extensions")
+        }
+        
+        return causes.isEmpty ? "Permission configuration issue" : causes.joined(separator: ", ")
+    }
+    
+    private func generatePermissionRemediationSteps(from result: HealthCheckResult) -> [String] {
+        var steps: [String] = []
+        let details = result.details
+        
+        if details["Full Disk Access"] == "Not granted" {
+            steps.append("1. Open System Preferences > Security & Privacy > Privacy")
+            steps.append("2. Select 'Full Disk Access' from the left sidebar")
+            steps.append("3. Add the USB/IP application to the allowed list")
+        }
+        
+        if details["System Extension Access"] == "Restricted" {
+            steps.append("4. Check System Preferences > Security & Privacy > General for System Extension approval")
+            steps.append("5. Or enable Developer Mode: sudo systemextensionsctl developer on")
+        }
+        
+        if details["SIP Status"] == "Enabled" && !getDeveloperModeStatus() {
+            steps.append("6. Consider enabling Developer Mode for development or obtaining proper certificates")
+        }
+        
+        return steps.isEmpty ? result.recommendations : steps
+    }
+    
+    private func checkForSignedBundles() -> Bool {
+        let commonPaths = [
+            ".build/debug/USBIPSystemExtension.systemextension",
+            ".build/release/USBIPSystemExtension.systemextension"
+        ]
+        
+        for path in commonPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                let validation = validateCodeSigning(bundlePath: path)
+                if let isSigned = validation.metadata?["is_signed"] as? Bool, isSigned {
+                    return true
+                }
+            }
+        }
+        
+        return false
+    }
+    
+    private func getRelatedLogEntries(for issueType: InstallationIssueType) -> [String] {
+        let logAnalysis = analyzeSystemLogs(lookbackHours: 4) // Recent logs only
+        
+        let relevantKeywords: [String]
+        switch issueType {
+        case .systemExtensionNotLoaded:
+            relevantKeywords = ["systemextensions", "extension", "activate", "load"]
+        case .bundleIntegrityFailed:
+            relevantKeywords = ["bundle", "invalid", "corrupt", "missing"]
+        case .insufficientPermissions:
+            relevantKeywords = ["permission", "denied", "access", "privacy"]
+        case .ioKitIntegrationFailed:
+            relevantKeywords = ["iokit", "usb", "device", "hardware"]
+        case .systemExtensionConflict:
+            relevantKeywords = ["conflict", "duplicate", "already"]
+        case .developerModeRequired:
+            relevantKeywords = ["developer", "unsigned", "certificate"]
+        }
+        
+        return logAnalysis.logEntries
+            .filter { entry in
+                relevantKeywords.contains { keyword in
+                    entry.message.lowercased().contains(keyword)
+                }
+            }
+            .prefix(5)
+            .map { $0.message }
+    }
+    
     // MARK: - Log Analysis Helpers
     
     private func getSystemExtensionLogs(since: Date) -> [String] {
@@ -1290,6 +1795,103 @@ public enum SystemExtensionState {
         case .deactivated: return "Deactivated"
         case .activated: return "Activated"  
         case .unknown: return "Unknown"
+        }
+    }
+}
+
+// MARK: - Installation Issue Types
+
+/// Specific installation issue types
+public enum InstallationIssueType: String, Codable, CaseIterable {
+    case systemExtensionNotLoaded = "system_extension_not_loaded"
+    case bundleIntegrityFailed = "bundle_integrity_failed"
+    case insufficientPermissions = "insufficient_permissions"
+    case ioKitIntegrationFailed = "iokit_integration_failed"
+    case systemExtensionConflict = "system_extension_conflict"
+    case developerModeRequired = "developer_mode_required"
+}
+
+/// Detailed installation issue with analysis and remediation
+public struct InstallationIssue: Codable {
+    /// Type of installation issue
+    public let issueType: InstallationIssueType
+    
+    /// Issue severity level
+    public let severity: ValidationSeverity
+    
+    /// Human-readable title
+    public let title: String
+    
+    /// Detailed description
+    public let description: String
+    
+    /// System components affected
+    public let affectedComponents: [String]
+    
+    /// Specific conditions detected
+    public let detectedConditions: [String: String]
+    
+    /// Root cause analysis
+    public let rootCause: String
+    
+    /// Step-by-step remediation instructions
+    public let remediationSteps: [String]
+    
+    /// Whether automated fix is available
+    public let automatedFixAvailable: Bool
+    
+    /// Related log entries
+    public let relatedLogEntries: [String]
+    
+    /// Estimated time to resolve
+    public let estimatedResolutionTime: String
+    
+    public init(
+        issueType: InstallationIssueType,
+        severity: ValidationSeverity,
+        title: String,
+        description: String,
+        affectedComponents: [String],
+        detectedConditions: [String: String],
+        rootCause: String,
+        remediationSteps: [String],
+        automatedFixAvailable: Bool,
+        relatedLogEntries: [String],
+        estimatedResolutionTime: String
+    ) {
+        self.issueType = issueType
+        self.severity = severity
+        self.title = title
+        self.description = description
+        self.affectedComponents = affectedComponents
+        self.detectedConditions = detectedConditions
+        self.rootCause = rootCause
+        self.remediationSteps = remediationSteps
+        self.automatedFixAvailable = automatedFixAvailable
+        self.relatedLogEntries = relatedLogEntries
+        self.estimatedResolutionTime = estimatedResolutionTime
+    }
+}
+
+/// Diagnostic report output format
+public enum DiagnosticReportFormat: String, CaseIterable {
+    case text = "text"
+    case json = "json"
+    case markdown = "markdown"
+    
+    public var displayName: String {
+        switch self {
+        case .text: return "Plain Text"
+        case .json: return "JSON"
+        case .markdown: return "Markdown"
+        }
+    }
+    
+    public var fileExtension: String {
+        switch self {
+        case .text: return "txt"
+        case .json: return "json"
+        case .markdown: return "md"
         }
     }
 }
