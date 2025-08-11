@@ -1,0 +1,75 @@
+{
+  "id": "approval_1754916255486_nkzx1omc2",
+  "title": "Tasks Phase: system-extension-installation - Ready for Review",
+  "filePath": ".spec-workflow/specs/system-extension-installation/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-11T12:44:15.486Z",
+  "category": "spec",
+  "categoryName": "system-extension-installation",
+  "response": "Feedback Summary (6 comments):\n\nGeneral Comments:\n1. Follow git workflow. First task should create a feature branch and commit specs and approvals. Each task should include a git commit with helpful message. Final task should create a PR. PR should ensure that CI completes without error and continues to fix until it is error free.\n2. Refine tasks into smaller tasks and create logical group of tasks into sections.\n\nSpecific Text Comments:\n1. \"- [ ] 11. Create CLI command: setup-dev-environmen...\": The CLI should be as similar as possible to the Linux CLI. These commands deveat from Linux. Implement as shell scripts intstead.\n2. \"- [ ] 16. Update CLI main.swift with new commands\n...\": Replaced with shell scripts\n3. \"integrating CLI commands\": Shell scripts\n4. \"new CLI commands\": shell scripts\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"selection\",\n      \"comment\": \"The CLI should be as similar as possible to the Linux CLI. These commands deveat from Linux. Implement as shell scripts intstead.\",\n      \"timestamp\": \"2025-08-11T12:51:36.783Z\",\n      \"selectedText\": \"- [ ] 11. Create CLI command: setup-dev-environment\\n  - File: Sources/USBIPDCLI/Commands/SetupDevEnvironmentCommand.swift\\n  - Implement environment validation and automated setup command\\n  - Add interactive guidance for certificate installation and developer mode\\n  - Integrate with EnvironmentSetupManager for complete setup workflow\\n  - Purpose: Single command for complete development environment setup\\n  - _Leverage: Sources/USBIPDCLI/CommandLineParser.swift, existing command patterns_\\n  - _Requirements: 2.1, 2.2, 2.4_\\n\\n- [ ] 12. Create CLI command: install-extension\\n  - File: Sources/USBIPDCLI/Commands/InstallExtensionCommand.swift\\n  - Implement automated System Extension installation command\\n  - Add support for force reinstallation and bundle path specification\\n  - Integrate bundle creation, signing, and installation in single workflow\\n  - Purpose: Complete automated installation workflow from CLI\\n  - _Leverage: existing CLI command structure and patterns_\\n  - _Requirements: 1.3, 3.1, 3.2_\\n\\n- [ ] 13. Create CLI command: extension-status\\n  - File: Sources/USBIPDCLI/Commands/ExtensionStatusCommand.swift\\n  - Implement detailed System Extension status and health reporting\\n  - Add diagnostic information display with formatting and color output\\n  - Integrate with SystemExtensionDiagnostics for comprehensive status\\n  - Purpose: Detailed status visibility for developers and troubleshooting\\n  - _Leverage: Sources/USBIPDCLI/OutputFormatter.swift, existing output patterns_\\n  - _Requirements: 5.1, 5.2_\\n\\n- [ ] 14. Create CLI command: validate-bundle\\n  - File: Sources/USBIPDCLI/Commands/ValidateBundleCommand.swift\\n  - Implement bundle validation command with detailed reporting\\n  - Add bundle structure, signing, and compatibility verification\\n  - Provide specific remediation suggestions for validation failures\\n  - Purpose: Comprehensive bundle validation tool for development\\n  - _Leverage: existing CLI patterns and output formatting_\\n  - _Requirements: 5.3, 5.4_\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#FFEB3B\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1754916696783_17j4wzfdn\"\n    },\n    {\n      \"type\": \"selection\",\n      \"comment\": \"Replaced with shell scripts\",\n      \"timestamp\": \"2025-08-11T12:51:51.212Z\",\n      \"selectedText\": \"- [ ] 16. Update CLI main.swift with new commands\\n  - File: Sources/USBIPDCLI/main.swift (modify existing)\\n  - Register new commands in command parser and help system\\n  - Add proper command categorization and help text\\n  - Ensure consistent command line interface patterns\\n  - Purpose: Make new functionality accessible through existing CLI\\n  - _Leverage: existing command registration patterns in main.swift_\\n  - _Requirements: All CLI commands_\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#FFEB3B\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1754916711212_czvab179g\"\n    },\n    {\n      \"type\": \"selection\",\n      \"comment\": \"Shell scripts\",\n      \"timestamp\": \"2025-08-11T12:52:20.494Z\",\n      \"selectedText\": \"integrating CLI commands\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#FFEB3B\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1754916740494_2tqdyfwki\"\n    },\n    {\n      \"type\": \"selection\",\n      \"comment\": \"shell scripts\",\n      \"timestamp\": \"2025-08-11T12:52:32.628Z\",\n      \"selectedText\": \"new CLI commands\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#FFEB3B\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1754916752628_g32oalyap\"\n    },\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. First task should create a feature branch and commit specs and approvals. Each task should include a git commit with helpful message. Final task should create a PR. PR should ensure that CI completes without error and continues to fix until it is error free.\",\n      \"timestamp\": \"2025-08-11T12:54:02.278Z\",\n      \"id\": \"comment_1754916842278_c3bcjwk7z\"\n    },\n    {\n      \"type\": \"general\",\n      \"comment\": \"Refine tasks into smaller tasks and create logical group of tasks into sections.\",\n      \"timestamp\": \"2025-08-11T12:54:30.195Z\",\n      \"id\": \"comment_1754916870195_zrh1i8icq\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (6 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. First task should create a feature branch and commit specs and approvals. Each task should include a git commit with helpful message. Final task should create a PR. PR should ensure that CI completes without error and continues to fix until it is error free.\\n2. Refine tasks into smaller tasks and create logical group of tasks into sections.\\n\\nSpecific Text Comments:\\n1. \\\"- [ ] 11. Create CLI command: setup-dev-environmen...\\\": The CLI should be as similar as possible to the Linux CLI. These commands deveat from Linux. Implement as shell scripts intstead.\\n2. \\\"- [ ] 16. Update CLI main.swift with new commands\\n...\\\": Replaced with shell scripts\\n3. \\\"integrating CLI commands\\\": Shell scripts\\n4. \\\"new CLI commands\\\": shell scripts\\n\",\n  \"timestamp\": \"2025-08-11T12:54:32.761Z\"\n}",
+  "respondedAt": "2025-08-11T12:54:32.773Z",
+  "comments": [
+    {
+      "type": "selection",
+      "comment": "The CLI should be as similar as possible to the Linux CLI. These commands deveat from Linux. Implement as shell scripts intstead.",
+      "timestamp": "2025-08-11T12:51:36.783Z",
+      "selectedText": "- [ ] 11. Create CLI command: setup-dev-environment\n  - File: Sources/USBIPDCLI/Commands/SetupDevEnvironmentCommand.swift\n  - Implement environment validation and automated setup command\n  - Add interactive guidance for certificate installation and developer mode\n  - Integrate with EnvironmentSetupManager for complete setup workflow\n  - Purpose: Single command for complete development environment setup\n  - _Leverage: Sources/USBIPDCLI/CommandLineParser.swift, existing command patterns_\n  - _Requirements: 2.1, 2.2, 2.4_\n\n- [ ] 12. Create CLI command: install-extension\n  - File: Sources/USBIPDCLI/Commands/InstallExtensionCommand.swift\n  - Implement automated System Extension installation command\n  - Add support for force reinstallation and bundle path specification\n  - Integrate bundle creation, signing, and installation in single workflow\n  - Purpose: Complete automated installation workflow from CLI\n  - _Leverage: existing CLI command structure and patterns_\n  - _Requirements: 1.3, 3.1, 3.2_\n\n- [ ] 13. Create CLI command: extension-status\n  - File: Sources/USBIPDCLI/Commands/ExtensionStatusCommand.swift\n  - Implement detailed System Extension status and health reporting\n  - Add diagnostic information display with formatting and color output\n  - Integrate with SystemExtensionDiagnostics for comprehensive status\n  - Purpose: Detailed status visibility for developers and troubleshooting\n  - _Leverage: Sources/USBIPDCLI/OutputFormatter.swift, existing output patterns_\n  - _Requirements: 5.1, 5.2_\n\n- [ ] 14. Create CLI command: validate-bundle\n  - File: Sources/USBIPDCLI/Commands/ValidateBundleCommand.swift\n  - Implement bundle validation command with detailed reporting\n  - Add bundle structure, signing, and compatibility verification\n  - Provide specific remediation suggestions for validation failures\n  - Purpose: Comprehensive bundle validation tool for development\n  - _Leverage: existing CLI patterns and output formatting_\n  - _Requirements: 5.3, 5.4_",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#FFEB3B",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1754916696783_17j4wzfdn"
+    },
+    {
+      "type": "selection",
+      "comment": "Replaced with shell scripts",
+      "timestamp": "2025-08-11T12:51:51.212Z",
+      "selectedText": "- [ ] 16. Update CLI main.swift with new commands\n  - File: Sources/USBIPDCLI/main.swift (modify existing)\n  - Register new commands in command parser and help system\n  - Add proper command categorization and help text\n  - Ensure consistent command line interface patterns\n  - Purpose: Make new functionality accessible through existing CLI\n  - _Leverage: existing command registration patterns in main.swift_\n  - _Requirements: All CLI commands_",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#FFEB3B",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1754916711212_czvab179g"
+    },
+    {
+      "type": "selection",
+      "comment": "Shell scripts",
+      "timestamp": "2025-08-11T12:52:20.494Z",
+      "selectedText": "integrating CLI commands",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#FFEB3B",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1754916740494_2tqdyfwki"
+    },
+    {
+      "type": "selection",
+      "comment": "shell scripts",
+      "timestamp": "2025-08-11T12:52:32.628Z",
+      "selectedText": "new CLI commands",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#FFEB3B",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1754916752628_g32oalyap"
+    },
+    {
+      "type": "general",
+      "comment": "Follow git workflow. First task should create a feature branch and commit specs and approvals. Each task should include a git commit with helpful message. Final task should create a PR. PR should ensure that CI completes without error and continues to fix until it is error free.",
+      "timestamp": "2025-08-11T12:54:02.278Z",
+      "id": "comment_1754916842278_c3bcjwk7z"
+    },
+    {
+      "type": "general",
+      "comment": "Refine tasks into smaller tasks and create logical group of tasks into sections.",
+      "timestamp": "2025-08-11T12:54:30.195Z",
+      "id": "comment_1754916870195_zrh1i8icq"
+    }
+  ]
+}

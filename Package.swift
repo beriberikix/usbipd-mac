@@ -25,9 +25,6 @@ let package = Package(
         .executable(
             name: "SystemExtension",
             targets: ["SystemExtension"]),
-        .plugin(
-            name: "SystemExtensionBundleBuilder",
-            targets: ["SystemExtensionBundleBuilder"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -61,9 +58,6 @@ let package = Package(
                 .linkedFramework("SystemExtensions"),
                 .linkedFramework("IOKit")
             ]),
-        .plugin(
-            name: "SystemExtensionBundleBuilder",
-            capability: .buildTool()),
         .testTarget(
             name: "USBIPDCoreTests",
             dependencies: ["USBIPDCore"]),
