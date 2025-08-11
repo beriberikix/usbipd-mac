@@ -23,7 +23,7 @@ let package = Package(
             name: "Common",
             targets: ["Common"]),
         .executable(
-            name: "SystemExtension",
+            name: "USBIPDSystemExtension",
             targets: ["SystemExtension"]),
     ],
     dependencies: [
@@ -38,7 +38,10 @@ let package = Package(
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
-            exclude: ["README-USB-Implementation.md"]),
+            exclude: ["README-USB-Implementation.md"],
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]),
         .target(
             name: "Common",
             dependencies: []),
