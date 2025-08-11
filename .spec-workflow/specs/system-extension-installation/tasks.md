@@ -146,7 +146,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
 
 ### Section 6: Environment and Diagnostics
 
-- [ ] 6.1 Create EnvironmentSetupManager
+- [x] 6.1 Create EnvironmentSetupManager
   - File: Sources/USBIPDCore/SystemExtension/Installation/EnvironmentSetupManager.swift
   - Implement development environment validation
   - Add SIP status checking and Xcode Command Line Tools detection
@@ -156,7 +156,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: Sources/Common/Logger.swift_
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 6.2 Create SystemExtensionDiagnostics foundation
+- [x] 6.2 Create SystemExtensionDiagnostics foundation
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionDiagnostics.swift
   - Create diagnostic framework with health checking
   - Implement bundle validation and integrity checking
@@ -165,7 +165,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - Git commit: "feat: create SystemExtensionDiagnostics foundation"
   - _Requirements: 5.1, 5.2_
 
-- [ ] 6.3 Implement comprehensive diagnostic reporting
+- [x] 6.3 Implement comprehensive diagnostic reporting
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionDiagnostics.swift (continue)
   - Add detailed diagnostic reporting with specific remediation steps
   - Implement system extension conflict detection
@@ -177,7 +177,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
 
 ### Section 7: Shell Scripts (Linux CLI Compatibility)
 
-- [ ] 7.1 Create setup-dev-environment.sh script
+- [x] 7.1 Create setup-dev-environment.sh script
   - File: Scripts/setup-dev-environment.sh
   - Create shell script for automated development environment setup
   - Add interactive guidance for certificate installation and developer mode
@@ -187,7 +187,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: Scripts/ directory patterns, existing CLI integration_
   - _Requirements: 2.1, 2.2, 2.4_
 
-- [ ] 7.2 Create install-extension.sh script
+- [x] 7.2 Create install-extension.sh script
   - File: Scripts/install-extension.sh
   - Create shell script for automated System Extension installation
   - Add support for force reinstallation and bundle path specification
@@ -196,7 +196,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - Git commit: "feat: add install-extension.sh for automated installation"
   - _Requirements: 1.3, 3.1, 3.2_
 
-- [ ] 7.3 Create system extension status and validation scripts
+- [x] 7.3 Create system extension status and validation scripts
   - File: Scripts/extension-status.sh
   - File: Scripts/validate-bundle.sh
   - Create status reporting script with comprehensive System Extension information
