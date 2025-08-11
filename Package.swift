@@ -40,7 +40,8 @@ let package = Package(
             dependencies: ["USBIPDCore", "Common"]),
         .target(
             name: "USBIPDCore",
-            dependencies: ["Common"]),
+            dependencies: ["Common"],
+            exclude: ["README-USB-Implementation.md"]),
         .target(
             name: "Common",
             dependencies: []),

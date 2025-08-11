@@ -5,6 +5,52 @@ import Foundation
 import Common
 import SystemExtensions
 
+/// Active request tracking for concurrent USB request processing
+private class ActiveRequestTracker {
+    private var requestCounts: [UUID: Int] = [:]
+    private let queue = DispatchQueue(label: "com.usbipd.active-requests", attributes: .concurrent)
+    
+    /// Get current active request count for a client connection
+    func getActiveRequestCount(for connectionId: UUID) -> Int {
+        return queue.sync {
+            return requestCounts[connectionId] ?? 0
+        }
+    }
+    
+    /// Increment active request count for a client connection
+    func incrementActiveRequests(for connectionId: UUID) {
+        queue.async(flags: .barrier) {
+            self.requestCounts[connectionId] = (self.requestCounts[connectionId] ?? 0) + 1
+        }
+    }
+    
+    /// Decrement active request count for a client connection
+    func decrementActiveRequests(for connectionId: UUID) {
+        queue.async(flags: .barrier) {
+            if let currentCount = self.requestCounts[connectionId], currentCount > 0 {
+                self.requestCounts[connectionId] = currentCount - 1
+                if self.requestCounts[connectionId] == 0 {
+                    self.requestCounts.removeValue(forKey: connectionId)
+                }
+            }
+        }
+    }
+    
+    /// Remove all active requests for a client connection (on disconnect)
+    func removeAllRequests(for connectionId: UUID) {
+        queue.async(flags: .barrier) {
+            self.requestCounts.removeValue(forKey: connectionId)
+        }
+    }
+    
+    /// Get total active request count across all connections
+    var totalActiveRequests: Int {
+        return queue.sync {
+            return requestCounts.values.reduce(0, +)
+        }
+    }
+}
+
 /// Extension for DateFormatter to provide consistent log formatting
 extension DateFormatter {
     static let logFormatter: DateFormatter = {
@@ -50,6 +96,15 @@ public class ServerCoordinator: USBIPServer {
     /// Flag indicating if the server is running
     private var isServerRunning = false
     
+    /// Concurrent request processing queue
+    private let requestProcessingQueue: DispatchQueue
+    
+    /// Active request tracking for concurrent processing
+    private let activeRequests = ActiveRequestTracker()
+    
+    /// Maximum concurrent requests per client connection
+    private let maxConcurrentRequestsPerClient: Int
+    
     /// System Extension installer for managing System Extension lifecycle
     private let systemExtensionInstaller: SystemExtensionInstaller?
     
@@ -72,6 +127,14 @@ public class ServerCoordinator: USBIPServer {
         self.networkService = networkService
         self.deviceDiscovery = deviceDiscovery
         self.config = config
+        
+        // Initialize concurrent processing infrastructure
+        self.requestProcessingQueue = DispatchQueue(
+            label: "com.usbipd.request-processing", 
+            qos: DispatchQoS(qosClass: config.usbRequestQoS, relativePriority: 0), 
+            attributes: .concurrent
+        )
+        self.maxConcurrentRequestsPerClient = config.maxConcurrentRequests
         
         // Initialize System Extension components if paths are provided
         if let bundlePath = systemExtensionBundlePath,
@@ -177,7 +240,7 @@ public class ServerCoordinator: USBIPServer {
             // Create a local mutable variable for the connection
             var connection = clientConnection
             
-            // Set up data handler for the connection
+            // Set up data handler for the connection with concurrent processing
             connection.onDataReceived = { [weak self] data in
                 guard let self = self else { return }
                 
@@ -186,32 +249,55 @@ public class ServerCoordinator: USBIPServer {
                     "dataSize": data.count
                 ])
                 
-                do {
-                    // Process the request using the request processor
-                    let responseData = try self.requestProcessor.processRequest(data)
-                    
-                    // Send the response back to the client
-                    try connection.send(data: responseData)
-                    
-                    self.logger.debug("Sent response to client", context: [
+                // Check if this connection has reached its concurrent request limit
+                let activeCount = self.activeRequests.getActiveRequestCount(for: connection.id)
+                if activeCount >= self.maxConcurrentRequestsPerClient {
+                    self.logger.warning("Client connection reached concurrent request limit", context: [
                         "connectionId": connection.id.uuidString,
-                        "responseSize": responseData.count
+                        "activeRequests": activeCount,
+                        "limit": self.maxConcurrentRequestsPerClient
                     ])
-                } catch {
-                    self.logger.error("Failed to process request", context: [
-                        "connectionId": connection.id.uuidString,
-                        "error": error.localizedDescription
-                    ])
+                    // Could send error response or drop request
+                    return
+                }
+                
+                // Increment active request count
+                self.activeRequests.incrementActiveRequests(for: connection.id)
+                
+                // Process request concurrently
+                self.requestProcessingQueue.async {
+                    defer {
+                        // Always decrement active request count when done
+                        self.activeRequests.decrementActiveRequests(for: connection.id)
+                    }
                     
-                    // Forward error to server error handler
-                    self.onError?(error)
-                    
-                    // Close the connection on critical errors
-                    if case USBIPProtocolError.invalidHeader = error {
-                        self.logger.warning("Closing connection due to invalid header", context: [
-                            "connectionId": connection.id.uuidString
+                    do {
+                        // Process the request using the request processor
+                        let responseData = try self.requestProcessor.processRequest(data)
+                        
+                        // Send the response back to the client (this must be thread-safe)
+                        try connection.send(data: responseData)
+                        
+                        self.logger.debug("Sent response to client", context: [
+                            "connectionId": connection.id.uuidString,
+                            "responseSize": responseData.count
                         ])
-                        try? connection.close()
+                    } catch {
+                        self.logger.error("Failed to process request", context: [
+                            "connectionId": connection.id.uuidString,
+                            "error": error.localizedDescription
+                        ])
+                        
+                        // Forward error to server error handler
+                        self.onError?(error)
+                        
+                        // Close the connection on critical errors
+                        if case USBIPProtocolError.invalidHeader = error {
+                            self.logger.warning("Closing connection due to invalid header", context: [
+                                "connectionId": connection.id.uuidString
+                            ])
+                            try? connection.close()
+                        }
                     }
                 }
             }
@@ -234,8 +320,13 @@ public class ServerCoordinator: USBIPServer {
         networkService.onClientDisconnected = { [weak self] clientConnection in
             guard let self = self else { return }
             
-            self.logger.info("Client disconnected", context: ["connectionId": clientConnection.id.uuidString])
-            // Clean up resources if needed
+            self.logger.info("Client disconnected", context: [
+                "connectionId": clientConnection.id.uuidString,
+                "activeRequests": self.activeRequests.getActiveRequestCount(for: clientConnection.id)
+            ])
+            
+            // Clean up active request tracking for this client
+            self.activeRequests.removeAllRequests(for: clientConnection.id)
         }
         
         // Handle device connections

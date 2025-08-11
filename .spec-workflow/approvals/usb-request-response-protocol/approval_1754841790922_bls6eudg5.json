@@ -1,0 +1,21 @@
+{
+  "id": "approval_1754841790922_bls6eudg5",
+  "title": "Tasks Phase: usb-request-response-protocol - Ready for Review",
+  "filePath": ".spec-workflow/specs/usb-request-response-protocol/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-10T16:03:10.922Z",
+  "category": "spec",
+  "categoryName": "usb-request-response-protocol",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow git workflow. First task should be to create a new branch from main. Each task should include a git commit with useful message. Last task should create a PR and ensure CI passes or fix until complete.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. First task should be to create a new branch from main. Each task should include a git commit with useful message. Last task should create a PR and ensure CI passes or fix until complete.\",\n      \"timestamp\": \"2025-08-10T16:05:23.675Z\",\n      \"id\": \"comment_1754841923675_ih959tiyb\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. First task should be to create a new branch from main. Each task should include a git commit with useful message. Last task should create a PR and ensure CI passes or fix until complete.\\n\\n\",\n  \"timestamp\": \"2025-08-10T16:05:29.942Z\"\n}",
+  "respondedAt": "2025-08-10T16:05:29.952Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. First task should be to create a new branch from main. Each task should include a git commit with useful message. Last task should create a PR and ensure CI passes or fix until complete.",
+      "timestamp": "2025-08-10T16:05:23.675Z",
+      "id": "comment_1754841923675_ih959tiyb"
+    }
+  ]
+}

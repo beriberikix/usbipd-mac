@@ -45,6 +45,47 @@ extension Common.LogLevel: Codable {
     }
 }
 
+/// Extension to make DispatchQoS.QoSClass Codable for configuration serialization
+extension DispatchQoS.QoSClass: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        
+        switch rawValue.lowercased() {
+        case "background": self = .background
+        case "utility": self = .utility
+        case "default": self = .default
+        case "userinitiated": self = .userInitiated
+        case "userinteractive": self = .userInteractive
+        case "unspecified": self = .unspecified
+        default:
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Invalid QoS class: \(rawValue)"
+                )
+            )
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        let rawValue: String
+        
+        switch self {
+        case .background: rawValue = "background"
+        case .utility: rawValue = "utility"
+        case .default: rawValue = "default"
+        case .userInitiated: rawValue = "userinitiated"
+        case .userInteractive: rawValue = "userinteractive"
+        case .unspecified: rawValue = "unspecified"
+        @unknown default: rawValue = "default"
+        }
+        
+        try container.encode(rawValue)
+    }
+}
+
 /// Server configuration class
 public class ServerConfig: Codable {
     /// Default configuration file name
@@ -83,6 +124,26 @@ public class ServerConfig: Codable {
     /// Log file path (nil means log to stdout only)
     public var logFilePath: String?
     
+    // MARK: - USB Operation Configuration
+    
+    /// Maximum concurrent USB requests per client connection
+    public var maxConcurrentRequests: Int
+    
+    /// Maximum total concurrent requests across all clients
+    public var maxTotalConcurrentRequests: Int
+    
+    /// Default timeout for USB operations in milliseconds
+    public var usbOperationTimeout: UInt32
+    
+    /// Maximum buffer size for USB transfers (1MB default)
+    public var maxUSBBufferSize: UInt32
+    
+    /// Maximum number of pending URBs per device
+    public var maxPendingURBsPerDevice: Int
+    
+    /// USB request processing queue quality of service
+    public var usbRequestQoS: DispatchQoS.QoSClass
+    
     /// Initialize with default values
     public init(
         port: Int = defaultPort,
@@ -92,7 +153,13 @@ public class ServerConfig: Codable {
         connectionTimeout: TimeInterval = 30.0,
         allowedDevices: [String] = [],
         autoBindDevices: Bool = false,
-        logFilePath: String? = nil
+        logFilePath: String? = nil,
+        maxConcurrentRequests: Int = 16,
+        maxTotalConcurrentRequests: Int = 64,
+        usbOperationTimeout: UInt32 = 5000,
+        maxUSBBufferSize: UInt32 = 1048576,
+        maxPendingURBsPerDevice: Int = 32,
+        usbRequestQoS: DispatchQoS.QoSClass = .userInitiated
     ) {
         self.port = port
         self.logLevel = logLevel
@@ -102,6 +169,12 @@ public class ServerConfig: Codable {
         self.allowedDevices = allowedDevices
         self.autoBindDevices = autoBindDevices
         self.logFilePath = logFilePath
+        self.maxConcurrentRequests = maxConcurrentRequests
+        self.maxTotalConcurrentRequests = maxTotalConcurrentRequests
+        self.usbOperationTimeout = usbOperationTimeout
+        self.maxUSBBufferSize = maxUSBBufferSize
+        self.maxPendingURBsPerDevice = maxPendingURBsPerDevice
+        self.usbRequestQoS = usbRequestQoS
     }
     
     /// Load configuration from file
@@ -197,6 +270,27 @@ public class ServerConfig: Codable {
             throw ServerError.configurationError("Invalid connection timeout: \(connectionTimeout). Must be greater than 0.")
         }
         
+        // Validate USB operation parameters
+        guard maxConcurrentRequests > 0 && maxConcurrentRequests <= 128 else {
+            throw ServerError.configurationError("Invalid max concurrent requests: \(maxConcurrentRequests). Must be between 1 and 128.")
+        }
+        
+        guard maxTotalConcurrentRequests > 0 && maxTotalConcurrentRequests >= maxConcurrentRequests else {
+            throw ServerError.configurationError("Invalid max total concurrent requests: \(maxTotalConcurrentRequests). Must be >= maxConcurrentRequests.")
+        }
+        
+        guard usbOperationTimeout > 0 && usbOperationTimeout <= 60000 else {
+            throw ServerError.configurationError("Invalid USB operation timeout: \(usbOperationTimeout)ms. Must be between 1 and 60000ms.")
+        }
+        
+        guard maxUSBBufferSize > 0 && maxUSBBufferSize <= 10485760 else { // 10MB limit
+            throw ServerError.configurationError("Invalid max USB buffer size: \(maxUSBBufferSize) bytes. Must be between 1 and 10MB.")
+        }
+        
+        guard maxPendingURBsPerDevice > 0 && maxPendingURBsPerDevice <= 256 else {
+            throw ServerError.configurationError("Invalid max pending URBs per device: \(maxPendingURBsPerDevice). Must be between 1 and 256.")
+        }
+        
         // Validate log file path if specified
         if let logPath = logFilePath {
             let logFileURL = URL(fileURLWithPath: logPath)
@@ -235,6 +329,12 @@ public class ServerConfig: Codable {
         allowedDevices = []
         autoBindDevices = false
         logFilePath = nil
+        maxConcurrentRequests = 16
+        maxTotalConcurrentRequests = 64
+        usbOperationTimeout = 5000
+        maxUSBBufferSize = 1048576
+        maxPendingURBsPerDevice = 32
+        usbRequestQoS = .userInitiated
     }
     
     /// Check if a device is allowed based on configuration

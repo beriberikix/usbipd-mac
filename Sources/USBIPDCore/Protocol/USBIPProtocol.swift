@@ -14,6 +14,10 @@ public enum USBIPProtocol {
         case replyDeviceList = 0x0005
         case requestDeviceImport = 0x8003
         case replyDeviceImport = 0x0003
+        case submitRequest = 0x0001      // USBIP_CMD_SUBMIT
+        case submitReply = 0x0013        // USBIP_RET_SUBMIT  
+        case unlinkRequest = 0x0002      // USBIP_CMD_UNLINK
+        case unlinkReply = 0x0004        // USBIP_RET_UNLINK
     }
 }
 

@@ -79,8 +79,104 @@ public struct USBIPMessageEncoder {
     }
     
     /// Encode a device import response
-    public static func encodeDeviceImportResponse(status: UInt32, deviceInfo: USBIPDeviceInfo?) throws -> Data {
-        let response = DeviceImportResponse(status: status, deviceInfo: deviceInfo)
+    public static func encodeDeviceImportResponse(returnCode: UInt32) throws -> Data {
+        let response = DeviceImportResponse(returnCode: returnCode)
+        return try response.encode()
+    }
+    
+    /// Encode a USB SUBMIT request
+    public static func encodeUSBSubmitRequest(
+        seqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32,
+        transferFlags: UInt32,
+        transferBufferLength: UInt32,
+        startFrame: UInt32 = 0,
+        numberOfPackets: UInt32 = 0,
+        interval: UInt32 = 0,
+        setup: Data = Data(count: 8),
+        transferBuffer: Data? = nil
+    ) throws -> Data {
+        let request = USBIPSubmitRequest(
+            seqnum: seqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep,
+            transferFlags: transferFlags,
+            transferBufferLength: transferBufferLength,
+            startFrame: startFrame,
+            numberOfPackets: numberOfPackets,
+            interval: interval,
+            setup: setup,
+            transferBuffer: transferBuffer
+        )
+        return try request.encode()
+    }
+    
+    /// Encode a USB SUBMIT response
+    public static func encodeUSBSubmitResponse(
+        seqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32,
+        status: Int32,
+        actualLength: UInt32,
+        startFrame: UInt32 = 0,
+        numberOfPackets: UInt32 = 0,
+        errorCount: UInt32 = 0,
+        transferBuffer: Data? = nil
+    ) throws -> Data {
+        let response = USBIPSubmitResponse(
+            seqnum: seqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep,
+            status: status,
+            actualLength: actualLength,
+            startFrame: startFrame,
+            numberOfPackets: numberOfPackets,
+            errorCount: errorCount,
+            transferBuffer: transferBuffer
+        )
+        return try response.encode()
+    }
+    
+    /// Encode a USB UNLINK request
+    public static func encodeUSBUnlinkRequest(
+        seqnum: UInt32,
+        unlinkSeqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32
+    ) throws -> Data {
+        let request = USBIPUnlinkRequest(
+            seqnum: seqnum,
+            unlinkSeqnum: unlinkSeqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep
+        )
+        return try request.encode()
+    }
+    
+    /// Encode a USB UNLINK response
+    public static func encodeUSBUnlinkResponse(
+        seqnum: UInt32,
+        unlinkSeqnum: UInt32,
+        devid: UInt32,
+        direction: UInt32,
+        ep: UInt32,
+        status: Int32
+    ) throws -> Data {
+        let response = USBIPUnlinkResponse(
+            seqnum: seqnum,
+            unlinkSeqnum: unlinkSeqnum,
+            devid: devid,
+            direction: direction,
+            ep: ep,
+            status: status
+        )
         return try response.encode()
     }
 }
@@ -120,6 +216,14 @@ public struct USBIPMessageDecoder {
             return try DeviceImportRequest.decode(from: data)
         case .replyDeviceImport:
             return try DeviceImportResponse.decode(from: data)
+        case .submitRequest:
+            return try USBIPSubmitRequest.decode(from: data)
+        case .submitReply:
+            return try USBIPSubmitResponse.decode(from: data)
+        case .unlinkRequest:
+            return try USBIPUnlinkRequest.decode(from: data)
+        case .unlinkReply:
+            return try USBIPUnlinkResponse.decode(from: data)
         }
     }
     
@@ -177,17 +281,107 @@ public struct USBIPMessageDecoder {
     
     /// Decode a device import response with validation
     public static func decodeDeviceImportResponse(from data: Data) throws -> DeviceImportResponse {
-        // Validate minimum data length (header + status)
+        // Validate minimum data length (header + returnCode)
         guard data.count >= 12 else {
             throw USBIPProtocolError.invalidDataLength
         }
         
-        // Validate expected lengths: 12 bytes (error response) or 324 bytes (success response)
-        guard data.count == 12 || data.count == 324 else {
+        // Validate expected length: 12 bytes (header + returnCode)
+        guard data.count == 12 else {
             throw USBIPProtocolError.invalidMessageFormat
         }
         
         return try DeviceImportResponse.decode(from: data)
+    }
+    
+    /// Decode a USB SUBMIT request with validation
+    public static func decodeUSBSubmitRequest(from data: Data) throws -> USBIPSubmitRequest {
+        logger.debug("Decoding USB SUBMIT request", context: ["dataSize": data.count])
+        
+        // Validate minimum data length (header + command fields + setup)
+        guard data.count >= 56 else {
+            logger.error("Invalid data length for USB SUBMIT request", context: ["dataSize": data.count, "requiredSize": 56])
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        let request = try USBIPSubmitRequest.decode(from: data)
+        logger.debug("Successfully decoded USB SUBMIT request", context: [
+            "seqnum": String(request.seqnum),
+            "devid": String(request.devid),
+            "direction": String(request.direction),
+            "endpoint": String(format: "0x%02x", request.ep)
+        ])
+        return request
+    }
+    
+    /// Decode a USB SUBMIT response with validation
+    public static func decodeUSBSubmitResponse(from data: Data) throws -> USBIPSubmitResponse {
+        logger.debug("Decoding USB SUBMIT response", context: ["dataSize": data.count])
+        
+        // Validate minimum data length (header + response fields + reserved)
+        guard data.count >= 52 else {
+            logger.error("Invalid data length for USB SUBMIT response", context: ["dataSize": data.count, "requiredSize": 52])
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        let response = try USBIPSubmitResponse.decode(from: data)
+        logger.debug("Successfully decoded USB SUBMIT response", context: [
+            "seqnum": String(response.seqnum),
+            "status": String(response.status),
+            "actualLength": String(response.actualLength)
+        ])
+        return response
+    }
+    
+    /// Decode a USB UNLINK request with validation
+    public static func decodeUSBUnlinkRequest(from data: Data) throws -> USBIPUnlinkRequest {
+        logger.debug("Decoding USB UNLINK request", context: ["dataSize": data.count])
+        
+        // Validate minimum data length (header + command fields + reserved)
+        guard data.count >= 52 else {
+            logger.error("Invalid data length for USB UNLINK request", context: ["dataSize": data.count, "requiredSize": 52])
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        // Validate exact length for UNLINK request
+        guard data.count == 52 else {
+            logger.error("Invalid message format for USB UNLINK request", context: ["dataSize": data.count, "expectedSize": 52])
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        let request = try USBIPUnlinkRequest.decode(from: data)
+        logger.debug("Successfully decoded USB UNLINK request", context: [
+            "seqnum": String(request.seqnum),
+            "devid": String(request.devid),
+            "direction": String(request.direction),
+            "endpoint": String(format: "0x%02x", request.ep),
+            "unlinkSeqnum": String(request.unlinkSeqnum)
+        ])
+        return request
+    }
+    
+    /// Decode a USB UNLINK response with validation
+    public static func decodeUSBUnlinkResponse(from data: Data) throws -> USBIPUnlinkResponse {
+        logger.debug("Decoding USB UNLINK response", context: ["dataSize": data.count])
+        
+        // Validate minimum data length (header + response fields + reserved)
+        guard data.count >= 52 else {
+            logger.error("Invalid data length for USB UNLINK response", context: ["dataSize": data.count, "requiredSize": 52])
+            throw USBIPProtocolError.invalidDataLength
+        }
+        
+        // Validate exact length for UNLINK response
+        guard data.count == 52 else {
+            logger.error("Invalid message format for USB UNLINK response", context: ["dataSize": data.count, "expectedSize": 52])
+            throw USBIPProtocolError.invalidMessageFormat
+        }
+        
+        let response = try USBIPUnlinkResponse.decode(from: data)
+        logger.debug("Successfully decoded USB UNLINK response", context: [
+            "seqnum": String(response.seqnum),
+            "status": String(response.status)
+        ])
+        return response
     }
     
     /// Validate that data contains a valid USB/IP header
@@ -298,6 +492,17 @@ public struct EndiannessConverter {
             throw USBIPProtocolError.invalidDataLength
         }
         return fromNetworkByteOrder(value)
+    }
+    
+    /// Write Int32 to Data in network byte order
+    public static func writeInt32ToData(_ value: Int32) -> Data {
+        return writeUInt32ToData(UInt32(bitPattern: value))
+    }
+    
+    /// Read Int32 from Data in network byte order
+    public static func readInt32FromData(_ data: Data, at offset: Int) throws -> Int32 {
+        let value = try readUInt32FromData(data, at: offset)
+        return Int32(bitPattern: value)
     }
 }
 
