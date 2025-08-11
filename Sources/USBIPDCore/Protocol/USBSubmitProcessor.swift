@@ -355,6 +355,28 @@ public class USBSubmitProcessor {
                 status = -17 // EEXIST
             case .cancelled:
                 status = -2 // ENOENT (cancelled)
+            case .requestFailed:
+                status = -71 // EPROTO (generic protocol error)
+            case .invalidURB:
+                status = -22 // EINVAL
+            case .deviceNotClaimed:
+                status = -19 // ENODEV
+            case .endpointNotFound:
+                status = -22 // EINVAL
+            case .transferTypeNotSupported:
+                status = -95 // EOPNOTSUPP
+            case .bufferSizeMismatch:
+                status = -22 // EINVAL
+            case .setupPacketRequired:
+                status = -22 // EINVAL
+            case .setupPacketInvalid:
+                status = -22 // EINVAL
+            case .timeoutInvalid:
+                status = -22 // EINVAL
+            case .concurrentRequestLimit:
+                status = -11 // EAGAIN
+            case .requestCancelled:
+                status = -2 // ENOENT (cancelled)
             }
         } else {
             status = -71 // EPROTO (generic protocol error)

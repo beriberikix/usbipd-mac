@@ -201,17 +201,3 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     }
 }
 
-// MARK: - USB Device Communicator Protocol
-
-/// Protocol for USB device communication operations
-/// This will be implemented in later tasks when IOKit integration is added
-public protocol USBDeviceCommunicatorProtocol {
-    /// Execute a USB transfer operation
-    func executeUSBTransfer(_ urb: USBRequestBlock, device: USBDevice) async throws -> USBTransferResult
-    
-    /// Cancel a pending USB transfer operation
-    func cancelUSBTransfer(_ seqnum: UInt32) async throws -> Bool
-    
-    /// Validate that a USB endpoint is available on the device
-    func validateEndpoint(_ endpoint: UInt8, device: USBDevice) throws -> Bool
-}

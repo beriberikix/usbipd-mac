@@ -289,7 +289,7 @@ public extension USBUnlinkProcessor {
             }
             
             // Collect results in order
-            var results = Array<Data?>(repeating: nil, count: dataArray.count)
+            var results = [Data?](repeating: nil, count: dataArray.count)
             for await (index, result) in group {
                 switch result {
                 case .success(let data):

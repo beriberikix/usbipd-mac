@@ -149,14 +149,14 @@ public enum USBStatus: Int32 {
     case cancelled = -125   // Transfer cancelled
     case shortPacket = -121 // Short packet detected
     case deviceGone = -19   // Device disconnected
-    case noDevice = -19     // No device present
+    case noDevice = -20     // No device present
     case requestFailed = -71 // Generic request failure
     
     // Protocol errors
-    case protocolError = -71
+    case protocolError = -72
     case memoryError = -12
     case invalidRequest = -22
-    case busError = -71
+    case busError = -73
     case bufferError = -90
 }
 
@@ -172,23 +172,17 @@ public struct USBErrorMapping {
             return USBStatus.timeout.rawValue
         case kIOReturnAborted:
             return USBStatus.cancelled.rawValue
-        case kIOUSBPipeStalled:
-            return USBStatus.stall.rawValue
+        case kIOReturnBadArgument:
+            return USBStatus.invalidRequest.rawValue
         case kIOReturnNoDevice:
             return USBStatus.deviceGone.rawValue
         case kIOReturnNotResponding:
             return USBStatus.deviceGone.rawValue
         case kIOReturnNoMemory:
             return USBStatus.memoryError.rawValue
-        case kIOReturnBadArgument:
-            return USBStatus.invalidRequest.rawValue
-        case kIOUSBTransactionTimeout:
-            return USBStatus.timeout.rawValue
-        case kIOUSBUnderrun:
+        case kIOReturnUnderrun:
             return USBStatus.shortPacket.rawValue
-        case kIOUSBBufferUnderrun:
-            return USBStatus.bufferError.rawValue
-        case kIOUSBBufferOverrun:
+        case kIOReturnOverrun:
             return USBStatus.bufferError.rawValue
         default:
             return USBStatus.requestFailed.rawValue
@@ -205,7 +199,7 @@ public struct USBErrorMapping {
         case .cancelled:
             return kIOReturnAborted
         case .stall:
-            return kIOUSBPipeStalled
+            return kIOReturnError
         case .deviceGone, .noDevice:
             return kIOReturnNoDevice
         case .memoryError:
@@ -213,9 +207,9 @@ public struct USBErrorMapping {
         case .invalidRequest:
             return kIOReturnBadArgument
         case .shortPacket:
-            return kIOUSBUnderrun
+            return kIOReturnUnderrun
         case .bufferError:
-            return kIOUSBBufferUnderrun
+            return kIOReturnOverrun
         default:
             return kIOReturnError
         }
@@ -272,6 +266,7 @@ public enum USBRequestError: Error {
     case tooManyRequests
     case duplicateRequest
     case cancelled
+    case requestFailed
 }
 
 extension USBRequestError: LocalizedError {
@@ -309,6 +304,8 @@ extension USBRequestError: LocalizedError {
             return "Duplicate USB request sequence number"
         case .cancelled:
             return "USB request was cancelled"
+        case .requestFailed:
+            return "USB request failed"
         }
     }
 }

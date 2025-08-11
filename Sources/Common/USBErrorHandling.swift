@@ -154,7 +154,6 @@ public enum USBIPStatus: Int32 {
     case eproto = -71       // Protocol error
     case eilseq = -84       // Illegal byte sequence
     case etimeout = -110    // Connection timed out
-    case etimedout = -110   // Connection timed out
     case econnreset = -104  // Connection reset by peer
     case enolink = -67      // Link has been severed
     case eremoteio = -121   // Remote I/O error
@@ -196,7 +195,7 @@ public struct USBIPErrorHandling {
         case .endpointError, .transferStalled:
             return USBIPStatus.epipe.rawValue
         case .transferTimeout:
-            return USBIPStatus.etimedout.rawValue
+            return USBIPStatus.etimeout.rawValue
         case .transferCancelled:
             return USBIPStatus.ecanceled.rawValue
         case .bufferError, .setupPacketError:
@@ -241,12 +240,13 @@ public struct USBIPErrorHandling {
         switch ioReturn {
         case kIOReturnSuccess:
             return USBIPStatus.success.rawValue
-        case kIOReturnTimeout, kIOUSBTransactionTimeout:
-            return USBIPStatus.etimedout.rawValue
+        case kIOReturnTimeout:
+            return USBIPStatus.etimeout.rawValue
         case kIOReturnAborted:
             return USBIPStatus.ecanceled.rawValue
-        case kIOUSBPipeStalled:
-            return USBIPStatus.epipe.rawValue
+        // Note: USB-specific IOKit errors are not available in this SDK version
+        // case kIOUSBPipeStalled:
+        //     return USBIPStatus.epipe.rawValue
         case kIOReturnNoDevice, kIOReturnNotResponding:
             return USBIPStatus.enodev.rawValue
         case kIOReturnNoMemory:
@@ -257,10 +257,11 @@ public struct USBIPErrorHandling {
             return USBIPStatus.eacces.rawValue
         case kIOReturnBusy:
             return USBIPStatus.ebusy.rawValue
-        case kIOUSBUnderrun:
-            return USBIPStatus.eremoteio.rawValue
-        case kIOUSBBufferUnderrun, kIOUSBBufferOverrun:
-            return USBIPStatus.eio.rawValue
+        // Note: USB-specific IOKit errors are not available in this SDK version
+        // case kIOUSBUnderrun:
+        //     return USBIPStatus.eremoteio.rawValue
+        // case kIOUSBBufferUnderrun, kIOUSBBufferOverrun:
+        //     return USBIPStatus.eio.rawValue
         default:
             return USBIPStatus.eio.rawValue
         }
@@ -319,7 +320,6 @@ public struct USBIPErrorHandling {
         
         // Basic validation of setup packet structure
         let bmRequestType = setup[0]
-        let bRequest = setup[1]
         
         // Check for reserved bits in bmRequestType
         if (bmRequestType & 0x60) == 0x60 {
