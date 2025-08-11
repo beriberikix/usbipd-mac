@@ -97,7 +97,6 @@ public class USBSubmitProcessor {
                 errorCount: response.errorCount,
                 transferBuffer: response.transferBuffer
             )
-            
         } catch {
             logger.error("SUBMIT request failed", context: [
                 "seqnum": String(request.seqnum),

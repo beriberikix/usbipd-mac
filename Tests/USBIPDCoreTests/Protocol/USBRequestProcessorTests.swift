@@ -324,7 +324,7 @@ final class USBRequestProcessorTests: XCTestCase {
         let invalidData = Data([0xFF, 0xFF, 0xFF, 0xFF])
         
         do {
-            let _ = try await submitProcessor.processSubmitRequest(invalidData)
+            _ = try await submitProcessor.processSubmitRequest(invalidData)
             XCTFail("Expected error for invalid message")
         } catch {
             // Expected error
@@ -386,7 +386,7 @@ final class USBRequestProcessorTests: XCTestCase {
         let invalidData = Data([0xAA, 0xBB, 0xCC, 0xDD])
         
         do {
-            let _ = try await unlinkProcessor.processUnlinkRequest(invalidData)
+            _ = try await unlinkProcessor.processUnlinkRequest(invalidData)
             XCTFail("Expected error for invalid message")
         } catch {
             // Expected error
@@ -449,7 +449,7 @@ final class USBRequestProcessorTests: XCTestCase {
         Task {
             do {
                 let requestData = try createUSBSubmitRequestData(seqnum: 501, bufferLength: 32)
-                let _ = try await submitProcessor.processSubmitRequest(requestData)
+                _ = try await submitProcessor.processSubmitRequest(requestData)
             } catch {
                 // May be cancelled by unlink
             }
@@ -459,7 +459,7 @@ final class USBRequestProcessorTests: XCTestCase {
         Task {
             do {
                 let requestData = try createUSBSubmitRequestData(seqnum: 502, bufferLength: 32)
-                let _ = try await submitProcessor.processSubmitRequest(requestData)
+                _ = try await submitProcessor.processSubmitRequest(requestData)
             } catch {
                 // May be cancelled by unlink
             }
@@ -471,7 +471,7 @@ final class USBRequestProcessorTests: XCTestCase {
             try await Task.sleep(nanoseconds: 25_000_000) // 25ms
             do {
                 let unlinkData = try createUSBUnlinkRequestData(seqnum: 601, unlinkSeqnum: 501)
-                let _ = try await unlinkProcessor.processUnlinkRequest(unlinkData)
+                _ = try await unlinkProcessor.processUnlinkRequest(unlinkData)
             } catch {
                 // Expected if request already completed
             }
@@ -482,7 +482,7 @@ final class USBRequestProcessorTests: XCTestCase {
             try await Task.sleep(nanoseconds: 25_000_000) // 25ms
             do {
                 let unlinkData = try createUSBUnlinkRequestData(seqnum: 602, unlinkSeqnum: 502)
-                let _ = try await unlinkProcessor.processUnlinkRequest(unlinkData)
+                _ = try await unlinkProcessor.processUnlinkRequest(unlinkData)
             } catch {
                 // Expected if request already completed
             }
@@ -555,7 +555,7 @@ final class USBRequestProcessorTests: XCTestCase {
             Task {
                 // Small delay to allow addition
                 try await Task.sleep(nanoseconds: 1_000_000) // 1ms
-                let _ = urbTracker.removeCompletedURB(UInt32(2000 + i))
+                _ = urbTracker.removeCompletedURB(UInt32(2000 + i))
                 expectation.fulfill()
             }
         }

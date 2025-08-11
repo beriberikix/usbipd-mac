@@ -122,7 +122,6 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
                     
                     self.logger.info("Successfully opened USB interface \(interfaceNumber) for device \(deviceKey)")
                     continuation.resume(returning: ())
-                    
                 } catch {
                     self.logger.error("Failed to open USB interface \(interfaceNumber) for device \(deviceKey): \(error)")
                     continuation.resume(throwing: error)
@@ -158,7 +157,6 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
                     
                     self.logger.info("Successfully closed USB interface \(interfaceNumber) for device \(deviceKey)")
                     continuation.resume(returning: ())
-                    
                 } catch {
                     self.logger.error("Failed to close USB interface \(interfaceNumber) for device \(deviceKey): \(error)")
                     continuation.resume(throwing: error)
@@ -293,7 +291,6 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
             
             logger.debug("Control transfer completed with status: \(result.status), length: \(result.actualLength)")
             return result
-            
         } catch {
             logger.error("Control transfer failed for device \(deviceIdentifier(for: device)): \(error)")
             throw error
@@ -345,7 +342,6 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
             
             logger.debug("Bulk transfer completed with status: \(result.status), length: \(result.actualLength)")
             return result
-            
         } catch {
             logger.error("Bulk transfer failed for device \(deviceIdentifier(for: device)): \(error)")
             throw error
@@ -397,7 +393,6 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
             
             logger.debug("Interrupt transfer completed with status: \(result.status), length: \(result.actualLength)")
             return result
-            
         } catch {
             logger.error("Interrupt transfer failed for device \(deviceIdentifier(for: device)): \(error)")
             throw error
@@ -450,7 +445,6 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
             
             logger.debug("Isochronous transfer completed with status: \(result.status), length: \(result.actualLength)")
             return result
-            
         } catch {
             logger.error("Isochronous transfer failed for device \(deviceIdentifier(for: device)): \(error)")
             throw error

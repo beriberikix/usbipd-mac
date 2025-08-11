@@ -270,7 +270,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         // Mock successful transfer would need actual IOKit implementation
         // For now, we test the validation logic
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
             // If we get here without an IOKit interface, it's because the implementation
             // is still using placeholder code. We can test the validation worked.
         } catch USBRequestError.deviceNotAvailable {
@@ -297,7 +297,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: controlRequest)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: controlRequest)
             XCTFail("Expected error for invalid transfer type")
         } catch USBRequestError.transferTypeNotSupported(let type) {
             XCTAssertEqual(type, .bulk)
@@ -320,7 +320,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
             XCTFail("Expected error for missing setup packet")
         } catch USBRequestError.setupPacketRequired {
             // Expected
@@ -343,7 +343,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid setup packet size")
         } catch USBRequestError.setupPacketRequired {
             // Expected
@@ -356,7 +356,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createControlTransferRequest(timeout: 0) // Invalid timeout
         
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid timeout")
         } catch USBRequestError.timeoutInvalid(let timeout) {
             XCTAssertEqual(timeout, 0)
@@ -369,7 +369,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createControlTransferRequest(timeout: 40000) // Too high timeout
         
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
             XCTFail("Expected error for excessive timeout")
         } catch USBRequestError.timeoutInvalid(let timeout) {
             XCTAssertEqual(timeout, 40000)
@@ -383,7 +383,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createControlTransferRequest()
         
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
             XCTFail("Expected error when device not claimed")
         } catch USBRequestError.deviceNotClaimed {
             // Expected
@@ -404,7 +404,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         
         // Test validation logic
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {
@@ -416,7 +416,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createControlTransferRequest()
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid transfer type")
         } catch USBRequestError.transferTypeNotSupported(let type) {
             XCTAssertEqual(type, .control)
@@ -439,7 +439,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
             XCTFail("Expected error for missing transfer buffer")
         } catch USBRequestError.invalidParameters {
             // Expected
@@ -457,7 +457,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
             XCTFail("Expected error for buffer size mismatch")
         } catch USBRequestError.bufferSizeMismatch(let expected, let actual) {
             XCTAssertEqual(expected, 64)
@@ -471,7 +471,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createBulkTransferRequest(timeout: 50000) // Too high
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid timeout")
         } catch USBRequestError.timeoutInvalid(let timeout) {
             XCTAssertEqual(timeout, 50000)
@@ -486,7 +486,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createInterruptTransferRequest()
         
         do {
-            let _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {
@@ -498,7 +498,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createBulkTransferRequest()
         
         do {
-            let _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid transfer type")
         } catch USBRequestError.transferTypeNotSupported(let type) {
             XCTAssertEqual(type, .bulk)
@@ -516,7 +516,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
             XCTFail("Expected error for buffer size mismatch")
         } catch USBRequestError.bufferSizeMismatch(let expected, let actual) {
             XCTAssertEqual(expected, 8)
@@ -530,7 +530,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createInterruptTransferRequest(timeout: 0)
         
         do {
-            let _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid timeout")
         } catch USBRequestError.timeoutInvalid(let timeout) {
             XCTAssertEqual(timeout, 0)
@@ -545,7 +545,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createIsochronousTransferRequest()
         
         do {
-            let _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {
@@ -557,7 +557,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createControlTransferRequest()
         
         do {
-            let _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid transfer type")
         } catch USBRequestError.transferTypeNotSupported(let type) {
             XCTAssertEqual(type, .control)
@@ -575,7 +575,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
             XCTFail("Expected error for buffer size mismatch")
         } catch USBRequestError.bufferSizeMismatch(let expected, let actual) {
             XCTAssertEqual(expected, 1024)
@@ -589,7 +589,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createIsochronousTransferRequest(numberOfPackets: 0) // Invalid
         
         do {
-            let _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
             XCTFail("Expected error for invalid parameters")
         } catch USBRequestError.invalidParameters {
             // Expected
@@ -606,7 +606,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createBulkTransferRequest(endpoint: 0x12)
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected - we can't test the actual mapping without IOKit interface
             // but the validation logic runs
@@ -644,7 +644,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         XCTAssertLessThanOrEqual(errors.count, 5)
         
         // Verify at least one interface can be queried
-        let _ = deviceCommunicator.isInterfaceOpen(device: testDevice, interfaceNumber: 0)
+        _ = deviceCommunicator.isInterfaceOpen(device: testDevice, interfaceNumber: 0)
     }
     
     func testConcurrentTransferRequests() async throws {
@@ -655,7 +655,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         Task {
             do {
                 let request = createControlTransferRequest()
-                let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+                _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
             } catch {
                 // Expected to fail due to IOKit limitations
             }
@@ -665,7 +665,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         Task {
             do {
                 let request = createBulkTransferRequest()
-                let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+                _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
             } catch {
                 // Expected to fail due to IOKit limitations
             }
@@ -675,7 +675,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         Task {
             do {
                 let request = createInterruptTransferRequest()
-                let _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+                _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
             } catch {
                 // Expected to fail due to IOKit limitations
             }
@@ -748,7 +748,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createControlTransferRequest(timeout: 30000) // Maximum allowed
         
         do {
-            let _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {
@@ -764,7 +764,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {
@@ -779,7 +779,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         )
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {
@@ -791,7 +791,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createBulkTransferRequest(endpoint: 0xFF) // Max endpoint
         
         do {
-            let _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {
@@ -803,7 +803,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         let request = createIsochronousTransferRequest(numberOfPackets: 1024) // High packet count
         
         do {
-            let _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
         } catch USBRequestError.deviceNotAvailable {
             // Expected when IOKit interface is not available
         } catch {

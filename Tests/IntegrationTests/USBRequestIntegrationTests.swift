@@ -130,7 +130,7 @@ final class USBRequestIntegrationTests: XCTestCase {
         switch message {
         case .data(let data):
             return try T.decode(from: data)
-        case .string(_):
+        case .string:
             throw USBIPProtocolError.invalidMessage
         @unknown default:
             throw USBIPProtocolError.invalidMessage
@@ -559,7 +559,7 @@ final class USBRequestIntegrationTests: XCTestCase {
                 )
                 
                 try await sendUSBIPMessage(request, to: client)
-                let _ = try await receiveUSBIPResponse(USBIPSubmitResponse.self, from: client)
+                _ = try await receiveUSBIPResponse(USBIPSubmitResponse.self, from: client)
             }
             
             client.cancel(with: .normalClosure, reason: nil)
@@ -682,7 +682,7 @@ final class USBRequestIntegrationTests: XCTestCase {
         )
         
         try await sendUSBIPMessage(request, to: client)
-        let _ = try await receiveUSBIPResponse(USBIPSubmitResponse.self, from: client)
+        _ = try await receiveUSBIPResponse(USBIPSubmitResponse.self, from: client)
         
         // Get status after operations
         XCTAssertNoThrow(try statusCommand.execute(with: []), "Status command should work after operations")

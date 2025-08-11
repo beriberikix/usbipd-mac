@@ -77,7 +77,7 @@ final class USBTransferPerformanceTests: XCTestCase {
         
         // Warm up with a few requests
         for _ in 0..<5 {
-            let _ = try await performControlTransfer(device: device, seqnum: 0)
+            _ = try await performControlTransfer(device: device, seqnum: 0)
         }
         
         // Measure latency for multiple iterations
@@ -85,7 +85,7 @@ final class USBTransferPerformanceTests: XCTestCase {
             let startTime = CFAbsoluteTimeGetCurrent()
             
             do {
-                let _ = try await performControlTransfer(device: device, seqnum: UInt32(i + 1))
+                _ = try await performControlTransfer(device: device, seqnum: UInt32(i + 1))
                 let endTime = CFAbsoluteTimeGetCurrent()
                 let latency = (endTime - startTime) * 1000.0 // Convert to milliseconds
                 latencies.append(latency)
@@ -144,7 +144,7 @@ final class USBTransferPerformanceTests: XCTestCase {
             let startTime = CFAbsoluteTimeGetCurrent()
             
             do {
-                let _ = try await performBulkTransfer(
+                _ = try await performBulkTransfer(
                     device: device,
                     seqnum: UInt32(i + 1),
                     endpoint: bulkEndpoint,
@@ -200,7 +200,7 @@ final class USBTransferPerformanceTests: XCTestCase {
         
         while (CFAbsoluteTimeGetCurrent() - startTime) < testDuration {
             do {
-                let _ = try await performControlTransfer(device: device, seqnum: seqnum)
+                _ = try await performControlTransfer(device: device, seqnum: seqnum)
                 completedTransfers += 1
                 seqnum += 1
             } catch {
@@ -307,7 +307,7 @@ final class USBTransferPerformanceTests: XCTestCase {
             for i in 0..<concurrentCount {
                 Task {
                     do {
-                        let _ = try await performControlTransfer(device: device, seqnum: UInt32(i + 1))
+                        _ = try await performControlTransfer(device: device, seqnum: UInt32(i + 1))
                         completedCount += 1
                     } catch {
                         failedCount += 1
@@ -369,7 +369,7 @@ final class USBTransferPerformanceTests: XCTestCase {
         for i in 0..<requestCount {
             Task {
                 do {
-                    let _ = try await performControlTransfer(device: device, seqnum: UInt32(i + 1))
+                    _ = try await performControlTransfer(device: device, seqnum: UInt32(i + 1))
                     completedRequests += 1
                 } catch {
                     if (error as? CancellationError) != nil {
@@ -387,7 +387,7 @@ final class USBTransferPerformanceTests: XCTestCase {
             for i in 0..<unlinkCount {
                 Task {
                     do {
-                        let _ = try await performUnlinkRequest(
+                        _ = try await performUnlinkRequest(
                             device: device,
                             seqnum: UInt32(requestCount + i + 1),
                             unlinkSeqnum: UInt32(i + 1)
@@ -449,7 +449,7 @@ final class USBTransferPerformanceTests: XCTestCase {
             for i in 0..<batchSize {
                 Task {
                     do {
-                        let _ = try await performControlTransfer(device: device, seqnum: UInt32(requestCount + i + 1))
+                        _ = try await performControlTransfer(device: device, seqnum: UInt32(requestCount + i + 1))
                     } catch {
                         // Continue test despite failures
                     }

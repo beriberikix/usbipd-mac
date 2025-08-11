@@ -71,7 +71,6 @@ public class USBUnlinkProcessor {
                 ep: response.ep,
                 status: response.status
             )
-            
         } catch {
             logger.error("UNLINK request failed", context: [
                 "seqnum": String(request.seqnum),
