@@ -510,8 +510,15 @@ public class MockIOKitUSBInterface {
         return operationCalls.last { $0.operation == operation }
     }
     
+    /// Lifecycle verification result
+    public struct LifecycleVerification {
+        public let opened: Bool
+        public let closed: Bool
+        public let properSequence: Bool
+    }
+    
     /// Verify that interface was opened and closed properly
-    public func verifyLifecycle() -> (opened: Bool, closed: Bool, properSequence: Bool) {
+    public func verifyLifecycle() -> LifecycleVerification {
         let opened = !openCalls.isEmpty
         let closed = !closeCalls.isEmpty
         var properSequence = true
@@ -521,7 +528,7 @@ public class MockIOKitUSBInterface {
             properSequence = openCalls.last! < closeCalls.last!
         }
         
-        return (opened: opened, closed: closed, properSequence: properSequence)
+        return LifecycleVerification(opened: opened, closed: closed, properSequence: properSequence)
     }
     
     /// Get total number of transfer operations performed

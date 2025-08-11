@@ -392,6 +392,212 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         }
     }
     
+    // MARK: - Bulk Transfer Tests
+    
+    func testExecuteBulkTransferOutValidation() async throws {
+        let transferData = Data(repeating: 0x42, count: 64)
+        let request = createBulkTransferRequest(
+            direction: .out,
+            transferBuffer: transferData,
+            bufferLength: 64
+        )
+        
+        // Test validation logic
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteBulkTransferInvalidTransferType() async throws {
+        let request = createControlTransferRequest()
+        
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for invalid transfer type")
+        } catch USBRequestError.transferTypeNotSupported(let type) {
+            XCTAssertEqual(type, .control)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteBulkTransferOutMissingBuffer() async throws {
+        let request = USBRequestBlock(
+            seqnum: 1,
+            devid: 1,
+            direction: .out,
+            endpoint: 0x02,
+            transferType: .bulk,
+            transferFlags: 0,
+            bufferLength: 64,
+            transferBuffer: nil, // Missing buffer for OUT transfer
+            timeout: 5000
+        )
+        
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for missing transfer buffer")
+        } catch USBRequestError.invalidParameters {
+            // Expected
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteBulkTransferBufferSizeMismatch() async throws {
+        let transferData = Data(repeating: 0x42, count: 32) // 32 bytes
+        let request = createBulkTransferRequest(
+            direction: .out,
+            transferBuffer: transferData,
+            bufferLength: 64 // Expects 64 bytes
+        )
+        
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for buffer size mismatch")
+        } catch USBRequestError.bufferSizeMismatch(let expected, let actual) {
+            XCTAssertEqual(expected, 64)
+            XCTAssertEqual(actual, 32)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteBulkTransferInvalidTimeout() async throws {
+        let request = createBulkTransferRequest(timeout: 50000) // Too high
+        
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for invalid timeout")
+        } catch USBRequestError.timeoutInvalid(let timeout) {
+            XCTAssertEqual(timeout, 50000)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    // MARK: - Interrupt Transfer Tests
+    
+    func testExecuteInterruptTransferValidation() async throws {
+        let request = createInterruptTransferRequest()
+        
+        do {
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteInterruptTransferInvalidTransferType() async throws {
+        let request = createBulkTransferRequest()
+        
+        do {
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for invalid transfer type")
+        } catch USBRequestError.transferTypeNotSupported(let type) {
+            XCTAssertEqual(type, .bulk)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteInterruptTransferOutBufferValidation() async throws {
+        let transferData = Data(repeating: 0x55, count: 4)
+        let request = createInterruptTransferRequest(
+            direction: .out,
+            transferBuffer: transferData,
+            bufferLength: 8 // Mismatch
+        )
+        
+        do {
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for buffer size mismatch")
+        } catch USBRequestError.bufferSizeMismatch(let expected, let actual) {
+            XCTAssertEqual(expected, 8)
+            XCTAssertEqual(actual, 4)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteInterruptTransferInvalidTimeout() async throws {
+        let request = createInterruptTransferRequest(timeout: 0)
+        
+        do {
+            _ = try await deviceCommunicator.executeInterruptTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for invalid timeout")
+        } catch USBRequestError.timeoutInvalid(let timeout) {
+            XCTAssertEqual(timeout, 0)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    // MARK: - Isochronous Transfer Tests
+    
+    func testExecuteIsochronousTransferValidation() async throws {
+        let request = createIsochronousTransferRequest()
+        
+        do {
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteIsochronousTransferInvalidTransferType() async throws {
+        let request = createControlTransferRequest()
+        
+        do {
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for invalid transfer type")
+        } catch USBRequestError.transferTypeNotSupported(let type) {
+            XCTAssertEqual(type, .control)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteIsochronousTransferOutBufferValidation() async throws {
+        let transferData = Data(repeating: 0x77, count: 512)
+        let request = createIsochronousTransferRequest(
+            direction: .out,
+            transferBuffer: transferData,
+            bufferLength: 1024 // Mismatch
+        )
+        
+        do {
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for buffer size mismatch")
+        } catch USBRequestError.bufferSizeMismatch(let expected, let actual) {
+            XCTAssertEqual(expected, 1024)
+            XCTAssertEqual(actual, 512)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testExecuteIsochronousTransferInvalidParameters() async throws {
+        let request = createIsochronousTransferRequest(numberOfPackets: 0) // Invalid
+        
+        do {
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+            XCTFail("Expected error for invalid parameters")
+        } catch USBRequestError.invalidParameters {
+            // Expected
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
     // MARK: - Endpoint to Interface Mapping Tests
     
     func testEndpointToInterfaceMapping() async throws {
@@ -491,10 +697,118 @@ final class USBDeviceCommunicatorTests: XCTestCase {
         } catch {
             // Expected error
         }
+        
         // Verify interface is not marked as open after error
         let isOpen = deviceCommunicator.isInterfaceOpen(device: testDevice, interfaceNumber: 0)
         XCTAssertFalse(isOpen)
+        
         // Re-enable claiming and verify operations work
         mockDeviceClaimManager.setDeviceClaimed("\(testDevice.busID)-\(testDevice.deviceID)", claimed: true)
+        try await deviceCommunicator.openUSBInterface(device: testDevice, interfaceNumber: 0)
+        XCTAssertTrue(deviceCommunicator.isInterfaceOpen(device: testDevice, interfaceNumber: 0))
+    }
+    
+    // MARK: - Multiple Device Support Tests
+    
+    func testMultipleDeviceSupport() async throws {
+        let device2 = USBDevice(
+            busID: "1",
+            deviceID: "3",
+            vendorID: 0x9876,
+            productID: 0x5432,
+            deviceClass: 0x08,
+            deviceSubClass: 0x06,
+            deviceProtocol: 0x50,
+            speed: .fullSpeed,
+            manufacturerString: "Another Manufacturer",
+            productString: "Another Device",
+            serialNumberString: "TEST002"
+        )
+        
+        mockDeviceClaimManager.setDeviceClaimed("\(device2.busID)-\(device2.deviceID)", claimed: true)
+        
+        // Open interfaces on both devices
+        try await deviceCommunicator.openUSBInterface(device: testDevice, interfaceNumber: 0)
+        try await deviceCommunicator.openUSBInterface(device: device2, interfaceNumber: 0)
+        
+        // Verify both are tracked separately
+        XCTAssertTrue(deviceCommunicator.isInterfaceOpen(device: testDevice, interfaceNumber: 0))
+        XCTAssertTrue(deviceCommunicator.isInterfaceOpen(device: device2, interfaceNumber: 0))
+        
+        // Close one device's interface
+        try await deviceCommunicator.closeUSBInterface(device: testDevice, interfaceNumber: 0)
+        
+        XCTAssertFalse(deviceCommunicator.isInterfaceOpen(device: testDevice, interfaceNumber: 0))
+        XCTAssertTrue(deviceCommunicator.isInterfaceOpen(device: device2, interfaceNumber: 0))
+    }
+    
+    // MARK: - Edge Cases and Boundary Tests
+    
+    func testTransferWithMaxTimeout() async throws {
+        let request = createControlTransferRequest(timeout: 30000) // Maximum allowed
+        
+        do {
+            _ = try await deviceCommunicator.executeControlTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testTransferWithMaxBufferSize() async throws {
+        let largeBuffer = Data(repeating: 0xFF, count: 65536) // 64KB
+        let request = createBulkTransferRequest(
+            transferBuffer: largeBuffer,
+            bufferLength: UInt32(largeBuffer.count)
+        )
+        
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testZeroLengthTransfer() async throws {
+        let request = createBulkTransferRequest(
+            transferBuffer: Data(),
+            bufferLength: 0
+        )
+        
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testHighEndpointNumbers() async throws {
+        let request = createBulkTransferRequest(endpoint: 0xFF) // Max endpoint
+        
+        do {
+            _ = try await deviceCommunicator.executeBulkTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+    
+    func testIsochronousMaxPackets() async throws {
+        let request = createIsochronousTransferRequest(numberOfPackets: 1024) // High packet count
+        
+        do {
+            _ = try await deviceCommunicator.executeIsochronousTransfer(device: testDevice, request: request)
+        } catch USBRequestError.deviceNotAvailable {
+            // Expected when IOKit interface is not available
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
     }
 }
+
