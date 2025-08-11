@@ -105,7 +105,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - Git commit: "feat: implement code signing and verification workflows"
   - _Requirements: 1.2, 4.2, 4.3_
 
-- [-] 4.3 Add development mode and unsigned bundle support
+- [x] 4.3 Add development mode and unsigned bundle support
   - File: Sources/USBIPDCore/SystemExtension/CodeSigning/CodeSigningManager.swift (continue)
   - Implement fallback logic for unsigned development bundles
   - Add development mode detection and guidance
@@ -116,7 +116,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
 
 ### Section 5: Installation System
 
-- [ ] 5.1 Create SystemExtensionInstaller foundation
+- [x] 5.1 Create SystemExtensionInstaller foundation
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionInstaller.swift
   - Create installer class with systemextensionsctl integration
   - Implement installation status detection and monitoring
@@ -126,7 +126,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: Sources/USBIPDCore/SystemExtension/SystemExtensionManager.swift_
   - _Requirements: 3.1, 3.2_
 
-- [ ] 5.2 Implement installation workflows and status monitoring
+- [x] 5.2 Implement installation workflows and status monitoring
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionInstaller.swift (continue)
   - Add automated installation with user approval handling
   - Implement installation verification and health checking
@@ -135,7 +135,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - Git commit: "feat: implement installation workflows and monitoring"
   - _Requirements: 3.1, 3.3, 3.4_
 
-- [ ] 5.3 Add developer mode management
+- [x] 5.3 Add developer mode management
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionInstaller.swift (continue)
   - Implement developer mode detection and enablement
   - Add developer mode guidance and validation
