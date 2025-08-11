@@ -1005,6 +1005,9 @@ public enum SigningVerificationStatus: String, Codable, CaseIterable {
     
     /// Certificate is not trusted
     case certificateUntrusted = "certificate_untrusted"
+    
+    /// Signing process failed
+    case signingFailed = "signing_failed"
 }
 
 // MARK: - System Extension Errors

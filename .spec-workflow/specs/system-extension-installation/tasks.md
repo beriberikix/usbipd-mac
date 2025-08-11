@@ -86,7 +86,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
 
 ### Section 4: Code Signing System
 
-- [ ] 4.1 Create CodeSigningManager certificate detection
+- [x] 4.1 Create CodeSigningManager certificate detection
   - File: Sources/USBIPDCore/SystemExtension/CodeSigning/CodeSigningManager.swift
   - Implement Security framework integration for certificate detection
   - Add certificate enumeration and validation logic
@@ -96,7 +96,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: Sources/Common/Logger.swift_
   - _Requirements: 2.1, 2.2, 4.1_
 
-- [ ] 4.2 Implement code signing workflows
+- [-] 4.2 Implement code signing workflows
   - File: Sources/USBIPDCore/SystemExtension/CodeSigning/CodeSigningManager.swift (continue)
   - Add codesign command generation and execution
   - Implement bundle and executable signing methods
