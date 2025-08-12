@@ -14,7 +14,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-debug}"
 TARGET_BUILD_DIR="${TARGET_BUILD_DIR:-$PROJECT_ROOT/.build/$BUILD_CONFIGURATION}"
 EXTENSION_NAME="${EXTENSION_NAME:-USBIPDSystemExtension}"
-BUNDLE_ID="${BUNDLE_ID:-com.example.usbipd-mac.SystemExtension}"
+BUNDLE_ID="${BUNDLE_ID:-com.usbipd.mac.SystemExtension}"
 BUNDLE_NAME="${BUNDLE_NAME:-$EXTENSION_NAME.systemextension}"
 
 # Derived paths

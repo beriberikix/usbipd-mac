@@ -17,7 +17,7 @@ FORCE_REINSTALL=false
 SKIP_SIGNING=false
 VERBOSE=false
 DRY_RUN=false
-BUNDLE_ID="com.example.usbipd-mac.SystemExtension"
+BUNDLE_ID="com.usbipd.mac.SystemExtension"
 
 # Color codes for output
 RED='\033[0;31m'

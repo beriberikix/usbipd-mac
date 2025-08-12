@@ -8,7 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BUNDLE_ID="com.example.usbipd-mac.SystemExtension"
+BUNDLE_ID="com.usbipd.mac.SystemExtension"
 
 # Default options
 VERBOSE=false
