@@ -296,30 +296,36 @@ final class SystemExtensionBundleCreatorTests: XCTestCase {
 
 // MARK: - Mock Logger
 
+private struct LoggedMessage {
+    let level: LogLevel
+    let message: String
+    let context: [String: Any]?
+}
+
 private class MockLogger: Logger {
-    var loggedMessages: [(level: LogLevel, message: String, context: [String: Any]?)] = []
+    var loggedMessages: [LoggedMessage] = []
     
-    override func log(_ level: LogLevel, _ message: String, context: [String : Any]? = nil) {
-        loggedMessages.append((level: level, message: message, context: context))
+    override func log(_ level: LogLevel, _ message: String, context: [String: Any]? = nil) {
+        loggedMessages.append(LoggedMessage(level: level, message: message, context: context))
     }
     
-    override func debug(_ message: String, context: [String : Any]? = nil) {
+    override func debug(_ message: String, context: [String: Any]? = nil) {
         log(.debug, message, context: context)
     }
     
-    override func info(_ message: String, context: [String : Any]? = nil) {
+    override func info(_ message: String, context: [String: Any]? = nil) {
         log(.info, message, context: context)
     }
     
-    override func warning(_ message: String, context: [String : Any]? = nil) {
+    override func warning(_ message: String, context: [String: Any]? = nil) {
         log(.warning, message, context: context)
     }
     
-    override func error(_ message: String, context: [String : Any]? = nil) {
+    override func error(_ message: String, context: [String: Any]? = nil) {
         log(.error, message, context: context)
     }
     
-    override func critical(_ message: String, context: [String : Any]? = nil) {
+    override func critical(_ message: String, context: [String: Any]? = nil) {
         log(.critical, message, context: context)
     }
 }

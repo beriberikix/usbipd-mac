@@ -208,7 +208,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
 
 ### Section 8: Build Integration
 
-- [ ] 8.1 Create post-build integration script
+- [x] 8.1 Create post-build integration script
   - File: Scripts/post-build-extension.sh
   - Create bash script for post-build System Extension bundle creation
   - Integrate with Swift build system using build phases
@@ -218,7 +218,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: Scripts/ directory patterns, existing build scripts_
   - _Requirements: 1.1, 1.5_
 
-- [ ] 8.2 Update Package.swift configuration
+- [x] 8.2 Update Package.swift configuration
   - File: Package.swift (modify existing)
   - Clean up remaining plugin references
   - Update SystemExtension target dependencies and resources
@@ -230,7 +230,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
 
 ### Section 9: Testing Infrastructure
 
-- [ ] 9.1 Create SystemExtensionBundleCreator unit tests
+- [x] 9.1 Create SystemExtensionBundleCreator unit tests
   - File: Tests/USBIPDCoreTests/SystemExtension/SystemExtensionBundleCreatorTests.swift
   - Write tests for bundle creation and template processing
   - Mock file system operations and verify bundle structure creation
@@ -240,7 +240,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: existing test patterns and XCTest framework_
   - _Requirements: 1.1, 1.2_
 
-- [ ] 9.2 Create CodeSigningManager unit tests
+- [x] 9.2 Create CodeSigningManager unit tests
   - File: Tests/USBIPDCoreTests/SystemExtension/CodeSigningManagerTests.swift
   - Write tests for certificate detection and signing workflows
   - Mock Security framework calls and codesign subprocess execution
@@ -249,7 +249,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - Git commit: "test: add CodeSigningManager unit tests"
   - _Requirements: 2.1, 4.1, 4.2_
 
-- [ ] 9.3 Create installation and diagnostic tests
+- [x] 9.3 Create installation and diagnostic tests
   - File: Tests/USBIPDCoreTests/SystemExtension/SystemExtensionInstallerTests.swift
   - File: Tests/USBIPDCoreTests/SystemExtension/SystemExtensionDiagnosticsTests.swift
   - Write tests for installation workflow and status monitoring
@@ -261,7 +261,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
 
 ### Section 10: Integration Testing
 
-- [ ] 10.1 Create complete installation workflow integration test
+- [x] 10.1 Create complete installation workflow integration test
   - File: Tests/IntegrationTests/SystemExtensionInstallationWorkflowTests.swift
   - Write end-to-end test covering build, sign, install, and verify workflow
   - Test both signed and unsigned development scenarios
@@ -271,7 +271,7 @@ Each task is designed to be completable in 15-30 minutes, focuses on specific fi
   - _Leverage: existing integration test infrastructure_
   - _Requirements: 3.4, 6.1_
 
-- [ ] 10.2 Run SwiftLint and fix any violations
+- [x] 10.2 Run SwiftLint and fix any violations
   - Run `swiftlint lint --strict` to identify code style issues
   - Fix all SwiftLint violations in new code
   - Ensure consistent code style with existing codebase

@@ -193,7 +193,7 @@ public class SystemExtensionBundleCreator {
         ]
         
         // Add team identifier if provided
-        if let teamIdentifier = config.teamIdentifier {
+        if config.teamIdentifier != nil {
             plistDict["CFBundleDevelopmentRegion"] = "en"
             plistDict["ITSAppUsesNonExemptEncryption"] = false
             // Team identifier is typically handled by code signing, but we store it for reference
@@ -496,13 +496,13 @@ public class SystemExtensionBundleCreator {
         
         // Check Info.plist
         let infoPlistPath = bundleURL.appendingPathComponent("Contents/Info.plist").path
-        guard fileManager.fileExists(atPath: infoPlistPath) else {
+        if !fileManager.fileExists(atPath: infoPlistPath) {
             issues.append("Info.plist missing")
         }
         
         // Check MacOS directory
         let macosPath = bundleURL.appendingPathComponent("Contents/MacOS").path
-        guard fileManager.fileExists(atPath: macosPath) else {
+        if !fileManager.fileExists(atPath: macosPath) {
             issues.append("MacOS directory missing")
         }
         
@@ -818,7 +818,6 @@ public class SystemExtensionBundleCreator {
                     timestamp: timestamp
                 ))
             }
-            
         } catch {
             results.append(ValidationResult(
                 checkID: "plist.parse",

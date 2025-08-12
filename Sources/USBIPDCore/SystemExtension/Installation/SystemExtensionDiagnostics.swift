@@ -1636,11 +1636,11 @@ public struct SystemExtensionLogEntry: Codable {
 
 /// Log level for analysis
 public enum LogLevel: String, Codable, CaseIterable {
-    case debug = "debug"
-    case info = "info"
-    case warning = "warning"
-    case error = "error"
-    case fault = "fault"
+    case debug
+    case info
+    case warning
+    case error
+    case fault
 }
 
 /// Error pattern found in logs
@@ -1875,9 +1875,9 @@ public struct InstallationIssue: Codable {
 
 /// Diagnostic report output format
 public enum DiagnosticReportFormat: String, CaseIterable {
-    case text = "text"
-    case json = "json"
-    case markdown = "markdown"
+    case text
+    case json
+    case markdown
     
     public var displayName: String {
         switch self {

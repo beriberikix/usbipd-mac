@@ -55,7 +55,6 @@ final class CodeSigningManagerTests: XCTestCase {
                     XCTAssertGreaterThan(certificate.expirationDate, Date(), "Valid certificates should not be expired")
                 }
             }
-            
         } catch {
             // On CI or systems without certificates, this might fail - that's expected
             print("Certificate detection failed (expected on systems without certificates): \(error)")
@@ -96,7 +95,6 @@ final class CodeSigningManagerTests: XCTestCase {
             XCTAssertEqual(result.bundlePath, testBundlePath)
             XCTAssertNotNil(result.certificate)
             XCTAssertGreaterThan(result.signingDuration, 0)
-            
         } catch CodeSigningError.noCertificatesFound {
             // Expected on systems without valid certificates
             print("No certificates found for signing (expected on CI/systems without certificates)")
@@ -129,7 +127,6 @@ final class CodeSigningManagerTests: XCTestCase {
                 // Expected for mock certificate
                 XCTAssertFalse(result.errors.isEmpty, "Failed signing should have error messages")
             }
-            
         } catch {
             // Expected when using mock certificate
             print("Signing with mock certificate failed (expected): \(error)")
@@ -188,7 +185,6 @@ final class CodeSigningManagerTests: XCTestCase {
             
             // Most likely will be .unsigned or .verificationFailed for our mock bundle
             XCTAssertTrue([.unsigned, .verificationFailed, .valid].contains(result.status))
-            
         } catch {
             // Some verification failures might throw
             print("Bundle verification failed (expected for unsigned mock bundle): \(error)")
@@ -205,7 +201,6 @@ final class CodeSigningManagerTests: XCTestCase {
             XCTAssertEqual(result.signingStatus, .unsigned)
             XCTAssertTrue(result.isDevelopmentMode)
             XCTAssertFalse(result.recommendedActions.isEmpty)
-            
         } catch {
             XCTFail("Creating unsigned bundle should not fail: \(error)")
         }
@@ -239,7 +234,6 @@ final class CodeSigningManagerTests: XCTestCase {
             XCTAssertEqual(status.bundlePath, testBundlePath)
             // Status should be determined (likely unsigned for our mock bundle)
             XCTAssertNotEqual(status.signingStatus, .unknown)
-            
         } catch {
             XCTFail("Getting signing status should not fail for valid bundle: \(error)")
         }

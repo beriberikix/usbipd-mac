@@ -249,7 +249,6 @@ public class SystemExtensionInstaller: NSObject {
                 // Attempt installation without signing (development mode)
                 await installBundle(bundle, warnings: &warnings)
             }
-            
         } catch {
             errors.append(.bundleCreationFailed(error.localizedDescription))
             completeInstallation(
@@ -277,7 +276,6 @@ public class SystemExtensionInstaller: NSObject {
             await MainActor.run {
                 OSSystemExtensionManager.shared.submitRequest(request)
             }
-            
         } catch {
             completeInstallation(
                 success: false,
@@ -352,7 +350,6 @@ public class SystemExtensionInstaller: NSObject {
                 warnings: ["System extensions reset - may affect other extensions"]
             )
             completion(uninstallResult)
-            
         } catch {
             logger.error("System Extension uninstallation failed", context: ["error": error.localizedDescription])
             let uninstallResult = InstallationResult(

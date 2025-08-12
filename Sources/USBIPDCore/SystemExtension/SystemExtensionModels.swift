@@ -29,7 +29,7 @@ public struct SystemExtensionStatus: Codable {
     public let healthMetrics: SystemExtensionHealthMetrics
     
     /// Installation status information
-    public let installationStatus: InstallationStatus
+    public let installationStatus: SystemExtensionInstallationStatus
     
     /// Overall system health assessment
     public let healthStatus: HealthStatus
@@ -51,7 +51,7 @@ public struct SystemExtensionStatus: Codable {
         memoryUsage: Int,
         version: String,
         healthMetrics: SystemExtensionHealthMetrics,
-        installationStatus: InstallationStatus = .unknown,
+        installationStatus: SystemExtensionInstallationStatus = .unknown,
         healthStatus: HealthStatus = .unknown,
         bundleInfo: SystemExtensionBundle? = nil,
         approvalStatus: ApprovalStatus = .unknown,
@@ -107,7 +107,7 @@ public struct SystemExtensionHealthMetrics: Codable {
 // MARK: - Installation and Status Models
 
 /// System Extension installation status
-public enum InstallationStatus: String, Codable, CaseIterable {
+public enum SystemExtensionInstallationStatus: String, Codable, CaseIterable {
     /// Installation status is unknown
     case unknown = "unknown"
     

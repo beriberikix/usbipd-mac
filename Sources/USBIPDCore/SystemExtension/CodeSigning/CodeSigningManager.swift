@@ -100,7 +100,6 @@ public class CodeSigningManager {
             
             logger.warning("No suitable certificates found for System Extension signing")
             return nil
-            
         } catch {
             logger.error(error, message: "Failed to detect certificates")
             return nil
@@ -110,21 +109,23 @@ public class CodeSigningManager {
     // MARK: - Private Certificate Parsing
     
     private func parseCertificate(from item: [String: Any]) throws -> CodeSigningCertificate? {
-        guard let certRef = item[kSecValueRef as String] as? SecCertificate else {
+        guard let certRef = item[kSecValueRef as String] as AnyObject?,
+              CFGetTypeID(certRef) == SecCertificateGetTypeID() else {
             return nil
         }
+        let certificate = certRef as! SecCertificate
         
         // Get certificate summary (common name)
-        let commonName = SecCertificateCopySubjectSummary(certRef) as String? ?? "Unknown"
+        let commonName = SecCertificateCopySubjectSummary(certificate) as String? ?? "Unknown"
         
         // Get certificate data for parsing
-        let certData = SecCertificateCopyData(certRef)
+        let certData = SecCertificateCopyData(certificate)
         let data = CFDataGetBytePtr(certData)
         let length = CFDataGetLength(certData)
         let certificateData = Data(bytes: data!, count: length)
         
         // Parse certificate properties
-        guard let certDict = SecCertificateCopyValues(certRef, nil, nil) as? [String: Any] else {
+        guard let certDict = SecCertificateCopyValues(certificate, nil, nil) as? [String: Any] else {
             logger.warning("Failed to get certificate properties for: \(commonName)")
             return nil
         }
@@ -316,7 +317,6 @@ public class CodeSigningManager {
                     errors: [result.error ?? "Signing failed with unknown error"]
                 )
             }
-            
         } catch {
             let endTime = Date()
             let duration = endTime.timeIntervalSince(startTime)
@@ -460,7 +460,6 @@ public class CodeSigningManager {
                 output: combinedOutput,
                 error: process.terminationStatus != 0 ? errorOutput : nil
             )
-            
         } catch {
             logger.error(error, message: "Failed to execute codesign command")
             throw CodeSigningError.commandExecutionFailed(error.localizedDescription)
@@ -599,7 +598,6 @@ public class CodeSigningManager {
             
             logger.debug("Developer mode status", context: ["enabled": isDeveloperMode])
             return isDeveloperMode
-            
         } catch {
             logger.warning("Failed to check developer mode status", context: ["error": error.localizedDescription])
             return false
@@ -656,7 +654,6 @@ public class CodeSigningManager {
                     hasCertificates: false
                 )
             )
-            
         } else {
             // Try to sign with available certificate for better development experience
             logger.info("Attempting to sign development bundle with available certificate")
@@ -678,7 +675,6 @@ public class CodeSigningManager {
                         signingSucceeded: signingResult.success
                     )
                 )
-                
             } catch {
                 logger.warning("Signing failed, creating unsigned bundle", context: ["error": error.localizedDescription])
                 
@@ -848,7 +844,6 @@ public class CodeSigningManager {
             let details = output.trimmingCharacters(in: .whitespacesAndNewlines)
             
             return SIPStatus(isEnabled: isEnabled, details: details)
-            
         } catch {
             logger.warning("Failed to check SIP status", context: ["error": error.localizedDescription])
             return SIPStatus(isEnabled: true, details: "Unable to determine SIP status")

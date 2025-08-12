@@ -394,7 +394,7 @@ final class SystemExtensionInstallationWorkflowTests: XCTestCase {
         systemExtensionInstaller.installSystemExtension(
             bundlePath: bundlePath.path,
             bundleIdentifier: testBundleIdentifier
-        ) { result in
+        ) { _ in
             // Installation completion is handled by status monitoring
         }
         
