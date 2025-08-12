@@ -247,7 +247,7 @@ public class DevelopmentMockIOKitInterface: IOKitInterface {
             let service = io_service_t(mockServiceValue + UInt32(currentIteratorIndex))
             currentIteratorIndex += 1
             if debugLoggingEnabled {
-                print("MOCK: iteratorNext returning service \(service) for device \(currentIteratorIndex-1)")
+                print("MOCK: iteratorNext returning service \(service) for device \(currentIteratorIndex - 1)")
             }
             return service
         }

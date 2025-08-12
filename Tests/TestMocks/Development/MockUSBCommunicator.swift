@@ -200,6 +200,7 @@ public class MockUSBDeviceCommunicator: USBDeviceCommunicatorInterface {
         }
     }
     
+    // swiftlint:disable:next function_parameter_count
     public func controlTransfer(
         requestType: UInt8,
         request: UInt8,
@@ -518,10 +519,8 @@ public class MockUSBDeviceCommunicator: USBDeviceCommunicatorInterface {
     public func getDevelopmentStatistics() -> USBCommunicatorMockStatistics {
         var averageTimings: [String: TimeInterval] = [:]
         
-        for (transferType, timings) in transferTimings {
-            if !timings.isEmpty {
-                averageTimings[transferType] = timings.reduce(0, +) / Double(timings.count)
-            }
+        for (transferType, timings) in transferTimings where !timings.isEmpty {
+            averageTimings[transferType] = timings.reduce(0, +) / Double(timings.count)
         }
         
         return USBCommunicatorMockStatistics(
@@ -639,6 +638,7 @@ public struct USBCommunicatorMockStatistics {
 public protocol USBDeviceCommunicatorInterface {
     func connect() async throws
     func disconnect() async throws
+    // swiftlint:disable:next function_parameter_count
     func controlTransfer(
         requestType: UInt8,
         request: UInt8,

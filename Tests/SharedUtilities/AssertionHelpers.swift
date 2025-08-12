@@ -74,8 +74,8 @@ public struct USBDeviceAssertions {
         if let subClass = deviceSubClass {
             XCTAssertEqual(device.deviceSubClass, subClass, "Device subclass should match", file: file, line: line)
         }
-        if let protocol = deviceProtocol {
-            XCTAssertEqual(device.deviceProtocol, protocol, "Device protocol should match", file: file, line: line)
+        if let deviceProtocolValue = deviceProtocol {
+            XCTAssertEqual(device.deviceProtocol, deviceProtocolValue, "Device protocol should match", file: file, line: line)
         }
     }
     
