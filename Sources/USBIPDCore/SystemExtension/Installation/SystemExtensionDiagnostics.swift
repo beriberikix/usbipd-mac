@@ -274,7 +274,6 @@ public final class SystemExtensionDiagnostics {
                     ],
                     recommendations: validation.isValid ? [] : ["Rebuild the System Extension bundle to fix integrity issues"]
                 )
-            }
         }
         
         return HealthCheckResult(
@@ -1309,7 +1308,6 @@ public final class SystemExtensionDiagnostics {
                     firstOccurrence: entry.timestamp,
                     lastOccurrence: entry.timestamp
                 )
-            }
         }
         
         return nil
@@ -1327,7 +1325,6 @@ public final class SystemExtensionDiagnostics {
                     firstOccurrence: entry.timestamp,
                     lastOccurrence: entry.timestamp
                 )
-            }
         }
         
         return nil
