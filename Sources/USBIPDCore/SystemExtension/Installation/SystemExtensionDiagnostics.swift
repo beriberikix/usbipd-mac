@@ -259,11 +259,10 @@ public final class SystemExtensionDiagnostics {
             "/usr/local/lib/SystemExtensions/com.usbipd.mac.SystemExtension.systemextension"
         ]
         
-        for path in commonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                let validation = validateBundleIntegrity(bundlePath: path)
-                
-                return HealthCheckResult(
+        for path in commonPaths where FileManager.default.fileExists(atPath: path) {
+            let validation = validateBundleIntegrity(bundlePath: path)
+            
+            return HealthCheckResult(
                     checkType: .bundleIntegrity,
                     status: validation.isValid ? .healthy : .error,
                     title: "Bundle Integrity",
@@ -438,10 +437,8 @@ public final class SystemExtensionDiagnostics {
         let requiredKeys = ["CFBundleIdentifier", "CFBundleVersion", "NSSystemExtensionUsageDescription"]
         var missingKeys: [String] = []
         
-        for key in requiredKeys {
-            if plist[key] == nil {
-                missingKeys.append(key)
-            }
+        for key in requiredKeys where plist[key] == nil {
+            missingKeys.append(key)
         }
         
         let isValid = missingKeys.isEmpty
@@ -609,7 +606,7 @@ public final class SystemExtensionDiagnostics {
     
     private func generateHealthRecommendations(from healthChecks: [HealthCheckResult], overallHealth: HealthCheckStatus) -> [String] {
         let allRecommendations = healthChecks.flatMap { $0.recommendations }
-        let _ = Array(Set(allRecommendations))
+        _ = Array(Set(allRecommendations))
         
         // Prioritize critical recommendations first
         let criticalRecommendations = healthChecks
@@ -711,10 +708,8 @@ public final class SystemExtensionDiagnostics {
             "/System/Library/Extensions"
         ]
         
-        for path in testPaths {
-            if !FileManager.default.isReadableFile(atPath: path) {
-                return false
-            }
+        for path in testPaths where !FileManager.default.isReadableFile(atPath: path) {
+            return false
         }
         return true
     }
@@ -1220,12 +1215,10 @@ public final class SystemExtensionDiagnostics {
             ".build/release/USBIPSystemExtension.systemextension"
         ]
         
-        for path in commonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                let validation = validateCodeSigning(bundlePath: path)
-                if let isSigned = validation.metadata?["is_signed"] as? Bool, isSigned {
-                    return true
-                }
+        for path in commonPaths where FileManager.default.fileExists(atPath: path) {
+            let validation = validateCodeSigning(bundlePath: path)
+            if let isSigned = validation.metadata?["is_signed"] as? Bool, isSigned {
+                return true
             }
         }
         
@@ -1307,9 +1300,8 @@ public final class SystemExtensionDiagnostics {
     private func analyzeForErrorPatterns(entry: SystemExtensionLogEntry) -> LogErrorPattern? {
         let errorKeywords = ["error", "failed", "denied", "invalid", "corrupt"]
         
-        for keyword in errorKeywords {
-            if entry.message.lowercased().contains(keyword) {
-                return LogErrorPattern(
+        for keyword in errorKeywords where entry.message.lowercased().contains(keyword) {
+            return LogErrorPattern(
                     patternType: .generalError,
                     keyword: keyword,
                     message: entry.message,
@@ -1326,9 +1318,8 @@ public final class SystemExtensionDiagnostics {
     private func analyzeForWarningPatterns(entry: SystemExtensionLogEntry) -> LogWarningPattern? {
         let warningKeywords = ["warning", "deprecated", "retry", "timeout"]
         
-        for keyword in warningKeywords {
-            if entry.message.lowercased().contains(keyword) {
-                return LogWarningPattern(
+        for keyword in warningKeywords where entry.message.lowercased().contains(keyword) {
+            return LogWarningPattern(
                     patternType: .generalWarning,
                     keyword: keyword,
                     message: entry.message,
@@ -1641,7 +1632,6 @@ public struct SystemExtensionLogEntry: Codable {
         self.processName = processName
     }
 }
-
 
 /// Error pattern found in logs
 public struct LogErrorPattern: Codable {

@@ -346,7 +346,7 @@ public class SystemExtensionInstaller: NSObject {
         logger.info("Performing System Extension uninstallation")
         
         do {
-            let _ = try await executeSystemExtensionsCtl(command: "reset")
+            _ = try await executeSystemExtensionsCtl(command: "reset")
             
             logger.info("System Extension uninstallation completed")
             let uninstallResult = InstallationResult(
