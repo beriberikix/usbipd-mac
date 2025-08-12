@@ -370,6 +370,15 @@ public enum InstallationError: Error, Codable {
     
     /// User rejected installation
     case userRejected
+    
+    /// Code signing failed (alias for codeSigningFailed)
+    case signingFailed(String)
+    
+    /// Installation failed (general failure)
+    case installationFailed(String)
+    
+    /// User approval required (alias for requiresApproval)
+    case userApprovalRequired
 }
 
 /// Type alias for system extension installation errors
@@ -416,6 +425,12 @@ extension InstallationError: LocalizedError {
             return "Invalid code signature: \(reason)"
         case .userRejected:
             return "System Extension installation was rejected by user"
+        case .signingFailed(let details):
+            return "Code signing failed: \(details)"
+        case .installationFailed(let details):
+            return "Installation failed: \(details)"
+        case .userApprovalRequired:
+            return "System Extension requires user approval"
         }
     }
     
@@ -459,6 +474,12 @@ extension InstallationError: LocalizedError {
             return "Re-sign the extension with a valid certificate"
         case .userRejected:
             return "Retry installation and approve when prompted"
+        case .signingFailed:
+            return "Verify code signing certificate is installed and valid"
+        case .installationFailed:
+            return "Check system logs for more details and retry installation"
+        case .userApprovalRequired:
+            return "Approve the System Extension in System Preferences > Security & Privacy"
         }
     }
 }

@@ -45,9 +45,9 @@ class SystemExtensionManagerTests: XCTestCase {
         
         // Initialize SystemExtensionManager with mocks
         systemExtensionManager = SystemExtensionManager(
-            deviceClaimer: mockDeviceClaimer,
-            ipcHandler: mockIPCHandler,
-            statusMonitor: mockStatusMonitor,
+            deviceClaimer: mockDeviceClaimer!,
+            ipcHandler: mockIPCHandler!,
+            statusMonitor: mockStatusMonitor!,
             config: testConfig,
             logger: testLogger
         )
@@ -512,9 +512,9 @@ class SystemExtensionManagerTests: XCTestCase {
         )
         
         let managerWithRestoration = SystemExtensionManager(
-            deviceClaimer: mockDeviceClaimer,
-            ipcHandler: mockIPCHandler,
-            statusMonitor: mockStatusMonitor,
+            deviceClaimer: mockDeviceClaimer!,
+            ipcHandler: mockIPCHandler!,
+            statusMonitor: mockStatusMonitor!,
             config: restorationConfig,
             logger: testLogger
         )

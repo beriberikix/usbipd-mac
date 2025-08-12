@@ -5,17 +5,19 @@ import Foundation
 @testable import USBIPDCore
 @testable import Common
 
+// Use USBStatus from USBIPDCore, qualified to avoid ambiguity with IOKit USBStatus
+
 // MARK: - Mock Response Types
 
 struct MockTransferResponse {
     let data: Data
-    let status: USBStatus
+    let status: USBIPDCore.USBStatus
     let actualLength: UInt32
 }
 
 struct MockIsochronousResponse {
     let data: Data
-    let status: USBStatus
+    let status: USBIPDCore.USBStatus
     let actualLength: UInt32
     let errorCount: UInt32
 }
@@ -65,7 +67,7 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicatorProtocol {
         operationLatency = latency
     }
     
-    func setControlTransferResponse(_ data: Data, status: USBStatus = .success, actualLength: UInt32? = nil) {
+    func setControlTransferResponse(_ data: Data, status: USBIPDCore.USBStatus = .success, actualLength: UInt32? = nil) {
         controlResponse = MockTransferResponse(
             data: data,
             status: status,
@@ -73,7 +75,7 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicatorProtocol {
         )
     }
     
-    func setBulkTransferResponse(_ data: Data, status: USBStatus = .success, actualLength: UInt32? = nil) {
+    func setBulkTransferResponse(_ data: Data, status: USBIPDCore.USBStatus = .success, actualLength: UInt32? = nil) {
         bulkResponse = MockTransferResponse(
             data: data,
             status: status,
@@ -81,7 +83,7 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicatorProtocol {
         )
     }
     
-    func setInterruptTransferResponse(_ data: Data, status: USBStatus = .success, actualLength: UInt32? = nil) {
+    func setInterruptTransferResponse(_ data: Data, status: USBIPDCore.USBStatus = .success, actualLength: UInt32? = nil) {
         interruptResponse = MockTransferResponse(
             data: data,
             status: status,

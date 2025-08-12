@@ -4,12 +4,13 @@
 import Foundation
 import Common
 @testable import SystemExtension
+@testable import USBIPDCore
 
 // MARK: - Mock Status Monitor
 
 /// Mock implementation of StatusMonitor protocol for testing health monitoring
 /// without requiring actual system resource access
-public class MockStatusMonitor: StatusMonitor {
+public class MockStatusMonitor: USBIPDCore.StatusMonitor {
     
     // MARK: - Mock Configuration
     
@@ -32,14 +33,14 @@ public class MockStatusMonitor: StatusMonitor {
     public var getHealthMetricsCalled = false
     
     /// Mock health check results
-    public var healthCheckResults: [HealthCheckResult] = []
+    public var healthCheckResults: [SystemExtension.HealthCheckResult] = []
     public var healthCheckIndex = 0
     
     /// Mock system status
     public var mockSystemStatus: SystemStatus?
     
     /// Mock health metrics
-    public var mockHealthMetrics = HealthMetrics()
+    public var mockHealthMetrics = SystemExtension.HealthMetrics()
     
     /// Health delegate
     public weak var healthDelegate: HealthCheckDelegate?
@@ -70,13 +71,13 @@ public class MockStatusMonitor: StatusMonitor {
         return isMonitoringValue
     }
     
-    public func performHealthCheck() -> HealthCheckResult {
+    public func performHealthCheck() -> SystemExtension.HealthCheckResult {
         performHealthCheckCalled = true
         healthCheckCount += 1
         mockHealthMetrics.totalHealthChecks += 1
         
         // Return configured result or create default
-        let result: HealthCheckResult
+        let result: SystemExtension.HealthCheckResult
         if healthCheckIndex < healthCheckResults.count {
             result = healthCheckResults[healthCheckIndex]
             healthCheckIndex += 1
@@ -115,7 +116,7 @@ public class MockStatusMonitor: StatusMonitor {
         )
     }
     
-    public func getHealthMetrics() -> HealthMetrics {
+    public func getHealthMetrics() -> SystemExtension.HealthMetrics {
         getHealthMetricsCalled = true
         return mockHealthMetrics
     }
@@ -142,7 +143,7 @@ public class MockStatusMonitor: StatusMonitor {
         healthCheckResults.removeAll()
         healthCheckIndex = 0
         mockSystemStatus = nil
-        mockHealthMetrics = HealthMetrics()
+        mockHealthMetrics = SystemExtension.HealthMetrics()
         healthDelegate = nil
         healthCheckCount = 0
         shouldSucceed = true
@@ -150,13 +151,13 @@ public class MockStatusMonitor: StatusMonitor {
     }
     
     /// Configure health check results for testing
-    public func setHealthCheckResults(_ results: [HealthCheckResult]) {
+    public func setHealthCheckResults(_ results: [SystemExtension.HealthCheckResult]) {
         healthCheckResults = results
         healthCheckIndex = 0
     }
     
     /// Add a single health check result
-    public func addHealthCheckResult(_ result: HealthCheckResult) {
+    public func addHealthCheckResult(_ result: SystemExtension.HealthCheckResult) {
         healthCheckResults.append(result)
     }
     
@@ -166,7 +167,7 @@ public class MockStatusMonitor: StatusMonitor {
     }
     
     /// Configure health metrics for testing
-    public func setHealthMetrics(_ metrics: HealthMetrics) {
+    public func setHealthMetrics(_ metrics: SystemExtension.HealthMetrics) {
         mockHealthMetrics = metrics
     }
     
@@ -199,11 +200,11 @@ public class MockStatusMonitor: StatusMonitor {
     
     // MARK: - Private Helper Methods
     
-    private func createDefaultHealthCheckResult() -> HealthCheckResult {
-        let healthStatus: HealthStatus = shouldSucceed ? .healthy : .critical
+    private func createDefaultHealthCheckResult() -> SystemExtension.HealthCheckResult {
+        let healthStatus: SystemExtension.HealthStatus = shouldSucceed ? .healthy : .critical
         let healthScore = shouldSucceed ? 0.95 : 0.25
         
-        return HealthCheckResult(
+        return SystemExtension.HealthCheckResult(
             timestamp: Date(),
             status: healthStatus,
             overallScore: healthScore,
