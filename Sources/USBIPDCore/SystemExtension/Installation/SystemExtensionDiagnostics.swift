@@ -2,6 +2,7 @@ import Foundation
 import IOKit
 import SystemExtensions
 import os.log
+import Common
 
 /// Comprehensive diagnostic and troubleshooting system for System Extensions
 public final class SystemExtensionDiagnostics {
@@ -222,19 +223,21 @@ public final class SystemExtensionDiagnostics {
         let installedExtensions = getInstalledSystemExtensions()
         let ourExtension = installedExtensions.first { $0.identifier == extensionIdentifier }
         
-        if let extension = ourExtension {
-            let isActive = extension.state == .activated
+        if let systemExtension = ourExtension {
+            let isActive = systemExtension.state == .activated
             return HealthCheckResult(
                 checkType: .systemExtensionStatus,
                 status: isActive ? .healthy : .warning,
                 title: "System Extension Status",
                 message: isActive ? "System Extension is active" : "System Extension is installed but not active",
                 details: [
-                    "Bundle ID": extension.identifier,
-                    "Version": extension.version.description,
-                    "State": extension.state.description
+                    "Bundle ID": systemExtension.identifier,
+                    "Version": "\(systemExtension.version.majorVersion).\(systemExtension.version.minorVersion).\(systemExtension.version.patchVersion)",
+                    "State": systemExtension.state.description
                 ],
-                recommendations: isActive ? [] : ["Restart the System Extension or check system logs for activation issues"]
+                recommendations: isActive ? [] : [
+                    "Restart the System Extension or check system logs for activation issues"
+                ]
             )
         } else {
             return HealthCheckResult(
@@ -293,7 +296,7 @@ public final class SystemExtensionDiagnostics {
         let allPermissionsGood = hasFullDiskAccess && hasSystemExtensionAccess
         let status: HealthCheckStatus = allPermissionsGood ? .healthy : .warning
         
-        var details: [String: String] = [
+        let details: [String: String] = [
             "Full Disk Access": hasFullDiskAccess ? "Granted" : "Not granted",
             "System Extension Access": hasSystemExtensionAccess ? "Available" : "Restricted",
             "SIP Status": sipEnabled ? "Enabled" : "Disabled"
@@ -606,7 +609,7 @@ public final class SystemExtensionDiagnostics {
     
     private func generateHealthRecommendations(from healthChecks: [HealthCheckResult], overallHealth: HealthCheckStatus) -> [String] {
         let allRecommendations = healthChecks.flatMap { $0.recommendations }
-        let uniqueRecommendations = Array(Set(allRecommendations))
+        let _ = Array(Set(allRecommendations))
         
         // Prioritize critical recommendations first
         let criticalRecommendations = healthChecks
@@ -723,11 +726,16 @@ public final class SystemExtensionDiagnostics {
     
     private func testIOKitConnection() -> Bool {
         // Test basic IOKit functionality
-        let masterPort = kIOMainPortDefault
+        let mainPort: mach_port_t
+        if #available(macOS 12.0, *) {
+            mainPort = kIOMainPortDefault
+        } else {
+            mainPort = kIOMasterPortDefault
+        }
         let matchingDict = IOServiceMatching(kIOUSBDeviceClassName)
         
         var iterator: io_iterator_t = 0
-        let result = IOServiceGetMatchingServices(masterPort, matchingDict, &iterator)
+        let result = IOServiceGetMatchingServices(mainPort, matchingDict, &iterator)
         
         if result == KERN_SUCCESS {
             IOObjectRelease(iterator)
@@ -1339,9 +1347,9 @@ public final class SystemExtensionDiagnostics {
 
 /// Overall health check status
 public enum HealthCheckStatus: String, Codable, CaseIterable {
-    case healthy = "healthy"
-    case warning = "warning"
-    case error = "error"
+    case healthy
+    case warning
+    case error
     
     public var displayName: String {
         switch self {
@@ -1603,7 +1611,7 @@ public struct SystemExtensionLogEntry: Codable {
     public let timestamp: Date
     
     /// Log level
-    public let level: LogLevel
+    public let level: Common.LogLevel
     
     /// Log subsystem
     public let subsystem: String
@@ -1619,7 +1627,7 @@ public struct SystemExtensionLogEntry: Codable {
     
     public init(
         timestamp: Date,
-        level: LogLevel,
+        level: Common.LogLevel,
         subsystem: String,
         category: String,
         message: String,
@@ -1634,14 +1642,6 @@ public struct SystemExtensionLogEntry: Codable {
     }
 }
 
-/// Log level for analysis
-public enum LogLevel: String, Codable, CaseIterable {
-    case debug
-    case info
-    case warning
-    case error
-    case fault
-}
 
 /// Error pattern found in logs
 public struct LogErrorPattern: Codable {
@@ -1775,17 +1775,17 @@ public struct SystemExtensionLogAnalysis: Codable {
 public struct SystemExtensionProperties {
     public let identifier: String
     public let version: OperatingSystemVersion
-    public let state: SystemExtensionState
+    public let state: SystemExtensionRegistrationState
     
-    public init(identifier: String, version: OperatingSystemVersion, state: SystemExtensionState) {
+    public init(identifier: String, version: OperatingSystemVersion, state: SystemExtensionRegistrationState) {
         self.identifier = identifier
         self.version = version
         self.state = state
     }
 }
 
-/// System Extension state
-public enum SystemExtensionState {
+/// System Extension registration state
+public enum SystemExtensionRegistrationState {
     case deactivated
     case activated
     case unknown

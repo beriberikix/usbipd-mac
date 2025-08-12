@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Common
 
 /// Environment validation and setup manager for System Extension development
 public final class EnvironmentSetupManager {
@@ -127,6 +128,9 @@ public final class EnvironmentSetupManager {
         // Attempt to resolve critical issues automatically
         for issue in validation.issues {
             switch issue.category {
+            case .systemInformation:
+                // Information only, no resolution needed
+                break
             case .systemRequirements:
                 manualSteps.append(ManualSetupStep(
                     title: "Update macOS",
@@ -504,7 +508,7 @@ public final class EnvironmentSetupManager {
     }
     
     private func generateRecommendations(from issues: [EnvironmentIssue]) -> [String] {
-        let priorityOrder: [EnvironmentIssue.Priority] = [.high, .medium, .low]
+        let priorityOrder: [ManualSetupStep.Priority] = [.high, .medium, .low]
         let sortedIssues = issues.sorted { lhs, rhs in
             let lhsPriority = priorityOrder.firstIndex(of: lhs.severity.priority) ?? priorityOrder.count
             let rhsPriority = priorityOrder.firstIndex(of: rhs.severity.priority) ?? priorityOrder.count
@@ -529,7 +533,7 @@ public final class EnvironmentSetupManager {
     
     // MARK: - System Information Gathering
     
-    private func getSystemIntegrityProtectionStatus() -> SIPStatus {
+    private func getSystemIntegrityProtectionStatus() -> SystemIntegrityProtectionStatus {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/csrutil")
         process.arguments = ["status"]
@@ -629,10 +633,19 @@ public final class EnvironmentSetupManager {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         let versionString = "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
         
+        let architecture: String
+        #if arch(arm64)
+        architecture = "arm64"
+        #elseif arch(x86_64)
+        architecture = "x86_64"
+        #else
+        architecture = "unknown"
+        #endif
+        
         return [
             "macOS Version": versionString,
             "System": ProcessInfo.processInfo.hostName,
-            "Architecture": ProcessInfo.processInfo.machineType,
+            "Architecture": architecture,
             "SIP Status": getSystemIntegrityProtectionStatus().description
         ]
     }
@@ -776,7 +789,7 @@ public enum EnvironmentStatus: String, Codable, CaseIterable {
 }
 
 /// System Integrity Protection status
-public enum SIPStatus {
+public enum SystemIntegrityProtectionStatus {
     case enabled
     case disabled
     case unknown
@@ -854,6 +867,7 @@ public struct EnvironmentIssue: Codable {
         case developerTools = "developer_tools"
         case systemConfiguration = "system_configuration"
         case codeSigningCertificates = "code_signing_certificates"
+        case systemInformation = "system_information"
     }
 }
 
@@ -917,9 +931,9 @@ public struct ManualSetupStep: Codable {
     
     /// Setup step priority
     public enum Priority: String, Codable, CaseIterable {
-        case low = "low"
-        case medium = "medium"
-        case high = "high"
+        case low
+        case medium
+        case high
     }
 }
 
@@ -987,10 +1001,10 @@ public struct DiagnosticResult: Codable {
 
 /// Status for diagnostic results
 public enum DiagnosticStatus: String, Codable, CaseIterable {
-    case healthy = "healthy"
-    case warning = "warning"
-    case error = "error"
-    case info = "info"
+    case healthy
+    case warning
+    case error
+    case info
     
     public var displayName: String {
         switch self {

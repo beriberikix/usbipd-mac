@@ -137,12 +137,17 @@ public class ServerCoordinator: USBIPServer {
         self.maxConcurrentRequestsPerClient = config.maxConcurrentRequests
         
         // Initialize System Extension components if paths are provided
-        if let bundlePath = systemExtensionBundlePath,
-           let bundleIdentifier = systemExtensionBundleIdentifier {
+        if let _ = systemExtensionBundlePath,
+           let _ = systemExtensionBundleIdentifier {
             self.systemExtensionEnabled = true
+            
+            // Create required dependencies
+            let bundleCreator = SystemExtensionBundleCreator()
+            let codeSigningManager = CodeSigningManager()
+            
             self.systemExtensionInstaller = SystemExtensionInstaller(
-                bundleIdentifier: bundleIdentifier,
-                bundlePath: bundlePath
+                bundleCreator: bundleCreator,
+                codeSigningManager: codeSigningManager
             )
             self.systemExtensionLifecycleManager = SystemExtensionLifecycleManager(
                 installer: self.systemExtensionInstaller!,

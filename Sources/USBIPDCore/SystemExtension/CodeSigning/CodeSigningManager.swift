@@ -486,12 +486,10 @@ public class CodeSigningManager {
     
     private func extractSigningIdentity(from output: String) -> String? {
         // Parse output for signing identity
-        for line in output.components(separatedBy: .newlines) {
-            if line.contains("Authority=") {
-                let components = line.components(separatedBy: "Authority=")
-                if components.count > 1 {
-                    return components[1].trimmingCharacters(in: .whitespaces)
-                }
+        for line in output.components(separatedBy: .newlines) where line.contains("Authority=") {
+            let components = line.components(separatedBy: "Authority=")
+            if components.count > 1 {
+                return components[1].trimmingCharacters(in: .whitespaces)
             }
         }
         return nil
@@ -499,12 +497,10 @@ public class CodeSigningManager {
     
     private func extractTeamIdentifierFromDisplay(from output: String) -> String? {
         // Parse output for team identifier
-        for line in output.components(separatedBy: .newlines) {
-            if line.contains("TeamIdentifier=") {
-                let components = line.components(separatedBy: "TeamIdentifier=")
-                if components.count > 1 {
-                    return components[1].trimmingCharacters(in: .whitespaces)
-                }
+        for line in output.components(separatedBy: .newlines) where line.contains("TeamIdentifier=") {
+            let components = line.components(separatedBy: "TeamIdentifier=")
+            if components.count > 1 {
+                return components[1].trimmingCharacters(in: .whitespaces)
             }
         }
         return nil
@@ -512,14 +508,12 @@ public class CodeSigningManager {
     
     private func extractSigningTime(from output: String) -> Date? {
         // Parse output for signing timestamp
-        for line in output.components(separatedBy: .newlines) {
-            if line.contains("Timestamp=") {
-                let components = line.components(separatedBy: "Timestamp=")
-                if components.count > 1 {
-                    let timestampString = components[1].trimmingCharacters(in: .whitespaces)
-                    let formatter = ISO8601DateFormatter()
-                    return formatter.date(from: timestampString)
-                }
+        for line in output.components(separatedBy: .newlines) where line.contains("Timestamp=") {
+            let components = line.components(separatedBy: "Timestamp=")
+            if components.count > 1 {
+                let timestampString = components[1].trimmingCharacters(in: .whitespaces)
+                let formatter = ISO8601DateFormatter()
+                return formatter.date(from: timestampString)
             }
         }
         return nil
@@ -555,14 +549,12 @@ public class CodeSigningManager {
     private func extractCodeSigningFlags(from output: String) -> [String] {
         var flags: [String] = []
         
-        for line in output.components(separatedBy: .newlines) {
-            if line.contains("CodeDirectory") {
-                if line.contains("runtime") {
-                    flags.append("runtime")
-                }
-                if line.contains("library-validation") {
-                    flags.append("library-validation")
-                }
+        for line in output.components(separatedBy: .newlines) where line.contains("CodeDirectory") {
+            if line.contains("runtime") {
+                flags.append("runtime")
+            }
+            if line.contains("library-validation") {
+                flags.append("library-validation")
             }
         }
         
@@ -1061,10 +1053,10 @@ public struct DevelopmentRecommendation {
 
 /// Recommendation priority levels
 public enum RecommendationPriority: String, CaseIterable {
-    case low = "low"
-    case medium = "medium"
-    case high = "high"
-    case critical = "critical"
+    case low
+    case medium
+    case high
+    case critical
 }
 
 /// Recommendation categories

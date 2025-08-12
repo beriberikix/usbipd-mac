@@ -361,27 +361,24 @@ public class SystemExtensionBundleCreator {
                 .appendingPathComponent("SystemExtension.entitlements").path
         ]
         
-        for entitlementsPath in possibleEntitlementsPaths {
-            if fileManager.fileExists(atPath: entitlementsPath) {
-                let targetPath = URL(fileURLWithPath: config.bundlePath)
-                    .appendingPathComponent("Contents")
-                    .appendingPathComponent("SystemExtension.entitlements")
-                    .path
-                
-                do {
-                    try fileManager.copyItem(atPath: entitlementsPath, toPath: targetPath)
-                    logger.debug("Copied entitlements file", context: [
-                        "source": entitlementsPath,
-                        "target": targetPath
-                    ])
-                    return targetPath
-                } catch {
-                    logger.warning("Failed to copy entitlements file", context: [
-                        "source": entitlementsPath,
-                        "error": error.localizedDescription
-                    ])
-                }
-                break
+        for entitlementsPath in possibleEntitlementsPaths where fileManager.fileExists(atPath: entitlementsPath) {
+            let targetPath = URL(fileURLWithPath: config.bundlePath)
+                .appendingPathComponent("Contents")
+                .appendingPathComponent("SystemExtension.entitlements")
+                .path
+            
+            do {
+                try fileManager.copyItem(atPath: entitlementsPath, toPath: targetPath)
+                logger.debug("Copied entitlements file", context: [
+                    "source": entitlementsPath,
+                    "target": targetPath
+                ])
+                return targetPath
+            } catch {
+                logger.warning("Failed to copy entitlements file", context: [
+                    "source": entitlementsPath,
+                    "error": error.localizedDescription
+                ])
             }
         }
         
@@ -566,10 +563,8 @@ public class SystemExtensionBundleCreator {
                         "CFBundleShortVersionString"
                     ]
                     
-                    for key in requiredKeys {
-                        if plistDict[key] == nil {
-                            issues.append("Missing required Info.plist key: \(key)")
-                        }
+                    for key in requiredKeys where plistDict[key] == nil {
+                        issues.append("Missing required Info.plist key: \(key)")
                     }
                     
                     // Validate CFBundlePackageType for System Extensions
@@ -698,6 +693,13 @@ public class SystemExtensionBundleCreator {
     
     /// Validate Info.plist with comprehensive checks
     private func validateInfoPlistIntegrity(bundle: SystemExtensionBundle, timestamp: Date) -> [ValidationResult] {
+        // Helper struct to replace large tuple
+        struct InfoPlistKey {
+            let key: String
+            let description: String
+            let critical: Bool
+        }
+        
         var results: [ValidationResult] = []
         let infoPlistPath = bundle.contents.infoPlistPath
         
@@ -760,41 +762,41 @@ public class SystemExtensionBundleCreator {
             ))
             
             // Validate required System Extension keys
-            let systemExtensionKeys: [(key: String, description: String, critical: Bool)] = [
-                ("CFBundleIdentifier", "Bundle Identifier", true),
-                ("CFBundleExecutable", "Executable Name", true),
-                ("CFBundlePackageType", "Package Type", true),
-                ("CFBundleShortVersionString", "Version String", true),
-                ("CFBundleVersion", "Build Number", true),
-                ("LSMinimumSystemVersion", "Minimum System Version", false),
-                ("NSSystemExtensionUsageDescription", "Usage Description", false)
+            let systemExtensionKeys: [InfoPlistKey] = [
+                InfoPlistKey(key: "CFBundleIdentifier", description: "Bundle Identifier", critical: true),
+                InfoPlistKey(key: "CFBundleExecutable", description: "Executable Name", critical: true),
+                InfoPlistKey(key: "CFBundlePackageType", description: "Package Type", critical: true),
+                InfoPlistKey(key: "CFBundleShortVersionString", description: "Version String", critical: true),
+                InfoPlistKey(key: "CFBundleVersion", description: "Build Number", critical: true),
+                InfoPlistKey(key: "LSMinimumSystemVersion", description: "Minimum System Version", critical: false),
+                InfoPlistKey(key: "NSSystemExtensionUsageDescription", description: "Usage Description", critical: false)
             ]
             
-            for (key, description, critical) in systemExtensionKeys {
-                let exists = plistDict[key] != nil
-                let severity: ValidationSeverity = critical ? .error : .warning
+            for keyInfo in systemExtensionKeys {
+                let exists = plistDict[keyInfo.key] != nil
+                let severity: ValidationSeverity = keyInfo.critical ? .error : .warning
                 
                 var recommendedActions: [String] = []
                 if !exists {
-                    if critical {
+                    if keyInfo.critical {
                         recommendedActions = [
-                            "Add required key '\(key)' to Info.plist",
+                            "Add required key '\(keyInfo.key)' to Info.plist",
                             "Refer to System Extension documentation for proper values",
                             "Regenerate Info.plist with bundle creation tools"
                         ]
                     } else {
                         recommendedActions = [
-                            "Consider adding '\(key)' for better compatibility",
+                            "Consider adding '\(keyInfo.key)' for better compatibility",
                             "Review System Extension best practices"
                         ]
                     }
                 }
                 
                 results.append(ValidationResult(
-                    checkID: "plist.key.\(key.lowercased())",
-                    checkName: "\(description) Key",
+                    checkID: "plist.key.\(keyInfo.key.lowercased())",
+                    checkName: "\(keyInfo.description) Key",
                     passed: exists,
-                    message: exists ? "\(description) is present" : "\(description) is missing",
+                    message: exists ? "\(keyInfo.description) is present" : "\(keyInfo.description) is missing",
                     severity: exists ? .info : severity,
                     recommendedActions: recommendedActions,
                     timestamp: timestamp

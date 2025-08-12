@@ -226,25 +226,29 @@ public class SystemExtensionInstaller: NSObject {
         do {
             // Step 1: Create System Extension bundle
             logger.info("Creating System Extension bundle")
-            let bundle = try bundleCreator.createBundle(
+            let config = SystemExtensionBundleCreator.BundleCreationConfig(
+                bundlePath: "/tmp/SystemExtension.appex",
                 bundleIdentifier: bundleIdentifier,
+                displayName: "USB/IP System Extension",
+                version: "1.0.0",
+                buildNumber: "1",
+                executableName: "SystemExtension",
                 executablePath: executablePath
             )
+            let bundle = try bundleCreator.createBundle(with: config)
             
             // Step 2: Sign the bundle
             logger.info("Signing System Extension bundle")
-            let signingResult = await codeSigningManager.signBundle(bundle)
+            let signingResult = try codeSigningManager.signBundle(at: bundle.bundlePath)
             
-            switch signingResult {
-            case .success(let signedBundle):
+            if signingResult.success {
                 // Step 3: Install the signed bundle
-                await installBundle(signedBundle, warnings: &warnings)
-                
-            case .failure(let signingError):
+                await installBundle(bundle, warnings: &warnings)
+            } else {
                 logger.warning("Code signing failed, attempting unsigned installation", context: [
-                    "error": signingError.localizedDescription
+                    "errors": signingResult.errors.joined(separator: "; ")
                 ])
-                warnings.append("Code signing failed: \(signingError.localizedDescription)")
+                warnings.append("Code signing failed: \(signingResult.errors.joined(separator: "; "))")
                 
                 // Attempt installation without signing (development mode)
                 await installBundle(bundle, warnings: &warnings)
@@ -342,7 +346,7 @@ public class SystemExtensionInstaller: NSObject {
         logger.info("Performing System Extension uninstallation")
         
         do {
-            let result = try await executeSystemExtensionsCtl(command: "reset")
+            let _ = try await executeSystemExtensionsCtl(command: "reset")
             
             logger.info("System Extension uninstallation completed")
             let uninstallResult = InstallationResult(

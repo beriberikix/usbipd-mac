@@ -238,16 +238,16 @@ public struct ValidationResult: Codable {
 /// Severity level for validation results
 public enum ValidationSeverity: String, Codable, CaseIterable {
     /// Informational message
-    case info = "info"
+    case info
     
     /// Warning that may affect functionality
-    case warning = "warning"
+    case warning
     
     /// Error that will prevent proper operation
-    case error = "error"
+    case error
     
     /// Critical issue requiring immediate attention
-    case critical = "critical"
+    case critical
 }
 
 /// Result of installation operation
@@ -358,7 +358,22 @@ public enum InstallationError: Error, Codable {
     
     /// Unknown installation error
     case unknownError(String)
+    
+    /// System extension requires user approval
+    case requiresApproval
+    
+    /// Development mode disabled
+    case developmentModeDisabled
+    
+    /// Invalid code signature
+    case invalidCodeSignature(String)
+    
+    /// User rejected installation
+    case userRejected
 }
+
+/// Type alias for system extension installation errors
+public typealias SystemExtensionInstallationError = InstallationError
 
 extension InstallationError: LocalizedError {
     public var errorDescription: String? {
@@ -393,6 +408,14 @@ extension InstallationError: LocalizedError {
             return "File system error: \(details)"
         case .unknownError(let details):
             return "Unknown installation error: \(details)"
+        case .requiresApproval:
+            return "System Extension requires user approval"
+        case .developmentModeDisabled:
+            return "Development mode is disabled"
+        case .invalidCodeSignature(let reason):
+            return "Invalid code signature: \(reason)"
+        case .userRejected:
+            return "System Extension installation was rejected by user"
         }
     }
     
@@ -428,6 +451,14 @@ extension InstallationError: LocalizedError {
             return "Check disk space and file system permissions"
         case .unknownError:
             return "Check system logs for more details"
+        case .requiresApproval:
+            return "Approve the System Extension in System Preferences > Security & Privacy"
+        case .developmentModeDisabled:
+            return "Enable developer mode using: systemextensionsctl developer on"
+        case .invalidCodeSignature:
+            return "Re-sign the extension with a valid certificate"
+        case .userRejected:
+            return "Retry installation and approve when prompted"
         }
     }
 }
