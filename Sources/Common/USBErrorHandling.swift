@@ -171,8 +171,6 @@ public struct USBIPErrorHandling {
             return mapUSBErrorToStatus(usbError)
         case let deviceError as DeviceError:
             return mapDeviceErrorToStatus(deviceError)
-        case let protocolError as USBIPProtocolError:
-            return mapProtocolErrorToStatus(protocolError)
         default:
             return USBIPStatus.eio.rawValue
         }
@@ -226,14 +224,6 @@ public struct USBIPErrorHandling {
         }
     }
     
-    private static func mapProtocolErrorToStatus(_ error: USBIPProtocolError) -> Int32 {
-        switch error {
-        case .invalidHeader, .invalidMessageFormat, .invalidDataLength:
-            return USBIPStatus.einval.rawValue
-        case .unsupportedVersion, .unsupportedCommand:
-            return USBIPStatus.eproto.rawValue
-        }
-    }
     
     /// Map IOKit return codes to USB/IP status codes
     public static func mapIOReturnToUSBIPStatus(_ ioReturn: IOReturn) -> Int32 {

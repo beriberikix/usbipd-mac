@@ -3,14 +3,6 @@
 
 import Foundation
 
-/// Protocol-related errors
-public enum USBIPProtocolError: Error {
-    case invalidHeader
-    case invalidMessageFormat
-    case unsupportedVersion(UInt16)
-    case unsupportedCommand(UInt16)
-    case invalidDataLength
-}
 
 /// Network-related errors
 public enum NetworkError: Error {
