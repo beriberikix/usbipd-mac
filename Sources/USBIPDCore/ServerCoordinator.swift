@@ -137,8 +137,8 @@ public class ServerCoordinator: USBIPServer {
         self.maxConcurrentRequestsPerClient = config.maxConcurrentRequests
         
         // Initialize System Extension components if paths are provided
-        if let _ = systemExtensionBundlePath,
-           let _ = systemExtensionBundleIdentifier {
+        if systemExtensionBundlePath != nil,
+           systemExtensionBundleIdentifier != nil {
             self.systemExtensionEnabled = true
             
             // Create required dependencies
