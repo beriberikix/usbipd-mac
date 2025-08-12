@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# QEMU USB/IP Test Tool - Test Validation Utilities
+# QEMU USB/IP Test Tool - Test Validation Utilities with Environment Awareness
 # Helper functions for parsing QEMU console output and validating test results
+# Enhanced with environment-specific validation and test environment integration
 
 set -euo pipefail
 
@@ -11,6 +12,8 @@ readonly PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly BUILD_DIR="${PROJECT_ROOT}/.build/qemu"
 readonly LOG_DIR="${BUILD_DIR}/logs"
 
+# Test Environment Detection (initialized after function definition)
+
 # Colors for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -18,26 +21,102 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-# Timeout configurations
-readonly DEFAULT_READINESS_TIMEOUT=60
-readonly DEFAULT_CONNECTION_TIMEOUT=10
-readonly DEFAULT_COMMAND_TIMEOUT=30
+# Environment Detection Function
+detect_test_environment() {
+    # Check for CI environment variables
+    if [[ -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ]]; then
+        echo "ci"
+    elif [[ -n "${TEST_ENVIRONMENT:-}" ]]; then
+        echo "$TEST_ENVIRONMENT"
+    elif [[ -n "${PRODUCTION_TEST:-}" ]]; then
+        echo "production"
+    else
+        echo "development"
+    fi
+}
 
-# Logging functions
+# Initialize test environment after function definition
+readonly TEST_ENVIRONMENT="${TEST_ENVIRONMENT:-$(detect_test_environment)}"
+
+# Environment-specific timeout configurations
+get_readiness_timeout() {
+    case "$TEST_ENVIRONMENT" in
+        "development")
+            echo 30
+            ;;
+        "ci")
+            echo 60
+            ;;
+        "production")
+            echo 120
+            ;;
+        *)
+            echo 60
+            ;;
+    esac
+}
+
+get_connection_timeout() {
+    case "$TEST_ENVIRONMENT" in
+        "development")
+            echo 5
+            ;;
+        "ci")
+            echo 10
+            ;;
+        "production")
+            echo 30
+            ;;
+        *)
+            echo 10
+            ;;
+    esac
+}
+
+get_command_timeout() {
+    case "$TEST_ENVIRONMENT" in
+        "development")
+            echo 15
+            ;;
+        "ci")
+            echo 30
+            ;;
+        "production")
+            echo 60
+            ;;
+        *)
+            echo 30
+            ;;
+    esac
+}
+
+# Dynamic timeout configurations based on environment
+readonly DEFAULT_READINESS_TIMEOUT=$(get_readiness_timeout)
+readonly DEFAULT_CONNECTION_TIMEOUT=$(get_connection_timeout)
+readonly DEFAULT_COMMAND_TIMEOUT=$(get_command_timeout)
+
+# Environment-aware logging functions
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${BLUE}[INFO:${TEST_ENVIRONMENT}]${NC} $1"
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[SUCCESS:${TEST_ENVIRONMENT}]${NC} $1"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[WARNING:${TEST_ENVIRONMENT}]${NC} $1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR:${TEST_ENVIRONMENT}]${NC} $1"
+}
+
+log_environment() {
+    echo -e "${BLUE}[ENVIRONMENT]${NC} Running in ${TEST_ENVIRONMENT} mode"
+    echo -e "${BLUE}[ENVIRONMENT]${NC} Readiness timeout: ${DEFAULT_READINESS_TIMEOUT}s"
+    echo -e "${BLUE}[ENVIRONMENT]${NC} Connection timeout: ${DEFAULT_CONNECTION_TIMEOUT}s"
+    echo -e "${BLUE}[ENVIRONMENT]${NC} Command timeout: ${DEFAULT_COMMAND_TIMEOUT}s"
 }
 
 # ============================================================================
@@ -618,6 +697,255 @@ get_test_statistics() {
 }
 
 # ============================================================================
+# ENVIRONMENT-SPECIFIC VALIDATION FUNCTIONS
+# ============================================================================
+
+# Validate test environment configuration
+validate_test_environment() {
+    log_environment
+    
+    case "$TEST_ENVIRONMENT" in
+        "development")
+            validate_development_environment
+            ;;
+        "ci")
+            validate_ci_environment
+            ;;
+        "production")
+            validate_production_environment
+            ;;
+        *)
+            log_warning "Unknown test environment: $TEST_ENVIRONMENT, using default validation"
+            validate_development_environment
+            ;;
+    esac
+}
+
+# Validate development environment
+validate_development_environment() {
+    log_info "Validating development environment configuration"
+    
+    # Development environment focuses on speed and mocking
+    if [[ $DEFAULT_READINESS_TIMEOUT -gt 60 ]]; then
+        log_warning "Development environment timeout too high (${DEFAULT_READINESS_TIMEOUT}s > 60s)"
+    fi
+    
+    # Check for development-specific directories
+    if [[ ! -d "$BUILD_DIR" ]]; then
+        log_info "Creating development build directory: $BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+    fi
+    
+    if [[ ! -d "$LOG_DIR" ]]; then
+        log_info "Creating development log directory: $LOG_DIR"
+        mkdir -p "$LOG_DIR"
+    fi
+    
+    log_success "Development environment validation passed"
+    return 0
+}
+
+# Validate CI environment
+validate_ci_environment() {
+    log_info "Validating CI environment configuration"
+    
+    # CI environment should have reliable networking and filesystem access
+    if [[ -z "${CI:-}" && -z "${GITHUB_ACTIONS:-}" ]]; then
+        log_warning "CI environment markers not detected"
+    fi
+    
+    # Ensure reasonable timeouts for CI
+    if [[ $DEFAULT_READINESS_TIMEOUT -lt 30 ]]; then
+        log_warning "CI environment timeout may be too low (${DEFAULT_READINESS_TIMEOUT}s < 30s)"
+    fi
+    
+    # Check for CI-specific requirements
+    if ! command -v timeout &> /dev/null; then
+        log_error "timeout command not available in CI environment"
+        return 1
+    fi
+    
+    log_success "CI environment validation passed"
+    return 0
+}
+
+# Validate production environment
+validate_production_environment() {
+    log_info "Validating production environment configuration"
+    
+    # Production environment should have comprehensive capabilities
+    if [[ $DEFAULT_READINESS_TIMEOUT -lt 60 ]]; then
+        log_warning "Production environment timeout may be too low (${DEFAULT_READINESS_TIMEOUT}s < 60s)"
+    fi
+    
+    # Check for QEMU availability
+    if ! command -v qemu-system-x86_64 &> /dev/null; then
+        log_warning "QEMU not available in production environment"
+    fi
+    
+    # Check for hardware detection capabilities
+    if [[ "$(uname)" == "Darwin" ]]; then
+        if ! command -v system_profiler &> /dev/null; then
+            log_warning "system_profiler not available for hardware detection"
+        fi
+    fi
+    
+    log_success "Production environment validation passed"
+    return 0
+}
+
+# Environment-aware test execution
+run_environment_aware_validation() {
+    local log_file="$1"
+    local validation_type="${2:-full}"
+    
+    log_info "Running environment-aware validation: $validation_type"
+    
+    # Validate environment first
+    if ! validate_test_environment; then
+        log_error "Environment validation failed"
+        return 1
+    fi
+    
+    # Run validation based on environment and type
+    case "$TEST_ENVIRONMENT" in
+        "development")
+            run_development_validation "$log_file" "$validation_type"
+            ;;
+        "ci")
+            run_ci_validation "$log_file" "$validation_type"
+            ;;
+        "production")
+            run_production_validation "$log_file" "$validation_type"
+            ;;
+        *)
+            log_warning "Unknown environment, using development validation"
+            run_development_validation "$log_file" "$validation_type"
+            ;;
+    esac
+}
+
+# Development environment validation - fast and focused
+run_development_validation() {
+    local log_file="$1"
+    local validation_type="$2"
+    
+    log_info "Running development validation"
+    
+    # Basic validation for development
+    if ! validate_log_format "$log_file"; then
+        return 1
+    fi
+    
+    # Quick readiness check
+    if [[ "$validation_type" == "full" ]]; then
+        if ! is_usbip_client_ready "$log_file"; then
+            log_warning "USB/IP client not ready (development mode allows partial validation)"
+        fi
+    fi
+    
+    log_success "Development validation completed"
+    return 0
+}
+
+# CI environment validation - reliable and comprehensive
+run_ci_validation() {
+    local log_file="$1"
+    local validation_type="$2"
+    
+    log_info "Running CI validation"
+    
+    # Standard validation for CI
+    if ! validate_log_format "$log_file"; then
+        return 1
+    fi
+    
+    # Comprehensive readiness validation
+    if ! wait_for_usbip_readiness "$log_file" "$DEFAULT_READINESS_TIMEOUT"; then
+        log_error "USB/IP readiness failed in CI environment"
+        return 1
+    fi
+    
+    # Device operations validation
+    if [[ "$validation_type" == "full" ]]; then
+        if ! validate_device_operations "$log_file"; then
+            log_error "Device operations validation failed in CI environment"
+            return 1
+        fi
+    fi
+    
+    log_success "CI validation completed"
+    return 0
+}
+
+# Production environment validation - exhaustive and hardware-aware
+run_production_validation() {
+    local log_file="$1"
+    local validation_type="$2"
+    
+    log_info "Running production validation"
+    
+    # Comprehensive validation for production
+    if ! validate_log_format "$log_file"; then
+        return 1
+    fi
+    
+    # Full readiness validation
+    if ! wait_for_usbip_readiness "$log_file" "$DEFAULT_READINESS_TIMEOUT"; then
+        log_error "USB/IP readiness failed in production environment"
+        return 1
+    fi
+    
+    # Complete test validation
+    if ! validate_test_completion "$log_file"; then
+        log_error "Test completion validation failed in production environment"
+        return 1
+    fi
+    
+    # Device operations validation
+    if ! validate_device_operations "$log_file"; then
+        log_error "Device operations validation failed in production environment"
+        return 1
+    fi
+    
+    # Generate comprehensive report for production
+    local report_file="${log_file%.log}-${TEST_ENVIRONMENT}-report.txt"
+    if ! generate_test_report "$log_file" "$report_file"; then
+        log_warning "Failed to generate production test report"
+    fi
+    
+    log_success "Production validation completed"
+    return 0
+}
+
+# Environment-aware test monitoring
+monitor_test_execution() {
+    local log_file="$1"
+    local server_host="${2:-localhost}"
+    local server_port="${3:-3240}"
+    
+    # Adjust monitoring duration based on environment
+    local monitoring_duration
+    case "$TEST_ENVIRONMENT" in
+        "development")
+            monitoring_duration=30
+            ;;
+        "ci")
+            monitoring_duration=60
+            ;;
+        "production")
+            monitoring_duration=120
+            ;;
+        *)
+            monitoring_duration=60
+            ;;
+    esac
+    
+    log_info "Starting environment-aware test monitoring (${monitoring_duration}s)"
+    monitor_usbip_connection "$log_file" "$server_host" "$server_port" "$monitoring_duration"
+}
+
+# ============================================================================
 # MAIN FUNCTION FOR STANDALONE USAGE
 # ============================================================================
 
@@ -626,9 +954,13 @@ show_usage() {
     cat << EOF
 Usage: $0 [COMMAND] [OPTIONS]
 
-QEMU USB/IP Test Tool - Test Validation Utilities
+QEMU USB/IP Test Tool - Test Validation Utilities with Environment Awareness
 
-COMMANDS:
+ENVIRONMENT DETECTION:
+    TEST_ENVIRONMENT=development|ci|production   Set test environment explicitly
+    Automatic detection: CI=1 or GITHUB_ACTIONS -> ci, otherwise development
+
+STANDARD COMMANDS:
     parse-log <log_file> [message_type]     Parse console log messages
     check-readiness <log_file>              Check USB/IP client readiness
     wait-readiness <log_file> [timeout]     Wait for client readiness
@@ -640,20 +972,32 @@ COMMANDS:
     validate-format <log_file>              Validate log format
     get-stats <log_file>                    Get test statistics
 
+ENVIRONMENT-AWARE COMMANDS:
+    validate-environment                    Validate current test environment
+    environment-validation <log_file> [type]  Run environment-aware validation
+    monitor-execution <log_file> [host] [port]  Environment-aware test monitoring
+    environment-info                        Show current environment configuration
+
 OPTIONS:
     -h, --help                              Show this help message
+    -e, --environment                       Show environment information
 
 EXAMPLES:
+    # Standard usage
     $0 parse-log console.log USBIP_CLIENT_READY
     $0 check-readiness console.log
     $0 wait-readiness console.log 60
+    
+    # Environment-aware usage
+    TEST_ENVIRONMENT=ci $0 environment-validation console.log full
+    $0 environment-info
+    $0 validate-environment
+    $0 monitor-execution console.log localhost 3240
+    
+    # Traditional usage (still supported)
     $0 validate-test console.log
     $0 generate-report console.log
     $0 check-server localhost 3240
-    $0 test-server 192.168.1.100
-    $0 monitor-connection console.log localhost 3240 120
-    $0 validate-format console.log
-    $0 get-stats console.log
 
 EOF
 }
@@ -748,6 +1092,41 @@ main() {
                 exit 1
             fi
             get_test_statistics "$2"
+            ;;
+        "validate-environment")
+            validate_test_environment
+            exit_code=$?
+            exit $exit_code
+            ;;
+        "environment-validation")
+            if [[ $# -lt 2 ]]; then
+                log_error "Usage: $0 environment-validation <log_file> [validation_type]"
+                exit 1
+            fi
+            run_environment_aware_validation "$2" "${3:-full}"
+            exit_code=$?
+            exit $exit_code
+            ;;
+        "monitor-execution")
+            if [[ $# -lt 2 ]]; then
+                log_error "Usage: $0 monitor-execution <log_file> [host] [port]"
+                exit 1
+            fi
+            monitor_test_execution "$2" "${3:-localhost}" "${4:-3240}"
+            exit_code=$?
+            exit $exit_code
+            ;;
+        "environment-info")
+            log_environment
+            echo "Build Directory: $BUILD_DIR"
+            echo "Log Directory: $LOG_DIR"
+            echo "Script Directory: $SCRIPT_DIR"
+            echo "Project Root: $PROJECT_ROOT"
+            exit 0
+            ;;
+        "-e"|"--environment")
+            log_environment
+            exit 0
             ;;
         "-h"|"--help"|"")
             show_usage
