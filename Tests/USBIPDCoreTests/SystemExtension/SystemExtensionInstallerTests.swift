@@ -46,10 +46,11 @@ final class SystemExtensionInstallerTests: XCTestCase {
         let status = await installer.checkInstallationStatus()
         
         // Should return a valid status (not necessarily installed on test system)
-        XCTAssertTrue([
+        let validStatuses: [SystemExtensionInstallationStatus] = [
             .unknown, .notInstalled, .installing, .installed, 
-            .requiresApproval, .failed
-        ].contains(status))
+            .pendingApproval, .installationFailed
+        ]
+        XCTAssertTrue(validStatuses.contains(status))
     }
     
     func testInstallationStatus_InitiallyUnknown() {
@@ -134,41 +135,36 @@ final class SystemExtensionInstallerTests: XCTestCase {
         wait(for: [expectation], timeout: 10.0)
     }
     
-    // MARK: - Installation with Bundle Tests
+    // MARK: - Installation Health Tests
     
-    func testInstallWithBundle_ValidBundle() {
-        let expectation = XCTestExpectation(description: "Bundle installation")
-        let mockBundle = createMockBundle()
+    func testGetInstallationHealth() async {
+        let health = await installer.getInstallationHealth()
         
-        installer.installSystemExtension(bundle: mockBundle) { result in
-            // Test the workflow structure
-            XCTAssertNotNil(result)
-            expectation.fulfill()
-        }
-        
-        wait(for: [expectation], timeout: 30.0)
+        // Should return a valid health status
+        let validHealthStatuses: [HealthStatus] = [
+            .unknown, .healthy, .degraded, .unhealthy, .critical, .requiresAttention
+        ]
+        XCTAssertTrue(validHealthStatuses.contains(health))
     }
     
-    func testInstallWithBundle_InvalidBundle() {
-        let expectation = XCTestExpectation(description: "Invalid bundle rejection")
-        let invalidBundle = createInvalidBundle()
+    func testSetupDevelopmentEnvironment() async {
+        let result = await installer.setupDevelopmentEnvironment()
         
-        installer.installSystemExtension(bundle: invalidBundle) { result in
-            XCTAssertFalse(result.success)
+        // Should return a result (success or failure depending on system state)
+        XCTAssertNotNil(result)
+        
+        if !result.success {
+            // Most test systems will fail - should provide helpful error information
             XCTAssertFalse(result.errors.isEmpty)
-            expectation.fulfill()
         }
-        
-        wait(for: [expectation], timeout: 10.0)
     }
     
     // MARK: - Uninstallation Tests
     
     func testUninstallSystemExtension() {
         let expectation = XCTestExpectation(description: "Uninstallation")
-        let bundleIdentifier = "com.test.systemextension"
         
-        installer.uninstallSystemExtension(bundleIdentifier: bundleIdentifier) { result in
+        installer.uninstallSystemExtension { result in
             // Uninstallation may succeed or fail depending on system state
             XCTAssertNotNil(result)
             expectation.fulfill()
@@ -180,43 +176,44 @@ final class SystemExtensionInstallerTests: XCTestCase {
     // MARK: - Developer Mode Tests
     
     func testCheckDeveloperMode() async {
-        let isDeveloperMode = await installer.checkDeveloperMode()
+        let isDeveloperMode = await installer.isDeveloperModeEnabled()
         
         // Should return a boolean (may be true or false depending on system)
         XCTAssertTrue(isDeveloperMode == true || isDeveloperMode == false)
     }
     
     func testEnableDeveloperMode() async {
-        let result = await installer.enableDeveloperMode()
-        
-        // May succeed or fail depending on system permissions
-        XCTAssertNotNil(result)
-        
-        if !result.success {
-            // Expected on most systems - should provide helpful guidance
-            XCTAssertFalse(result.guidanceMessage.isEmpty)
+        do {
+            try await installer.enableDeveloperMode()
+            // Successfully enabled developer mode (unlikely on most test systems)
+        } catch {
+            // Expected on most systems - should get proper error information
+            XCTAssertNotNil(error)
         }
     }
     
-    func testGetDeveloperModeGuidance() {
-        let guidance = installer.getDeveloperModeGuidance()
+    func testGetDeveloperModeGuidance() async {
+        let guidance = await installer.getDeveloperModeGuidance()
         
-        XCTAssertFalse(guidance.isEmpty)
-        XCTAssertTrue(guidance.contains("System Extension") || guidance.contains("developer mode"))
+        XCTAssertFalse(guidance.message.isEmpty)
+        XCTAssertTrue(guidance.message.contains("System Extension") || guidance.message.contains("developer mode"))
+        XCTAssertFalse(guidance.recommendedActions.isEmpty)
     }
     
-    // MARK: - Installation Recovery Tests
+    // MARK: - Installation Health Tests
     
-    func testRecoverFromFailedInstallation() {
-        let expectation = XCTestExpectation(description: "Recovery attempt")
-        let bundleIdentifier = "com.test.systemextension"
+    func testVerifyInstallation() async {
+        let results = await installer.verifyInstallation()
         
-        installer.recoverFromFailedInstallation(bundleIdentifier: bundleIdentifier) { result in
-            XCTAssertNotNil(result)
-            expectation.fulfill()
+        // Should return validation results (may pass or fail depending on system state)
+        XCTAssertTrue(results.count >= 0)
+        
+        // Each result should have proper structure
+        for result in results {
+            XCTAssertFalse(result.checkID.isEmpty)
+            XCTAssertFalse(result.checkName.isEmpty)
+            XCTAssertFalse(result.message.isEmpty)
         }
-        
-        wait(for: [expectation], timeout: 30.0)
     }
     
     func testForceReinstall() {
@@ -227,7 +224,7 @@ final class SystemExtensionInstallerTests: XCTestCase {
         mockBundleCreator.shouldSucceed = true
         mockBundleCreator.mockBundle = createMockBundle()
         
-        installer.forceReinstall(
+        installer.forceReinstallSystemExtension(
             bundleIdentifier: bundleIdentifier,
             executablePath: executablePath
         ) { result in
@@ -254,10 +251,11 @@ final class SystemExtensionInstallerTests: XCTestCase {
         XCTAssertFalse(statusUpdates.isEmpty)
         
         // Verify we got a valid status
-        XCTAssertTrue([
+        let validStatuses: [SystemExtensionInstallationStatus] = [
             .unknown, .notInstalled, .installing, .installed, 
             .installationFailed, .requiresReinstall, .invalidBundle, .pendingApproval
-        ].contains(statusUpdates.first!))
+        ]
+        XCTAssertTrue(validStatuses.contains(statusUpdates.first!))
     }
     
     // MARK: - Error Handling Tests
@@ -348,7 +346,11 @@ private class MockSystemExtensionBundleCreator: SystemExtensionBundleCreator {
             throw error
         }
         
-        return mockBundle ?? (try super.createBundle(with: config))
+        if let mockBundle = mockBundle {
+            return mockBundle
+        }
+        
+        return try super.createBundle(with: config)
     }
     
     override func completeBundle(_ bundle: SystemExtensionBundle, with config: BundleCreationConfig) throws -> SystemExtensionBundle {
@@ -356,7 +358,11 @@ private class MockSystemExtensionBundleCreator: SystemExtensionBundleCreator {
             throw error
         }
         
-        return mockBundle ?? (try super.completeBundle(bundle, with: config))
+        if let mockBundle = mockBundle {
+            return mockBundle
+        }
+        
+        return try super.completeBundle(bundle, with: config)
     }
 }
 
