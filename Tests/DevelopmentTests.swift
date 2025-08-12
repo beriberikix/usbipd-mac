@@ -18,7 +18,7 @@ final class DevelopmentTests: XCTestCase, TestSuite {
     
     // MARK: - Test Setup
     
-    override class func setUp() {
+    override static func setUp() {
         super.setUp()
         
         // Validate environment is suitable for development testing

@@ -223,8 +223,7 @@ public struct USBIPErrorHandling {
             return mapIOReturnToUSBIPStatus(code)
         }
     }
-    
-    
+
     /// Map IOKit return codes to USB/IP status codes
     public static func mapIOReturnToUSBIPStatus(_ ioReturn: IOReturn) -> Int32 {
         switch ioReturn {

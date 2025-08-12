@@ -3,7 +3,6 @@
 
 import Foundation
 
-
 /// Network-related errors
 public enum NetworkError: Error {
     case connectionFailed(String)

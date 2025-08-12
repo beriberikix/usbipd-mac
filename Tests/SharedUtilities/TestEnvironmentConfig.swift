@@ -12,9 +12,9 @@ import XCTest
 
 /// Available test execution environments
 public enum TestEnvironment: String, CaseIterable {
-    case development = "development"
-    case ci = "ci" 
-    case production = "production"
+    case development
+    case ci
+    case production
     
     /// Human-readable name for the environment
     public var displayName: String {
