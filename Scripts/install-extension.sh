@@ -134,11 +134,21 @@ create_bundle() {
     log_warning "Bundle creation through CLI not yet implemented. Creating basic bundle structure..."
     
     # Create basic bundle structure manually
-    mkdir -p "$BUNDLE_PATH/Contents/MacOS"
-    mkdir -p "$BUNDLE_PATH/Contents/Resources"
+    if ! mkdir -p "$BUNDLE_PATH/Contents/MacOS"; then
+        log_error "Failed to create bundle directory structure"
+        return 1
+    fi
+    
+    if ! mkdir -p "$BUNDLE_PATH/Contents/Resources"; then
+        log_error "Failed to create bundle resources directory"
+        return 1
+    fi
     
     # Copy executable
-    cp "$EXTENSION_BINARY" "$BUNDLE_PATH/Contents/MacOS/"
+    if ! cp "$EXTENSION_BINARY" "$BUNDLE_PATH/Contents/MacOS/"; then
+        log_error "Failed to copy System Extension executable"
+        return 1
+    fi
     
     # Create basic Info.plist
     cat > "$BUNDLE_PATH/Contents/Info.plist" << EOF
@@ -212,14 +222,49 @@ sign_bundle() {
     fi
 }
 
+# Check if we have sudo access or can get it
+check_sudo_access() {
+    log_info "Checking sudo access..."
+    
+    # Test if we can run sudo without prompting
+    if sudo -n true 2>/dev/null; then
+        log_success "Sudo access available"
+        return 0
+    fi
+    
+    # Check if we're in an interactive terminal
+    if [[ ! -t 0 ]]; then
+        log_error "This script requires sudo access but is not running in an interactive terminal."
+        log_error "Please run the script from a terminal, or run with 'sudo' prefix:"
+        log_error "  sudo ./Scripts/install-extension.sh --skip-signing"
+        exit 1
+    fi
+    
+    # Prompt for sudo access
+    log_info "This script requires administrator privileges to install the System Extension."
+    log_info "You will be prompted for your password."
+    
+    if ! sudo -v; then
+        log_error "Failed to obtain sudo privileges"
+        exit 1
+    fi
+    
+    log_success "Sudo access granted"
+    return 0
+}
+
 # Install the System Extension
 install_extension() {
     log_info "Installing System Extension..."
     
     if [[ $DRY_RUN == true ]]; then
         log_info "[DRY RUN] Would install bundle: $BUNDLE_PATH"
+        log_info "[DRY RUN] Would run: systemextensionsctl install '$BUNDLE_PATH'"
         return 0
     fi
+    
+    # Check sudo access before proceeding
+    check_sudo_access
     
     # Check if already installed and force reinstall is requested
     if [[ $FORCE_REINSTALL == true ]]; then
@@ -229,26 +274,35 @@ install_extension() {
         
         if [[ -n "$existing_extensions" ]]; then
             log_info "Found existing installation, uninstalling..."
-            sudo systemextensionsctl uninstall "$BUNDLE_ID" || true
+            sudo systemextensionsctl uninstall "$BUNDLE_ID" || {
+                log_warning "Uninstall command returned error, but continuing..."
+            }
             sleep 2
         fi
     fi
     
     # Install the extension
-    log_info "Installing System Extension (requires sudo)..."
-    log_warning "You may be prompted for admin credentials and user approval"
+    log_info "Installing System Extension..."
+    log_warning "You may need to approve the extension in System Preferences > Privacy & Security"
     
+    local install_result
     if [[ $VERBOSE == true ]]; then
         sudo systemextensionsctl install "$BUNDLE_PATH" -verbose
+        install_result=$?
     else
         sudo systemextensionsctl install "$BUNDLE_PATH"
+        install_result=$?
     fi
     
-    if [[ $? -eq 0 ]]; then
+    if [[ $install_result -eq 0 ]]; then
         log_success "System Extension installation initiated"
         log_info "Check System Preferences > Privacy & Security to approve the extension if needed"
     else
-        log_error "System Extension installation failed"
+        log_error "System Extension installation failed (exit code: $install_result)"
+        log_info "This is often due to:"
+        log_info "  - Unsigned bundle (use --skip-signing for development)"
+        log_info "  - SIP enabled (disable for development bundles)"
+        log_info "  - User approval required in System Preferences"
         return 1
     fi
 }
@@ -296,11 +350,19 @@ show_status() {
 # Cleanup function
 cleanup() {
     if [[ $DRY_RUN == false && -d "$BUNDLE_PATH" && $KEEP_BUNDLE != true ]]; then
-        read -p "Remove created bundle? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            rm -rf "$BUNDLE_PATH"
-            log_info "Bundle removed"
+        # Only prompt for cleanup if we're in an interactive terminal
+        if [[ -t 0 ]]; then
+            echo
+            read -p "Remove created bundle? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                rm -rf "$BUNDLE_PATH"
+                log_info "Bundle removed"
+            else
+                log_info "Bundle kept at: $BUNDLE_PATH"
+            fi
+        else
+            log_info "Non-interactive mode: keeping bundle at $BUNDLE_PATH"
         fi
     fi
 }
