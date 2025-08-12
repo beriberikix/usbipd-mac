@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755029991864_6wi80c1ge",
+  "title": "Requirements Phase: test-infrastructure-improvement - Ready for Review",
+  "filePath": ".spec-workflow/specs/test-infrastructure-improvement/requirements.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-12T20:19:51.864Z",
+  "category": "spec",
+  "categoryName": "test-infrastructure-improvement",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Group tests into development (as in while a developer is writing new features), CI (where certain things can't be tested, like hardware access) and prepare for production/release\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Group tests into development (as in while a developer is writing new features), CI (where certain things can't be tested, like hardware access) and prepare for production/release\",\n      \"timestamp\": \"2025-08-12T20:23:07.280Z\",\n      \"id\": \"comment_1755030187280_kir1fyeou\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Group tests into development (as in while a developer is writing new features), CI (where certain things can't be tested, like hardware access) and prepare for production/release\\n\\n\",\n  \"timestamp\": \"2025-08-12T20:23:09.496Z\"\n}",
+  "respondedAt": "2025-08-12T20:23:09.505Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Group tests into development (as in while a developer is writing new features), CI (where certain things can't be tested, like hardware access) and prepare for production/release",
+      "timestamp": "2025-08-12T20:23:07.280Z",
+      "id": "comment_1755030187280_kir1fyeou"
+    }
+  ]
+}

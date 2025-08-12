@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755031035150_ksx8oqy4t",
+  "title": "Tasks Phase: test-infrastructure-improvement - Ready for Review (Revised)",
+  "filePath": ".spec-workflow/specs/test-infrastructure-improvement/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-12T20:37:15.150Z",
+  "category": "spec",
+  "categoryName": "test-infrastructure-improvement",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Be explicit with git commit message on each task\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Be explicit with git commit message on each task\",\n      \"timestamp\": \"2025-08-12T20:39:38.969Z\",\n      \"id\": \"comment_1755031178969_fkejwivsf\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Be explicit with git commit message on each task\\n\\n\",\n  \"timestamp\": \"2025-08-12T20:39:40.601Z\"\n}",
+  "respondedAt": "2025-08-12T20:39:40.610Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Be explicit with git commit message on each task",
+      "timestamp": "2025-08-12T20:39:38.969Z",
+      "id": "comment_1755031178969_fkejwivsf"
+    }
+  ]
+}
