@@ -93,7 +93,7 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicatorProtocol {
     
     func setIsochronousTransferResponse(
         _ data: Data,
-        status: USBStatus = .success,
+        status: USBIPDCore.USBStatus = .success,
         actualLength: UInt32? = nil,
         errorCount: UInt32 = 0
     ) {

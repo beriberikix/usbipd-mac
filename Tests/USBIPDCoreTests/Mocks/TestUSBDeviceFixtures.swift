@@ -4,6 +4,7 @@
 import Foundation
 import IOKit.usb
 @testable import USBIPDCore
+@testable import Common
 
 // MARK: - Test Device Fixtures
 

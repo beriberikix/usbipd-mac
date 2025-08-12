@@ -112,7 +112,7 @@ build_project() {
     swift build --build-tests \
         --configuration debug \
         --enable-test-discovery \
-        --parallel-jobs $(sysctl -n hw.activecpu) \
+        --jobs $(sysctl -n hw.activecpu) \
         --build-path "$BUILD_DIR" || {
         log_error "Build failed"
         exit 1

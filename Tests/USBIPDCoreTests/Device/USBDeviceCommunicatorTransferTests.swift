@@ -10,7 +10,7 @@ final class USBDeviceCommunicatorTransferTests: XCTestCase {
     
     // MARK: - Test Properties
     
-    var deviceCommunicator: USBDeviceCommunicator!
+    var deviceCommunicator: any USBDeviceCommunicator!
     var mockIOKitInterface: MockIOKitUSBInterface!
     var mockClaimManager: MockDeviceClaimManager!
     var testDevice: USBDevice!
@@ -23,7 +23,7 @@ final class USBDeviceCommunicatorTransferTests: XCTestCase {
         mockIOKitInterface = MockIOKitUSBInterface()
         mockClaimManager = MockDeviceClaimManager()
         
-        deviceCommunicator = USBDeviceCommunicator(
+        deviceCommunicator = DefaultUSBDeviceCommunicator(
             ioKitInterface: mockIOKitInterface,
             claimManager: mockClaimManager
         )
@@ -51,31 +51,9 @@ final class USBDeviceCommunicatorTransferTests: XCTestCase {
             deviceSubClass: 0x00,
             deviceProtocol: 0x00,
             speed: .high,
-            interfaces: [
-                USBInterface(
-                    interfaceNumber: 0,
-                    alternateSetting: 0,
-                    interfaceClass: 0x09,
-                    interfaceSubClass: 0x00,
-                    interfaceProtocol: 0x00,
-                    endpoints: [
-                        USBEndpoint(
-                            address: 0x81,
-                            direction: .in,
-                            transferType: .interrupt,
-                            maxPacketSize: 8,
-                            interval: 10
-                        ),
-                        USBEndpoint(
-                            address: 0x02,
-                            direction: .out,
-                            transferType: .bulk,
-                            maxPacketSize: 64,
-                            interval: 0
-                        )
-                    ]
-                )
-            ]
+            manufacturerString: "Test Manufacturer",
+            productString: "Test Product",
+            serialNumberString: "TEST123"
         )
     }
     
