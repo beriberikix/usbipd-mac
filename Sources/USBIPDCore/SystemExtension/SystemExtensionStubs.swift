@@ -19,8 +19,25 @@ public protocol DeviceClaimer {
 /// Stub implementation of IOKit-based device claiming
 public class IOKitDeviceClaimer: DeviceClaimer {
     private var claimedDevices: [ClaimedDevice] = []
+    private let stateFilePath: String
     
-    public init() {}
+    public init() {
+        // Use user Application Support directory for state persistence
+        let stateDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("usbipd-mac")
+        self.stateFilePath = stateDir?.appendingPathComponent("cli-claimed-devices.json").path ?? "/tmp/usbipd-cli-claimed-devices.json"
+        
+        // Create state directory if needed
+        let stateDirPath = (stateFilePath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(
+            atPath: stateDirPath,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        
+        // Restore state on initialization
+        try? restoreClaimedDevices()
+    }
     
     public func claimDevice(device: USBDevice) throws -> ClaimedDevice {
         let deviceID = "\(device.busID)-\(device.deviceID)"
@@ -43,12 +60,14 @@ public class IOKitDeviceClaimer: DeviceClaimer {
         )
         
         claimedDevices.append(claimedDevice)
+        try saveClaimState()
         return claimedDevice
     }
     
     public func releaseDevice(device: USBDevice) throws {
         let deviceID = "\(device.busID)-\(device.deviceID)"
         claimedDevices.removeAll { $0.deviceID == deviceID }
+        try saveClaimState()
     }
     
     public func getAllClaimedDevices() -> [ClaimedDevice] {
@@ -60,11 +79,28 @@ public class IOKitDeviceClaimer: DeviceClaimer {
     }
     
     public func saveClaimState() throws {
-        // Stub implementation - would save to persistent storage
+        do {
+            let data = try JSONEncoder().encode(claimedDevices)
+            try data.write(to: URL(fileURLWithPath: stateFilePath))
+        } catch {
+            // Don't fail the operation, just log the error
+            print("Warning: Failed to save device claim state: \(error.localizedDescription)")
+        }
     }
     
     public func restoreClaimedDevices() throws {
-        // Stub implementation - would restore from persistent storage
+        guard FileManager.default.fileExists(atPath: stateFilePath) else {
+            return // No state file, start with empty list
+        }
+        
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: stateFilePath))
+            claimedDevices = try JSONDecoder().decode([ClaimedDevice].self, from: data)
+        } catch {
+            // Don't fail the operation, just log the error
+            print("Warning: Failed to restore device claim state: \(error.localizedDescription)")
+            claimedDevices = []
+        }
     }
 }
 

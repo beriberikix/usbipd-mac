@@ -88,6 +88,15 @@ func main() {
     let deviceClaimManager = SystemExtensionClaimAdapter(systemExtensionManager: systemExtensionManager)
     logger.debug("Created SystemExtensionManager and DeviceClaimManager")
     
+    // Start System Extension manager for device claiming operations
+    do {
+        try systemExtensionManager.start()
+        logger.debug("SystemExtensionManager started successfully")
+    } catch {
+        logger.warning("Failed to start SystemExtensionManager", context: ["error": error.localizedDescription])
+        // Continue without System Extension support for now
+    }
+    
     // Create server coordinator
     let server = ServerCoordinator(
         networkService: networkService,

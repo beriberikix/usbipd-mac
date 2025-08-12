@@ -7,6 +7,8 @@ import IOKit.usb
 import Common
 @testable import USBIPDCore
 
+// Use USBStatus from USBIPDCore, qualified to avoid ambiguity with IOKit USBStatus
+
 /// Mock IOKit USB interface for isolated testing of USB communication layer
 public class MockIOKitUSBInterface {
     
@@ -38,10 +40,10 @@ public class MockIOKitUSBInterface {
     public var isochronousTransferResponse: Data?
     
     /// Controls mock USB status responses
-    public var controlTransferStatus: USBStatus = .success
-    public var bulkTransferStatus: USBStatus = .success
-    public var interruptTransferStatus: USBStatus = .success
-    public var isochronousTransferStatus: USBStatus = .success
+    public var controlTransferStatus: USBIPDCore.USBStatus = .success
+    public var bulkTransferStatus: USBIPDCore.USBStatus = .success
+    public var interruptTransferStatus: USBIPDCore.USBStatus = .success
+    public var isochronousTransferStatus: USBIPDCore.USBStatus = .success
     
     /// Controls actual length returned in responses
     public var controlTransferActualLength: UInt32?
@@ -130,28 +132,28 @@ public class MockIOKitUSBInterface {
     }
     
     /// Configure a successful control transfer response
-    public func setControlTransferResponse(data: Data, status: USBStatus = .success, actualLength: UInt32? = nil) {
+    public func setControlTransferResponse(data: Data, status: USBIPDCore.USBStatus = .success, actualLength: UInt32? = nil) {
         controlTransferResponse = data
         controlTransferStatus = status
         controlTransferActualLength = actualLength ?? UInt32(data.count)
     }
     
     /// Configure a successful bulk transfer response
-    public func setBulkTransferResponse(data: Data, status: USBStatus = .success, actualLength: UInt32? = nil) {
+    public func setBulkTransferResponse(data: Data, status: USBIPDCore.USBStatus = .success, actualLength: UInt32? = nil) {
         bulkTransferResponse = data
         bulkTransferStatus = status
         bulkTransferActualLength = actualLength ?? UInt32(data.count)
     }
     
     /// Configure a successful interrupt transfer response
-    public func setInterruptTransferResponse(data: Data, status: USBStatus = .success, actualLength: UInt32? = nil) {
+    public func setInterruptTransferResponse(data: Data, status: USBIPDCore.USBStatus = .success, actualLength: UInt32? = nil) {
         interruptTransferResponse = data
         interruptTransferStatus = status
         interruptTransferActualLength = actualLength ?? UInt32(data.count)
     }
     
     /// Configure a successful isochronous transfer response
-    public func setIsochronousTransferResponse(data: Data, status: USBStatus = .success, actualLength: UInt32? = nil, errorCount: UInt32 = 0) {
+    public func setIsochronousTransferResponse(data: Data, status: USBIPDCore.USBStatus = .success, actualLength: UInt32? = nil, errorCount: UInt32 = 0) {
         isochronousTransferResponse = data
         isochronousTransferStatus = status
         isochronousTransferActualLength = actualLength ?? UInt32(data.count)
@@ -637,7 +639,7 @@ extension USBTransferResult {
     }
     
     /// Create a mock error result
-    public static func mockError(_ status: USBStatus, actualLength: UInt32 = 0) -> USBTransferResult {
+    public static func mockError(_ status: USBIPDCore.USBStatus, actualLength: UInt32 = 0) -> USBTransferResult {
         return USBTransferResult(
             status: status,
             actualLength: actualLength,

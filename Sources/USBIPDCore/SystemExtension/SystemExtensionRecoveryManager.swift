@@ -309,11 +309,11 @@ public class SystemExtensionRecoveryManager {
         }
         
         // TODO: Implement proper installation method call when installer API is available
-        installer.install { result in
-            switch result {
-            case .success:
+        installer.installSystemExtension(bundleIdentifier: "com.example.systemextension", executablePath: "/tmp/executable") { (result: InstallationResult) in
+            if result.success {
                 completion(true, nil)
-            case .failure(let error):
+            } else {
+                let error = result.errors.first ?? InstallationError.unknownError("Installation failed")
                 completion(false, error)
             }
         }

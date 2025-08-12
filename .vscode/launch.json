@@ -53,6 +53,24 @@
             "name": "Release SystemExtension",
             "program": "${workspaceFolder:usbipd-mac}/.build/release/SystemExtension",
             "preLaunchTask": "swift: Build Release SystemExtension"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Debug USBIPDSystemExtension",
+            "program": "${workspaceFolder:usbipd-mac}/.build/debug/USBIPDSystemExtension",
+            "preLaunchTask": "swift: Build Debug USBIPDSystemExtension"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:usbipd-mac}",
+            "name": "Release USBIPDSystemExtension",
+            "program": "${workspaceFolder:usbipd-mac}/.build/release/USBIPDSystemExtension",
+            "preLaunchTask": "swift: Build Release USBIPDSystemExtension"
         }
     ]
 }

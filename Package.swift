@@ -23,11 +23,8 @@ let package = Package(
             name: "Common",
             targets: ["Common"]),
         .executable(
-            name: "SystemExtension",
+            name: "USBIPDSystemExtension",
             targets: ["SystemExtension"]),
-        .plugin(
-            name: "SystemExtensionBundleBuilder",
-            targets: ["SystemExtensionBundleBuilder"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -41,7 +38,10 @@ let package = Package(
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
-            exclude: ["README-USB-Implementation.md"]),
+            exclude: ["README-USB-Implementation.md"],
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]),
         .target(
             name: "Common",
             dependencies: []),
@@ -61,9 +61,6 @@ let package = Package(
                 .linkedFramework("SystemExtensions"),
                 .linkedFramework("IOKit")
             ]),
-        .plugin(
-            name: "SystemExtensionBundleBuilder",
-            capability: .buildTool()),
         .testTarget(
             name: "USBIPDCoreTests",
             dependencies: ["USBIPDCore"]),

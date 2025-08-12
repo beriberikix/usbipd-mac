@@ -142,7 +142,7 @@ public class SystemExtensionLifecycleManager {
     /// Activate the System Extension with health monitoring
     /// - Parameter completion: Completion handler called when activation completes
     public func activate(completion: @escaping (Result<Void, SystemExtensionInstallationError>) -> Void) {
-        lifecycleQueue.async { [weak self] in
+        lifecycleQueue.async(flags: []) { [weak self] in
             guard let self = self else { return }
             
             guard self.state != .activating && self.state != .active else {
@@ -156,15 +156,14 @@ public class SystemExtensionLifecycleManager {
             self.logger.info("Starting System Extension activation")
             self.setState(.activating)
             
-            self.installer.install { [weak self] result in
+            self.installer.installSystemExtension(bundleIdentifier: "placeholder", executablePath: "/tmp/placeholder") { [weak self] result in
                 guard let self = self else { return }
                 
-                switch result {
-                case .success:
+                if result.success {
                     self.handleActivationSuccess()
                     completion(.success(()))
-                    
-                case .failure(let error):
+                } else {
+                    let error = result.errors.first ?? InstallationError.unknownError("Activation failed")
                     self.handleActivationFailure(error)
                     completion(.failure(error))
                 }
@@ -175,7 +174,7 @@ public class SystemExtensionLifecycleManager {
     /// Deactivate the System Extension
     /// - Parameter completion: Completion handler called when deactivation completes
     public func deactivate(completion: @escaping (Result<Void, SystemExtensionInstallationError>) -> Void) {
-        lifecycleQueue.async { [weak self] in
+        lifecycleQueue.async(flags: []) { [weak self] in
             guard let self = self else { return }
             
             guard self.state == .active || self.state == .failed("") else {
@@ -190,15 +189,14 @@ public class SystemExtensionLifecycleManager {
             self.setState(.deactivating)
             self.stopHealthMonitoring()
             
-            self.installer.uninstall { [weak self] result in
+            self.installer.uninstallSystemExtension { [weak self] result in
                 guard let self = self else { return }
                 
-                switch result {
-                case .success:
+                if result.success {
                     self.handleDeactivationSuccess()
                     completion(.success(()))
-                    
-                case .failure(let error):
+                } else {
+                    let error = result.errors.first ?? InstallationError.unknownError("Deactivation failed")
                     self.handleDeactivationFailure(error)
                     completion(.failure(error))
                 }
@@ -233,7 +231,7 @@ public class SystemExtensionLifecycleManager {
     ///   - newVersion: Version information for the new extension
     ///   - completion: Completion handler called when update completes
     public func updateToVersion(_ newVersion: VersionInfo, completion: @escaping (Result<Void, SystemExtensionInstallationError>) -> Void) {
-        lifecycleQueue.async { [weak self] in
+        lifecycleQueue.async(flags: []) { [weak self] in
             guard let self = self else { return }
             
             let oldVersion = self.currentVersion?.bundleShortVersion ?? "unknown"
@@ -247,17 +245,16 @@ public class SystemExtensionLifecycleManager {
             
             // For System Extensions, updates are handled by activating the new version
             // The system will automatically replace the old version
-            self.installer.install { [weak self] result in
+            self.installer.installSystemExtension(bundleIdentifier: "placeholder", executablePath: "/tmp/placeholder") { [weak self] result in
                 guard let self = self else { return }
                 
-                switch result {
-                case .success:
+                if result.success {
                     self.currentVersion = newVersion
                     self.handleActivationSuccess()
                     self.logger.info("System Extension update completed successfully")
                     completion(.success(()))
-                    
-                case .failure(let error):
+                } else {
+                    let error = result.errors.first ?? InstallationError.unknownError("Update failed")
                     self.handleActivationFailure(error)
                     self.logger.error("System Extension update failed", context: ["error": error.localizedDescription])
                     completion(.failure(error))
@@ -270,7 +267,7 @@ public class SystemExtensionLifecycleManager {
     
     /// Start health monitoring for the System Extension
     public func startHealthMonitoring() {
-        lifecycleQueue.async { [weak self] in
+        lifecycleQueue.async(flags: []) { [weak self] in
             guard let self = self else { return }
             
             guard self.healthCheckTimer == nil else {
@@ -298,7 +295,7 @@ public class SystemExtensionLifecycleManager {
     
     /// Stop health monitoring
     public func stopHealthMonitoring() {
-        lifecycleQueue.async { [weak self] in
+        lifecycleQueue.async(flags: []) { [weak self] in
             guard let self = self else { return }
             
             self.healthCheckTimer?.cancel()

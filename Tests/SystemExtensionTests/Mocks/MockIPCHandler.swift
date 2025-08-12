@@ -4,12 +4,13 @@
 import Foundation
 import Common
 @testable import SystemExtension
+@testable import USBIPDCore
 
 // MARK: - Mock IPC Handler
 
 /// Mock implementation of IPCHandler protocol for testing IPC communication
 /// without requiring actual XPC connections
-public class MockIPCHandler: IPCHandler {
+public class MockIPCHandler: USBIPDCore.IPCHandler {
     
     // MARK: - Mock Configuration
     
@@ -38,7 +39,7 @@ public class MockIPCHandler: IPCHandler {
     public var sentResponses: [IPCResponse] = []
     
     /// Mock statistics
-    private var mockStatistics = IPCStatistics()
+    private var mockStatistics = USBIPDCore.IPCStatistics()
     
     /// Simulate network delay
     public var simulatedDelay: TimeInterval = 0.0
@@ -53,13 +54,13 @@ public class MockIPCHandler: IPCHandler {
         }
         
         isListeningValue = true
-        mockStatistics.startTime = Date()
+        // Note: USBIPDCore.IPCStatistics doesn't have startTime field
     }
     
     public func stopListener() {
         stopListenerCalled = true
         isListeningValue = false
-        mockStatistics.stopTime = Date()
+        // Note: USBIPDCore.IPCStatistics doesn't have stopTime field
     }
     
     public func sendResponse(to request: IPCRequest, response: IPCResponse) throws {
@@ -75,7 +76,7 @@ public class MockIPCHandler: IPCHandler {
         }
         
         sentResponses.append(response)
-        mockStatistics.recordResponse(success: response.success, duration: response.processingTime)
+        // Note: USBIPDCore.IPCStatistics doesn't have recordResponse method
     }
     
     public func authenticateClient(clientID: String) -> Bool {
@@ -85,9 +86,9 @@ public class MockIPCHandler: IPCHandler {
         if let result = authenticationResults[clientID] {
             if result {
                 authenticatedClients.insert(clientID)
-                mockStatistics.authenticatedClients += 1
+                // Note: USBIPDCore.IPCStatistics doesn't have authenticatedClients field
             } else {
-                mockStatistics.authenticationFailures += 1
+                // Note: USBIPDCore.IPCStatistics doesn't have authenticationFailures field
             }
             return result
         }
@@ -95,10 +96,10 @@ public class MockIPCHandler: IPCHandler {
         // Default behavior - allow all clients for testing
         if shouldSucceed {
             authenticatedClients.insert(clientID)
-            mockStatistics.authenticatedClients += 1
+            // Note: USBIPDCore.IPCStatistics doesn't have authenticatedClients field
             return true
         } else {
-            mockStatistics.authenticationFailures += 1
+            // Note: USBIPDCore.IPCStatistics doesn't have authenticationFailures field
             return false
         }
     }
@@ -107,7 +108,7 @@ public class MockIPCHandler: IPCHandler {
         return isListeningValue
     }
     
-    public func getStatistics() -> IPCStatistics {
+    public func getStatistics() -> USBIPDCore.IPCStatistics {
         return mockStatistics
     }
     
@@ -128,7 +129,7 @@ public class MockIPCHandler: IPCHandler {
         authenticatedClients.removeAll()
         authenticationResults.removeAll()
         sentResponses.removeAll()
-        mockStatistics = IPCStatistics()
+        mockStatistics = USBIPDCore.IPCStatistics()
         shouldSucceed = true
         startError = nil
         simulatedDelay = 0.0
@@ -141,7 +142,7 @@ public class MockIPCHandler: IPCHandler {
     
     /// Simulate receiving a request (for testing request handling)
     public func simulateRequest(_ request: IPCRequest) {
-        mockStatistics.recordRequest(command: request.command)
+        // Note: USBIPDCore.IPCStatistics doesn't have recordRequest method
     }
     
     /// Get the last sent response

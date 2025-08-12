@@ -83,7 +83,7 @@ public class IOKitDeviceClaimer: DeviceClaimer {
             category: "device-claimer"
         )
         
-        let stateDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .systemDomainMask)
+        let stateDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?.appendingPathComponent("usbipd-mac")
         let statePath = stateDir?.appendingPathComponent("claimed-devices.json").path ?? "/tmp/usbipd-claimed-devices.json"
         
@@ -111,11 +111,19 @@ public class IOKitDeviceClaimer: DeviceClaimer {
         
         // Create state directory if needed
         let stateDir = (stateFilePath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(
-            atPath: stateDir,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
+        do {
+            try FileManager.default.createDirectory(
+                atPath: stateDir,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            logger.debug("Created state directory", context: ["stateDir": stateDir])
+        } catch {
+            logger.warning("Failed to create state directory", context: [
+                "stateDir": stateDir,
+                "error": error.localizedDescription
+            ])
+        }
         
         logger.info("IOKitDeviceClaimer initialized", context: [
             "stateFilePath": stateFilePath,

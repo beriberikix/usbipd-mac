@@ -1,18 +1,20 @@
 # System Extension Installation and Configuration Guide
 
-This document provides detailed instructions for building, installing, and configuring the USB/IP System Extension on macOS, including the new automated bundle creation process.
+This document provides detailed instructions for building, installing, and configuring the USB/IP System Extension on macOS using the new automated workflow system.
 
 ## Overview
 
 The USB/IP System Extension provides exclusive access to USB devices, allowing them to be shared over IP networks using the USB/IP protocol. This System Extension is required for proper device claiming functionality.
 
-### New in Version 2.0: Automated Bundle Creation
+### New Shell Script-Based Workflow
 
-The latest version includes an automated System Extension bundle creation system that:
-- Automatically generates .systemextension bundles during build
-- Handles code signing and entitlements configuration
+The latest version includes a comprehensive shell script-based System Extension workflow that:
+- Automates development environment setup and validation
+- Handles System Extension bundle creation with proper structure
+- Manages code signing and certificate detection automatically
+- Provides complete installation and status monitoring
 - Supports both development and distribution workflows
-- Integrates with Swift Package Manager build plugins
+- Maintains Linux CLI compatibility by using shell scripts instead of extending the CLI
 
 ## System Requirements
 
@@ -25,63 +27,110 @@ The latest version includes an automated System Extension bundle creation system
   - Developer ID Application certificate
   - Developer ID Kernel Extension certificate (for System Extensions)
 
-## Building and Installation Process
+## Quick Start
 
-### 1. Building the System Extension Bundle
+### 1. Development Environment Setup
 
-The project now includes an automated bundle creation system using Swift Package Manager plugins.
-
-#### Automated Build Process
-
-Build the complete project with System Extension bundle:
+Set up your development environment with a single command:
 
 ```bash
-# Build all targets including System Extension bundle
-swift build --configuration release
-
-# The bundle will be automatically created at:
-# .build/release/SystemExtension.systemextension
+# Automated development environment setup
+./Scripts/setup-dev-environment.sh
 ```
 
-The build process automatically:
-1. Compiles the SystemExtension executable target
-2. Creates the .systemextension bundle structure
-3. Processes the Info.plist template with build-time variables
-4. Copies entitlements and resources
-5. Signs the bundle (if certificates are available)
+This script will:
+- Check macOS system requirements and SIP status
+- Verify Xcode Command Line Tools installation
+- Detect available development certificates
+- Configure developer mode settings
+- Build the project if needed
 
-#### Manual Bundle Creation (Development)
+### 2. Install System Extension
 
-For development or custom builds:
+Install the System Extension with automated bundle creation:
 
 ```bash
-# Build SystemExtension executable
-swift build --product SystemExtension --configuration debug
+# Complete installation workflow (build + create bundle + sign + install)
+./Scripts/install-extension.sh
 
-# Bundle will be created by the SystemExtensionBundleBuilder plugin
-# Location: .build/debug/SystemExtension.systemextension
+# For development (skip code signing)
+./Scripts/install-extension.sh --skip-signing
+
+# Force reinstall with verbose output
+./Scripts/install-extension.sh --force --verbose
+```
+
+### 3. Check Status
+
+Monitor System Extension status:
+
+```bash
+# Basic status check
+./Scripts/extension-status.sh
+
+# Comprehensive health check
+./Scripts/extension-status.sh --health --verbose
+
+# Watch status changes in real-time
+./Scripts/extension-status.sh --watch
+```
+
+## Detailed Installation Process
+
+### 1. Building the Project
+
+The shell script workflow builds the project as needed:
+
+```bash
+# Manual build (done automatically by installation script)
+swift build --configuration debug
+
+# Release build for distribution
+swift build --configuration release
+```
+
+The build creates the SystemExtension executable that will be bundled into the .systemextension package.
+
+### 2. Bundle Creation
+
+System Extension bundles are created automatically during installation:
+
+```bash
+# Bundle creation is handled by install-extension.sh
+# Manual bundle validation
+./Scripts/validate-bundle.sh
+
+# Deep validation with detailed checks
+./Scripts/validate-bundle.sh --deep --verbose
 ```
 
 #### Bundle Structure
 
 The generated bundle follows the standard System Extension format:
 ```
-SystemExtension.systemextension/
+USBIPDSystemExtension.systemextension/
 ├── Contents/
-│   ├── Info.plist                    # Bundle metadata
+│   ├── Info.plist                    # Bundle metadata and configuration
 │   ├── MacOS/
-│   │   └── SystemExtension           # Executable
+│   │   └── USBIPDSystemExtension     # Compiled executable
 │   └── Resources/
-│       └── SystemExtension.entitlements
+│       └── (entitlements and resources as needed)
 ```
 
-### 2. Development Mode Setup
+### 3. Development Mode Setup
 
-For development and testing, enable System Extension development mode:
+The setup script automatically handles development mode configuration:
 
 ```bash
-# Enable development mode (requires restart)
+# Automated setup includes development mode checks
+./Scripts/setup-dev-environment.sh
+
+# Check only development mode status
+./Scripts/setup-dev-environment.sh --check-sip
+
+# Manual development mode setup (if needed)
 sudo systemextensionsctl developer on
+# (restart required)
 
 # Verify development mode status
 systemextensionsctl developer
@@ -92,18 +141,20 @@ Development mode allows:
 - Loading extensions without notarization
 - Enhanced debugging and logging capabilities
 
-### 3. Code Signing Configuration
+### 4. Code Signing Configuration
+
+The installation script automatically handles code signing:
 
 #### For Development
 
 Development builds can use unsigned bundles when development mode is enabled:
 
 ```bash
-# Check if development mode supports unsigned bundles
-swift run usbipd --check-dev-mode
+# Check available certificates
+./Scripts/setup-dev-environment.sh --check-certs
 
-# Build unsigned bundle for development
-swift build --configuration debug
+# Install with unsigned bundle (development mode)
+./Scripts/install-extension.sh --skip-signing
 ```
 
 #### For Distribution
@@ -111,21 +162,65 @@ swift build --configuration debug
 Production builds require proper code signing:
 
 ```bash
-# Set up environment variables for signing
-export CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAM_ID)"
-export SYSTEM_EXTENSION_IDENTITY="Developer ID Kernel Extension: Your Name (TEAM_ID)"
+# The script automatically detects available certificates:
+# - Developer ID Application certificates
+# - Mac Developer certificates
+# - Handles certificate selection and signing
 
-# Build signed bundle for distribution
-swift build --configuration release
+# Install with automatic signing
+./Scripts/install-extension.sh
+
+# Verify bundle signature
+./Scripts/validate-bundle.sh --deep
 ```
 
-The build system will automatically detect available certificates and sign the bundle.
+The installation script will automatically detect available certificates and sign the bundle appropriately.
 
-### 4. Installation Process
+### 5. Installation Process
 
-#### Option A: Automatic Installation (Recommended)
+#### Option A: Automated Script Installation (Recommended)
 
-The System Extension will be automatically installed when first needed:
+Use the comprehensive installation script:
+
+```bash
+# Complete automated workflow
+./Scripts/install-extension.sh
+
+# Installation with options
+./Scripts/install-extension.sh --force --verbose
+
+# Development installation (unsigned)
+./Scripts/install-extension.sh --skip-signing
+```
+
+The script automatically:
+1. Builds the project if needed
+2. Creates the System Extension bundle
+3. Signs the bundle (if certificates available)
+4. Installs the System Extension
+5. Verifies the installation
+
+#### Option B: Manual Installation
+
+For advanced users or troubleshooting:
+
+```bash
+# 1. Build the project
+swift build --configuration debug
+
+# 2. Create and validate bundle manually
+./Scripts/validate-bundle.sh
+
+# 3. Install bundle manually
+sudo systemextensionsctl install .build/USBIPDSystemExtension.systemextension
+
+# 4. Check installation status
+./Scripts/extension-status.sh
+```
+
+#### Option C: Runtime Installation
+
+The System Extension can also be installed automatically when first needed:
 
 1. Run the USB/IP daemon:
    ```bash
@@ -139,22 +234,7 @@ The System Extension will be automatically installed when first needed:
 
 3. The system will prompt for System Extension installation approval.
 
-#### Option B: Manual Installation
-
-1. Build the System Extension bundle (see above)
-
-2. Install the bundle manually:
-   ```bash
-   # For development (with development mode enabled)
-   sudo systemextensionsctl install .build/debug/SystemExtension.systemextension
-
-   # For distribution
-   sudo systemextensionsctl install .build/release/SystemExtension.systemextension
-   ```
-
-3. Approve the System Extension in System Preferences when prompted
-
-### 5. System Permission Approval
+### 6. System Permission Approval
 
 When the System Extension is first loaded, macOS will display system dialogs:
 
@@ -162,25 +242,31 @@ When the System Extension is first loaded, macOS will display system dialogs:
 2. **Security & Privacy** - Click "Allow" next to the blocked extension
 3. **System Extension Updated** - Click "Allow" if prompted for updates
 
-### 6. Verification
+### 7. Verification
 
 Verify the System Extension is loaded and running:
 
 ```bash
-# Check system extension status
+# Comprehensive status check
+./Scripts/extension-status.sh
+
+# Detailed health check
+./Scripts/extension-status.sh --health --verbose
+
+# Watch status in real-time
+./Scripts/extension-status.sh --watch
+
+# System-level verification
 systemextensionsctl list
 
-# Check USB/IP system status
+# Check USB/IP system status (if CLI supports it)
 usbipd status
-
-# Verify with detailed health check
-usbipd status --health
 ```
 
 Expected output should show:
-- System Extension status: Running ✅
-- Health check: Passed ✅
-- No critical errors
+- System Extension status: `[activated enabled]` ✅
+- Health check: No critical errors ✅
+- Bundle validation: Passed ✅
 
 ## Configuration Details
 
@@ -212,65 +298,131 @@ The extension includes IOKit personalities for USB device matching:
 
 ## Troubleshooting
 
+The new diagnostic system provides comprehensive troubleshooting capabilities:
+
+```bash
+# Comprehensive health check
+./Scripts/extension-status.sh --health --verbose
+
+# Bundle validation
+./Scripts/validate-bundle.sh --deep --verbose
+
+# Environment validation
+./Scripts/setup-dev-environment.sh --validate
+
+# View recent logs
+./Scripts/extension-status.sh --logs
+```
+
 ### Common Issues
 
 #### 1. System Extension Installation Fails
 
 **Symptoms**: Extension installation is blocked or fails silently
 
+**Diagnostic Steps**:
+```bash
+# Check environment setup
+./Scripts/setup-dev-environment.sh --validate
+
+# Validate bundle structure
+./Scripts/validate-bundle.sh
+
+# Check system status
+./Scripts/extension-status.sh --system
+```
+
 **Solutions**:
-- Ensure SIP is enabled: `csrutil status`
+- Check SIP status: `./Scripts/setup-dev-environment.sh --check-sip`
+- Verify development mode: `systemextensionsctl developer`
 - Check System Preferences > Security & Privacy for blocked extensions
+- Force reinstall: `./Scripts/install-extension.sh --force`
 - Restart the system and try again
-- Check Console.app for system extension logs
 
 #### 2. Permission Denied Errors
 
 **Symptoms**: USB device access is denied
 
+**Diagnostic Steps**:
+```bash
+# Check extension status
+./Scripts/extension-status.sh
+
+# Verify bundle signing
+./Scripts/validate-bundle.sh --deep
+```
+
 **Solutions**:
 - Verify the extension is properly loaded: `systemextensionsctl list`
-- Check entitlements are properly configured
-- Ensure the application is code-signed with proper provisioning
-- Run with administrator privileges if necessary
+- Check bundle signature: `./Scripts/validate-bundle.sh`
+- Ensure proper entitlements and code signing
+- Reinstall with proper certificates: `./Scripts/install-extension.sh`
 
 #### 3. Device Claiming Fails
 
 **Symptoms**: Devices cannot be claimed for USB/IP sharing
 
+**Diagnostic Steps**:
+```bash
+# Health check
+./Scripts/extension-status.sh --health
+
+# Check recent logs
+./Scripts/extension-status.sh --logs
+```
+
 **Solutions**:
-- Check system extension health: `usbipd status --health`
-- Verify USB device is not in use by another application
-- Check system logs for IOKit errors
-- Try unbinding and rebinding the device
+- Verify System Extension is running: `./Scripts/extension-status.sh`
+- Check for conflicting applications using the USB device
+- Review system logs for IOKit errors
+- Try reinstalling: `./Scripts/install-extension.sh --force`
 
 #### 4. Extension Not Loading
 
 **Symptoms**: System Extension appears inactive or not loaded
 
+**Diagnostic Steps**:
+```bash
+# Check all system extensions
+./Scripts/extension-status.sh --all
+
+# Validate environment
+./Scripts/setup-dev-environment.sh --validate
+```
+
 **Solutions**:
 - Check extension permissions in Security & Privacy preferences
-- Verify bundle identifier and code signing
-- Try manual loading: `systemextensionsctl developer on`
+- Verify bundle identifier and structure: `./Scripts/validate-bundle.sh`
+- Enable development mode: `sudo systemextensionsctl developer on`
 - Check system extension staging area: `/Library/SystemExtensions/`
+- Force reinstall: `./Scripts/install-extension.sh --force --verbose`
 
 ### Debug Commands
 
+The new shell script system provides comprehensive debugging tools:
+
 ```bash
-# List all system extensions
+# Extension-specific debugging
+./Scripts/extension-status.sh --verbose --logs
+./Scripts/extension-status.sh --watch  # Real-time monitoring
+./Scripts/validate-bundle.sh --deep --verbose
+
+# Environment debugging
+./Scripts/setup-dev-environment.sh --validate
+./Scripts/setup-dev-environment.sh --check-sip
+./Scripts/setup-dev-environment.sh --check-certs
+
+# System-level debugging
 systemextensionsctl list
+systemextensionsctl developer
 
-# Check system extension logs
+# Manual log monitoring
 log show --predicate 'subsystem == "com.apple.systemextensions"' --last 1h
+log show --predicate 'category == "systemextensions"' --last 1h
 
-# Check USB/IP daemon logs
-log show --predicate 'subsystem == "com.usbipd.mac"' --last 1h
-
-# Enable developer mode for extensions (development only)
-systemextensionsctl developer on
-
-# Reset system extensions (development only - use with caution)
-systemextensionsctl reset
+# Development mode management (use with caution)
+sudo systemextensionsctl developer on
+sudo systemextensionsctl reset  # Nuclear option - removes all extensions
 ```
 
 ### Log Analysis
@@ -314,9 +466,37 @@ The System Extension operates with restricted permissions:
 
 ## Development Workflow
 
+### Streamlined Development Setup
+
+The new shell script-based workflow provides a streamlined development experience:
+
+```bash
+# Complete development environment setup
+./Scripts/setup-dev-environment.sh
+
+# Development build and install cycle
+./Scripts/install-extension.sh --skip-signing --verbose
+
+# Monitor development status
+./Scripts/extension-status.sh --watch
+```
+
 ### Development Environment Setup
 
-1. **Enable Development Mode**:
+1. **Automated Environment Setup**:
+   ```bash
+   # Complete setup with interactive guidance
+   ./Scripts/setup-dev-environment.sh
+   
+   # Validation only
+   ./Scripts/setup-dev-environment.sh --validate
+   
+   # Check specific components
+   ./Scripts/setup-dev-environment.sh --check-sip
+   ./Scripts/setup-dev-environment.sh --check-certs
+   ```
+
+2. **Manual Development Mode (if needed)**:
    ```bash
    # Enable development mode (requires restart)
    sudo systemextensionsctl developer on
@@ -325,36 +505,26 @@ The System Extension operates with restricted permissions:
    systemextensionsctl developer
    ```
 
-2. **Configure Build Environment**:
-   ```bash
-   # Set development environment variable
-   export SYSTEM_EXTENSION_DEVELOPMENT=1
-   
-   # Optional: Set custom signing identity
-   export CODESIGN_IDENTITY="Mac Developer: Your Name (TEAM_ID)"
-   ```
-
 ### Development Build Process
 
 ```bash
-# Clean previous builds
+# Clean development build
 swift package clean
-
-# Build with debug configuration
 swift build --configuration debug
 
-# Verify bundle creation
-ls -la .build/debug/SystemExtension.systemextension/
+# Automated build with bundle creation
+./Scripts/install-extension.sh --dry-run  # See what would be done
+./Scripts/install-extension.sh --skip-signing  # Development install
 
-# Check bundle structure and signing
-codesign -dv --verbose=4 .build/debug/SystemExtension.systemextension
+# Validate the created bundle
+./Scripts/validate-bundle.sh --deep --verbose
 ```
 
 ### Development Testing
 
 ```bash
 # Run unit tests
-swift test
+swift test --parallel --verbose
 
 # Run System Extension integration tests
 swift test --filter SystemExtensionIntegrationTests
@@ -363,52 +533,58 @@ swift test --filter SystemExtensionIntegrationTests
 swift test --filter SystemExtensionInstallationTests
 
 # Test bundle validation
-swift run usbipd --validate-bundle .build/debug/SystemExtension.systemextension
+./Scripts/validate-bundle.sh --deep
 ```
 
 ### Development Debugging
 
 ```bash
-# Monitor System Extension logs in real-time
-log stream --predicate 'subsystem == "com.github.usbipd-mac"'
+# Real-time status monitoring
+./Scripts/extension-status.sh --watch
 
-# Check bundle validation
-swift run usbipd --check-dev-mode
+# Comprehensive debugging
+./Scripts/extension-status.sh --health --verbose --logs
 
-# Test installation workflow
-swift run usbipd --test-install-dev
+# Bundle validation
+./Scripts/validate-bundle.sh --deep --verbose
 
-# Verbose daemon with extension debugging
-sudo swift run usbipd daemon --verbose --debug-extension
+# Environment validation
+./Scripts/setup-dev-environment.sh --validate
 ```
 
-### Bundle Validation Tools
+### Development Tools Integration
 
-The project includes built-in validation tools:
+The shell scripts provide comprehensive development tools:
 
 ```bash
-# Validate bundle structure
-swift run SystemExtensionBundleValidator .build/debug/SystemExtension.systemextension
+# Bundle structure validation
+./Scripts/validate-bundle.sh
 
-# Check development mode compatibility  
-swift run DevelopmentModeChecker
+# Environment compatibility check
+./Scripts/setup-dev-environment.sh --validate
 
-# Validate entitlements and signing
-swift run BundleValidator --check-signing --check-entitlements
+# Status monitoring with JSON output for integration
+./Scripts/extension-status.sh --json
+
+# Comprehensive health checks
+./Scripts/extension-status.sh --health
 ```
 
 ### Common Development Tasks
 
 ```bash
 # Quick development cycle
-make dev-build      # Build, install, and test in development mode
-make dev-test       # Run all development tests
-make dev-clean      # Clean and reset development environment
+./Scripts/setup-dev-environment.sh         # One-time setup
+./Scripts/install-extension.sh --skip-signing    # Development install
+./Scripts/extension-status.sh --health     # Verify installation
 
-# Manual development workflow
-swift build --configuration debug
-sudo systemextensionsctl install .build/debug/SystemExtension.systemextension
-usbipd status --health
+# Rebuild and reinstall workflow
+./Scripts/install-extension.sh --force --skip-signing --verbose
+
+# Clean development environment
+swift package clean
+sudo systemextensionsctl reset  # Nuclear option
+./Scripts/setup-dev-environment.sh
 ```
 
 ### Development Troubleshooting
@@ -416,29 +592,36 @@ usbipd status --health
 #### Bundle Creation Issues
 
 ```bash
-# Check plugin execution
+# Comprehensive bundle validation
+./Scripts/validate-bundle.sh --deep --verbose
+
+# Check build output
 swift build --verbose
 
-# Validate bundle manually
-find .build/debug -name "*.systemextension" -exec ls -la {} \;
+# Validate bundle structure manually
+find .build -name "*.systemextension" -exec ls -la {} \;
 
-# Check bundle contents
-unzip -l .build/debug/SystemExtension.systemextension/Contents/Info.plist
+# Debug bundle creation
+./Scripts/install-extension.sh --dry-run --verbose
 ```
 
 #### Installation Issues in Development Mode
 
 ```bash
-# Verify development mode
-systemextensionsctl developer
+# Environment validation
+./Scripts/setup-dev-environment.sh --validate
 
-# Check extension staging
-ls -la /Library/SystemExtensions/
+# Check development mode status
+./Scripts/extension-status.sh --system
 
-# Reset development environment
+# Verify certificates
+./Scripts/setup-dev-environment.sh --check-certs
+
+# Reset development environment (nuclear option)
 sudo systemextensionsctl reset
 sudo systemextensionsctl developer on
 # (restart required)
+./Scripts/setup-dev-environment.sh
 ```
 
 ### Testing and Validation
@@ -453,11 +636,14 @@ swift test --filter SystemExtensionIntegrationTests
 # Installation workflow tests
 swift test --filter SystemExtensionInstallationTests
 
-# Development mode specific tests
-swift test --filter DevelopmentModeTests
+# Bundle validation tests
+./Scripts/validate-bundle.sh --deep
 
-# Performance and stress tests
-swift test --filter SystemExtensionPerformanceTests
+# Environment validation tests
+./Scripts/setup-dev-environment.sh --validate
+
+# End-to-end workflow testing
+./Scripts/install-extension.sh --dry-run --verbose
 ```
 
 ## Support and Maintenance
@@ -494,13 +680,17 @@ rm -rf /Applications/usbipd.app
 
 ## Version History
 
-- **2.0.0**: System Extension Bundle Creation (Current)
-  - Automated System Extension bundle creation via Swift Package Manager plugins
-  - Development mode support with unsigned bundle handling
+- **2.0.0**: Shell Script-Based Workflow System (Current)
+  - Comprehensive shell script-based installation workflow replacing broken plugin system
+  - Automated development environment setup and validation (`setup-dev-environment.sh`)
+  - Complete System Extension installation workflow (`install-extension.sh`)
+  - Real-time status monitoring and health checking (`extension-status.sh`)
+  - Bundle validation and integrity checking (`validate-bundle.sh`)
+  - Automated certificate detection and code signing management
+  - Linux CLI compatibility through shell scripts instead of CLI extensions
   - Enhanced error handling and troubleshooting capabilities
   - Comprehensive integration tests for installation workflows
-  - Bundle validation and development tools
-  - Improved code signing and entitlements management
+  - Post-build integration script for build system compatibility
 
 - **1.0.0**: Initial System Extension implementation
   - USB device claiming and release functionality
@@ -510,42 +700,65 @@ rm -rf /Applications/usbipd.app
 
 ## Additional Resources
 
-### Swift Package Manager Integration
+### Shell Script Integration
 
-The System Extension bundle creation is fully integrated with Swift Package Manager:
+The System Extension workflow is fully integrated through shell scripts:
 
-- **Plugin System**: Uses buildToolPlugins for automated bundle creation
-- **Target Configuration**: SystemExtension target automatically builds as executable
-- **Dependency Management**: Proper dependency resolution for System Extension components
-- **Build Caching**: Efficient incremental builds with proper dependency tracking
+- **Environment Setup**: `setup-dev-environment.sh` provides comprehensive environment validation
+- **Installation Workflow**: `install-extension.sh` handles complete build-to-install pipeline
+- **Status Monitoring**: `extension-status.sh` provides real-time monitoring and health checks
+- **Bundle Validation**: `validate-bundle.sh` ensures bundle integrity and structure
+- **Linux Compatibility**: Shell scripts maintain CLI compatibility across platforms
 
-### Build System Architecture
+### Workflow Architecture
 
 ```
-Package.swift
-├── SystemExtension (executableTarget)
-│   ├── Sources/SystemExtension/main.swift
-│   └── Dependencies: [USBIPDCore, Common]
-├── SystemExtensionBundleBuilder (buildToolPlugin)
-│   ├── BundleBuilder.swift
-│   ├── CodeSigning.swift
-│   └── BundleValidator.swift
-└── Build Output
-    └── .build/{configuration}/SystemExtension.systemextension/
+Scripts/
+├── setup-dev-environment.sh     # Environment setup and validation
+├── install-extension.sh         # Complete installation workflow
+├── extension-status.sh          # Status monitoring and health checks  
+├── validate-bundle.sh           # Bundle validation and integrity
+└── post-build-extension.sh      # Build system integration
+
+Integration Points:
+├── Swift Package Manager (builds executables)
+├── SystemExtensionBundleCreator (creates bundles)
+├── CodeSigningManager (handles signing)
+├── SystemExtensionInstaller (installation)
+└── SystemExtensionDiagnostics (health monitoring)
 ```
 
 ### Continuous Integration
 
-For CI/CD pipelines, the build system supports:
+For CI/CD pipelines, the shell script system supports:
 
 ```bash
 # CI build with validation
 swift build --configuration release
 swift test --parallel
 
-# Verify bundle creation
-test -d .build/release/SystemExtension.systemextension
+# Environment validation (CI-safe)
+./Scripts/setup-dev-environment.sh --validate
 
-# Validate bundle structure (CI-safe)
-swift run BundleValidator --ci-mode .build/release/SystemExtension.systemextension
+# Bundle validation (without installation)  
+./Scripts/validate-bundle.sh --json
+
+# Complete workflow testing (dry-run)
+./Scripts/install-extension.sh --dry-run --verbose
+```
+
+### Integration with External Tools
+
+```bash
+# JSON output for automation
+./Scripts/extension-status.sh --json > status.json
+./Scripts/validate-bundle.sh --json > validation.json
+
+# Health monitoring integration
+./Scripts/extension-status.sh --health --quiet  # Exit codes for scripting
+
+# Automated workflows
+./Scripts/setup-dev-environment.sh --validate --quiet && \
+./Scripts/install-extension.sh --skip-signing && \
+./Scripts/extension-status.sh --health
 ```

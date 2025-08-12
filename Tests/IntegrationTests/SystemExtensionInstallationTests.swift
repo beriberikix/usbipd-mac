@@ -40,7 +40,12 @@ final class SystemExtensionInstallationTests: XCTestCase {
                                                attributes: nil)
         
         // Create System Extension installer for testing
-        systemExtensionInstaller = SystemExtensionInstaller()
+        let bundleCreator = SystemExtensionBundleCreator()
+        let codeSigningManager = CodeSigningManager()
+        systemExtensionInstaller = SystemExtensionInstaller(
+            bundleCreator: bundleCreator,
+            codeSigningManager: codeSigningManager
+        )
         
         // Create System Extension manager
         systemExtensionManager = SystemExtensionManager()
@@ -97,7 +102,8 @@ final class SystemExtensionInstallationTests: XCTestCase {
         guard let plist = try PropertyListSerialization.propertyList(from: plistData, 
                                                                     options: [], 
                                                                     format: nil) as? [String: Any] else {
-            throw XCTError(.failureWhileWaiting)
+            XCTFail("Failed to parse bundle plist data")
+            return
         }
         
         // Validate required Info.plist keys
@@ -135,7 +141,8 @@ final class SystemExtensionInstallationTests: XCTestCase {
         guard let entitlements = try PropertyListSerialization.propertyList(from: entitlementsData,
                                                                            options: [],
                                                                            format: nil) as? [String: Any] else {
-            throw XCTError(.failureWhileWaiting)
+            XCTFail("Failed to parse bundle plist data")
+            return
         }
         
         // Validate required entitlements
@@ -163,11 +170,13 @@ final class SystemExtensionInstallationTests: XCTestCase {
         try createTestSystemExtensionBundle(at: bundlePath, identifier: bundleName)
         
         let expectation = XCTestExpectation(description: "System Extension installation workflow")
-        var installationResult: Result<Bool, Error>?
+        var installationResult: InstallationResult?
         
         // Test installation request
-        systemExtensionInstaller.installSystemExtension(bundlePath: bundlePath.path,
-                                                       bundleIdentifier: bundleName) { result in
+        systemExtensionInstaller.installSystemExtension(
+            bundleIdentifier: bundleName,
+            executablePath: "/tmp/test-executable"
+        ) { result in
             installationResult = result
             expectation.fulfill()
         }

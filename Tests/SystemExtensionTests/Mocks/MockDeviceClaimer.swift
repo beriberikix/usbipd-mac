@@ -12,7 +12,7 @@ import USBIPDCore
 
 /// Mock implementation of DeviceClaimer protocol for testing System Extension logic
 /// without requiring privileged access to actual USB devices
-public class MockDeviceClaimer: DeviceClaimer {
+public class MockDeviceClaimer: USBIPDCore.DeviceClaimer {
     
     // MARK: - Mock Configuration
     

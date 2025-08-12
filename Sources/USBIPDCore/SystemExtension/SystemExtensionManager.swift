@@ -401,7 +401,7 @@ public class SystemExtensionManager {
     private func startHealthCheckTimer() {
         guard config.healthCheckInterval > 0 else { return }
         
-        healthCheckTimer = DispatchSource.makeTimerSource(queue: queue)
+        healthCheckTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
         healthCheckTimer?.schedule(
             deadline: .now() + .seconds(Int(config.healthCheckInterval)),
             repeating: .seconds(Int(config.healthCheckInterval))

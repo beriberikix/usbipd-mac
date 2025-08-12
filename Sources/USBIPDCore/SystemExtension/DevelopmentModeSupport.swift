@@ -144,7 +144,7 @@ public class DevelopmentModeSupport {
         if let systemExtensionError = error as? SystemExtensionInstallationError {
             switch systemExtensionError {
             case .requiresApproval:
-                return SystemExtensionInstallationError.internalError("""
+                return SystemExtensionInstallationError.unknownError("""
                     System Extension requires user approval in development mode.
                     
                     Development Steps:
@@ -158,7 +158,7 @@ public class DevelopmentModeSupport {
                     """)
                 
             case .developmentModeDisabled:
-                return SystemExtensionInstallationError.internalError("""
+                return SystemExtensionInstallationError.unknownError("""
                     System Extension development mode is not enabled.
                     
                     To enable development mode:
@@ -173,7 +173,7 @@ public class DevelopmentModeSupport {
                     """)
                 
             case .invalidCodeSignature(let reason):
-                return SystemExtensionInstallationError.internalError("""
+                return SystemExtensionInstallationError.unknownError("""
                     Code signature issue in development mode: \(reason)
                     
                     Development Options:
@@ -199,7 +199,7 @@ public class DevelopmentModeSupport {
                 • Check logs with: log show --predicate 'subsystem == "com.github.usbipd-mac"' --last 1h
                 • Reset extensions if needed: sudo systemextensionsctl reset
                 """
-            return SystemExtensionInstallationError.internalError(enhancedMessage)
+            return SystemExtensionInstallationError.unknownError(enhancedMessage)
         } else {
             let enhancedMessage = """
                 \(error.localizedDescription)
@@ -209,7 +209,7 @@ public class DevelopmentModeSupport {
                 • Enable with: sudo systemextensionsctl developer on (requires reboot)
                 • This may resolve installation issues for development/testing
                 """
-            return SystemExtensionInstallationError.internalError(enhancedMessage)
+            return SystemExtensionInstallationError.unknownError(enhancedMessage)
         }
         
         return error

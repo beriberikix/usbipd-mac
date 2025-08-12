@@ -12,7 +12,7 @@ class IPCHandlerTests: XCTestCase {
     
     // MARK: - Test Properties
     
-    var ipcHandler: XPCIPCHandler!
+    var ipcHandler: SystemExtension.XPCIPCHandler!
     var testableHandler: TestableIPCHandler!
     var testLogger: Logger!
     var mockAuthManager: MockAuthenticationManager!
@@ -572,7 +572,7 @@ class MockXPCConnection {
 /// Simplified test wrapper for IPC functionality 
 /// This approach focuses on testing core IPC logic without complex XPC mocking
 class TestableIPCHandler {
-    private let handler: XPCIPCHandler
+    private let handler: SystemExtension.XPCIPCHandler
     
     init(config: IPCConfiguration, logger: Logger, authManager: IPCAuthenticationManager) {
         self.handler = XPCIPCHandler(config: config, logger: logger, authManager: authManager)
@@ -594,7 +594,7 @@ class TestableIPCHandler {
         return handler.authenticateClient(clientID: clientID)
     }
     
-    func getStatistics() -> IPCStatistics {
+    func getStatistics() -> SystemExtension.IPCStatistics {
         return handler.getStatistics()
     }
     
