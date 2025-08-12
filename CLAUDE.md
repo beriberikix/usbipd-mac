@@ -21,9 +21,16 @@ The project is structured as a multi-target Swift package:
 - **QEMUTestServer**: QEMU validation test server
 
 ### Test Structure
-- **USBIPDCoreTests**: Core functionality unit tests
-- **USBIPDCLITests**: CLI interface unit tests  
-- **IntegrationTests**: End-to-end tests with QEMU validation
+
+The project uses an environment-based testing strategy with three distinct test environments:
+
+- **DevelopmentTests**: Fast unit tests with comprehensive mocking (<1 minute execution)
+- **CITests**: Automated tests without hardware dependencies (CI-compatible, <3 minutes)
+- **ProductionTests**: Comprehensive validation with QEMU and hardware integration (<10 minutes)
+
+Shared infrastructure:
+- **Tests/SharedUtilities/**: Common test fixtures, assertion helpers, and environment configuration
+- **Tests/TestMocks/**: Environment-specific mock implementations
 
 ## Development Commands
 
@@ -40,17 +47,31 @@ xcodebuild -scheme usbipd-mac build
 ```
 
 ### Testing
+
+#### Environment-Specific Testing
+```bash
+# Development environment (fast feedback, <1 min)
+./Scripts/run-development-tests.sh
+
+# CI environment (automated testing, <3 min)
+./Scripts/run-ci-tests.sh
+
+# Production environment (comprehensive validation, <10 min)
+./Scripts/run-production-tests.sh
+```
+
+#### Traditional Testing Commands
 ```bash
 # Run all tests
 swift test --parallel --verbose
 
-# Run specific test suite
-swift test --filter USBIPDCoreTests
-swift test --filter USBIPDCLITests
-swift test --filter IntegrationTests
+# Run specific test environment
+swift test --filter DevelopmentTests
+swift test --filter CITests
+swift test --filter ProductionTests
 
-# QEMU integration tests
-./Scripts/run-qemu-tests.sh
+# Test environment validation
+./Scripts/test-environment-setup.sh validate
 ```
 
 ### Code Quality
@@ -67,9 +88,13 @@ swiftlint --fix
 # Complete validation sequence (matches CI pipeline)
 swiftlint lint --strict
 swift build --verbose
-swift test --parallel --verbose
-./Scripts/run-qemu-tests.sh
-swift test --filter IntegrationTests --verbose
+./Scripts/run-ci-tests.sh
+
+# Full production validation for release preparation
+swiftlint lint --strict
+swift build --verbose
+./Scripts/run-production-tests.sh
+./Scripts/generate-test-report.sh
 ```
 
 ## Key Implementation Details
@@ -95,14 +120,54 @@ The project uses a comprehensive SwiftLint configuration (`.swiftlint.yml`) with
 
 ## Testing Strategy
 
-- Unit tests for core functionality
-- Integration tests with QEMU server validation
-- Parallel test execution for performance
-- CI pipeline with comprehensive validation
+The project uses a three-tier environment-based testing approach:
+
+### Development Environment
+- **Purpose**: Rapid feedback during active development
+- **Execution time**: <1 minute
+- **Coverage**: Unit tests with comprehensive mocking
+- **Use case**: Local development, IDE integration
+
+### CI Environment  
+- **Purpose**: Automated validation in GitHub Actions
+- **Execution time**: <3 minutes
+- **Coverage**: Protocol and network tests without hardware dependencies
+- **Use case**: Pull request validation, automated testing
+
+### Production Environment
+- **Purpose**: Complete validation for release preparation
+- **Execution time**: <10 minutes
+- **Coverage**: QEMU integration, hardware validation, System Extension testing
+- **Use case**: Release candidate validation, comprehensive testing
+
+### Key Features
+- Environment-specific mock libraries for reliable testing
+- Conditional hardware detection and graceful degradation
+- Comprehensive test reporting and environment validation
+- Parallel test execution for optimal performance
 
 ## Scripts
 
 Located in `Scripts/` directory:
-- `run-qemu-tests.sh`: Main QEMU integration test runner
-- `qemu-test-validation.sh`: QEMU server validation
-- Various test scenario scripts in `Scripts/examples/`
+
+### Test Execution Scripts
+- `run-development-tests.sh`: Fast development test execution
+- `run-ci-tests.sh`: CI-compatible automated testing
+- `run-production-tests.sh`: Comprehensive production validation
+
+### Test Infrastructure Scripts
+- `qemu-test-validation.sh`: QEMU server validation utilities
+- `test-environment-setup.sh`: Environment detection and setup
+- `generate-test-report.sh`: Unified test execution reporting
+
+### Usage Examples
+```bash
+# Quick development feedback
+./Scripts/run-development-tests.sh
+
+# Validate environment before testing
+./Scripts/test-environment-setup.sh validate
+
+# Generate comprehensive test report
+./Scripts/generate-test-report.sh --environment production
+```

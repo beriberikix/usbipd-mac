@@ -1,0 +1,27 @@
+{
+  "id": "approval_1755030680138_bdxbv3f5s",
+  "title": "Tasks Phase: test-infrastructure-improvement - Ready for Review",
+  "filePath": ".spec-workflow/specs/test-infrastructure-improvement/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-12T20:31:20.138Z",
+  "category": "spec",
+  "categoryName": "test-infrastructure-improvement",
+  "response": "Feedback Summary (2 comments):\n\nGeneral Comments:\n1. Follow git workflow. Each task should be committed to git with a useful commit message. First task should be to create a feature branch, switch to branch and commit spec-related files. Last task should be to create a PR, push to PR and ensure CI has no errors, or fix errors.\n2. Run tests / build app periodically at logical points.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Each task should be committed to git with a useful commit message. First task should be to create a feature branch, switch to branch and commit spec-related files. Last task should be to create a PR, push to PR and ensure CI has no errors, or fix errors.\",\n      \"timestamp\": \"2025-08-12T20:35:05.355Z\",\n      \"id\": \"comment_1755030905355_vilc8yghb\"\n    },\n    {\n      \"type\": \"general\",\n      \"comment\": \"Run tests / build app periodically at logical points.\",\n      \"timestamp\": \"2025-08-12T20:35:45.871Z\",\n      \"id\": \"comment_1755030945871_k9y4j48lk\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (2 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Each task should be committed to git with a useful commit message. First task should be to create a feature branch, switch to branch and commit spec-related files. Last task should be to create a PR, push to PR and ensure CI has no errors, or fix errors.\\n2. Run tests / build app periodically at logical points.\\n\\n\",\n  \"timestamp\": \"2025-08-12T20:35:47.521Z\"\n}",
+  "respondedAt": "2025-08-12T20:35:47.529Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Each task should be committed to git with a useful commit message. First task should be to create a feature branch, switch to branch and commit spec-related files. Last task should be to create a PR, push to PR and ensure CI has no errors, or fix errors.",
+      "timestamp": "2025-08-12T20:35:05.355Z",
+      "id": "comment_1755030905355_vilc8yghb"
+    },
+    {
+      "type": "general",
+      "comment": "Run tests / build app periodically at logical points.",
+      "timestamp": "2025-08-12T20:35:45.871Z",
+      "id": "comment_1755030945871_k9y4j48lk"
+    }
+  ]
+}
