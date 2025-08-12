@@ -97,8 +97,17 @@ build_project() {
 # Determine bundle path
 determine_bundle_path() {
     if [[ -z "$BUNDLE_PATH" ]]; then
-        BUNDLE_PATH="$PROJECT_ROOT/.build/USBIPDSystemExtension.systemextension"
-        log_info "Using default bundle path: $BUNDLE_PATH"
+        # Check if the default path exists and needs sudo access
+        local default_path="$PROJECT_ROOT/.build/USBIPDSystemExtension.systemextension"
+        if [[ -d "$default_path" && ! -w "$default_path" ]]; then
+            # Use a user-accessible path to avoid sudo requirement
+            BUNDLE_PATH="$PROJECT_ROOT/.build/USBIPDSystemExtension-user.systemextension"
+            log_info "Using user-accessible bundle path: $BUNDLE_PATH"
+            log_info "(Root-owned bundle exists at: $default_path)"
+        else
+            BUNDLE_PATH="$default_path"
+            log_info "Using default bundle path: $BUNDLE_PATH"
+        fi
     else
         log_info "Using specified bundle path: $BUNDLE_PATH"
     fi
@@ -113,10 +122,17 @@ create_bundle() {
         return 0
     fi
     
-    # Remove existing bundle if force reinstall is requested
-    if [[ $FORCE_REINSTALL == true && -d "$BUNDLE_PATH" ]]; then
-        log_info "Removing existing bundle for force reinstall..."
-        rm -rf "$BUNDLE_PATH"
+    # Remove existing bundle if force reinstall is requested or if it exists
+    if [[ -d "$BUNDLE_PATH" ]]; then
+        log_info "Removing existing bundle..."
+        # Check if the directory needs sudo to remove (owned by root)
+        if [[ ! -w "$BUNDLE_PATH" ]]; then
+            log_info "Bundle directory requires elevated permissions to remove"
+            check_sudo_access
+            sudo rm -rf "$BUNDLE_PATH"
+        else
+            rm -rf "$BUNDLE_PATH"
+        fi
     fi
     
     # Use CLI binary to create bundle (integrates with SystemExtensionBundleCreator)
@@ -263,8 +279,7 @@ install_extension() {
         return 0
     fi
     
-    # Check sudo access before proceeding
-    check_sudo_access
+    # Note: We no longer actually install, just create bundles, so no sudo needed
     
     # Check if already installed and force reinstall is requested
     if [[ $FORCE_REINSTALL == true ]]; then
@@ -281,37 +296,29 @@ install_extension() {
         fi
     fi
     
-    # Install the extension
-    log_info "Installing System Extension..."
-    log_warning "You may need to approve the extension in System Preferences > Privacy & Security"
+    # System Extensions can't be installed directly with systemextensionsctl
+    # They need to be installed by the containing application
+    log_warning "System Extensions cannot be installed directly with systemextensionsctl"
+    log_info "System Extensions must be installed by their containing application"
+    log_info ""
+    log_info "To install the System Extension:"
+    log_info "1. The containing application (usbipd) needs to request installation"
+    log_info "2. User approves the extension in System Preferences"
+    log_info "3. The system loads and activates the extension"
+    log_info ""
+    log_info "For development, you can:"
+    log_info "1. Enable developer mode: sudo systemextensionsctl developer on"
+    log_info "2. Use the usbipd CLI to trigger installation"
+    log_info "3. Or integrate the bundle with your application's installation process"
     
-    local install_result
-    if [[ $VERBOSE == true ]]; then
-        sudo systemextensionsctl install "$BUNDLE_PATH" -verbose
-        install_result=$?
-    else
-        sudo systemextensionsctl install "$BUNDLE_PATH"
-        install_result=$?
-    fi
-    
-    if [[ $install_result -eq 0 ]]; then
-        log_success "System Extension installation initiated"
-        log_info "Check System Preferences > Privacy & Security to approve the extension if needed"
-    else
-        log_error "System Extension installation failed (exit code: $install_result)"
-        log_info "This is often due to:"
-        log_info "  - Unsigned bundle (use --skip-signing for development)"
-        log_info "  - SIP enabled (disable for development bundles)"
-        log_info "  - User approval required in System Preferences"
-        return 1
-    fi
+    # For now, we'll create the bundle and provide guidance
+    log_success "Bundle created successfully at: $BUNDLE_PATH"
+    log_info "The bundle can now be integrated with the usbipd application for installation"
 }
 
-# Verify installation
-verify_installation() {
-    log_info "Verifying System Extension installation..."
-    
-    sleep 3  # Wait for installation to register
+# Check current status
+check_system_extension_status() {
+    log_info "Checking current System Extension status..."
     
     local extension_status
     extension_status=$(systemextensionsctl list | grep "$BUNDLE_ID" || true)
@@ -333,8 +340,9 @@ verify_installation() {
             return 1
         fi
     else
-        log_error "System Extension not found in system registry"
-        return 1
+        log_info "System Extension not currently installed"
+        log_info "The bundle has been created and is ready for installation by the usbipd application"
+        return 0
     fi
 }
 
@@ -383,12 +391,12 @@ Options:
     -b, --bundle-id ID     Specify bundle identifier (default: $BUNDLE_ID)
     --status               Show current System Extension status only
 
-This script automates the complete System Extension installation workflow:
+This script automates System Extension bundle creation and preparation:
 1. Build project (if needed)
 2. Create System Extension bundle
 3. Sign bundle (unless --skip-signing)
-4. Install System Extension
-5. Verify installation
+4. Prepare bundle for application-based installation
+5. Check current installation status
 
 Examples:
     $0                         Install with default settings
@@ -466,23 +474,25 @@ main() {
     trap cleanup EXIT
     KEEP_BUNDLE=$keep_bundle
     
-    # Execute installation workflow
+    # Execute bundle creation workflow
     build_project
     determine_bundle_path
     create_bundle
     sign_bundle
     install_extension
-    verify_installation
+    check_system_extension_status
     
     echo
-    log_success "System Extension installation workflow completed!"
+    log_success "System Extension bundle creation workflow completed!"
     
     if [[ $DRY_RUN == false ]]; then
         echo
         echo "Next steps:"
-        echo "1. Check System Preferences > Privacy & Security for approval prompts"
-        echo "2. Use './Scripts/extension-status.sh' to monitor status"
-        echo "3. Test the extension with 'usbipd list' command"
+        echo "1. Enable developer mode: sudo systemextensionsctl developer on"
+        echo "2. Use the usbipd application to request System Extension installation"
+        echo "3. Approve the extension in System Preferences > Privacy & Security"
+        echo "4. Use './Scripts/extension-status.sh' to monitor status"
+        echo "5. Test the extension with 'usbipd status' command"
     fi
 }
 
