@@ -87,6 +87,11 @@ setup_test_environment() {
     export USBIPD_ENABLE_MOCKING="true"
     export USBIPD_MOCK_HARDWARE="true"
     
+    # QEMU testing configuration (optional in development)
+    export ENABLE_QEMU_TESTS="${ENABLE_QEMU_TESTS:-false}"
+    export QEMU_TEST_MODE="${QEMU_TEST_MODE:-mock}"
+    export QEMU_TIMEOUT="${QEMU_TIMEOUT:-30}"
+    
     # Disable verbose logging for faster execution
     export USBIPD_LOG_LEVEL="error"
     
@@ -210,6 +215,46 @@ run_development_tests() {
     fi
 }
 
+# Run QEMU tests (optional in development environment)
+run_qemu_tests() {
+    if [ "$ENABLE_QEMU_TESTS" != "true" ]; then
+        log_info "QEMU tests disabled (set ENABLE_QEMU_TESTS=true to enable)"
+        return 0
+    fi
+    
+    log_info "Running QEMU tests (development mode)..."
+    
+    # Check if QEMU test orchestrator is available
+    local qemu_script="$SCRIPT_DIR/qemu/test-orchestrator.sh"
+    if [ ! -f "$qemu_script" ]; then
+        log_warning "QEMU test orchestrator not found at $qemu_script"
+        log_info "Skipping QEMU tests in development environment"
+        return 0
+    fi
+    
+    # Run QEMU tests with development-specific configuration
+    local start_time=$(date +%s)
+    
+    # Development QEMU testing uses mock mode for speed
+    export TEST_ENVIRONMENT="development"
+    export QEMU_TEST_MODE="mock"
+    export QEMU_TIMEOUT="$QEMU_TIMEOUT"
+    
+    log_info "Running QEMU orchestrator in development mode..."
+    if "$qemu_script" --mode development --timeout "$QEMU_TIMEOUT"; then
+        local end_time=$(date +%s)
+        local qemu_time=$((end_time - start_time))
+        log_success "QEMU tests completed in ${qemu_time}s"
+        return 0
+    else
+        local exit_code=$?
+        local end_time=$(date +%s)
+        local qemu_time=$((end_time - start_time))
+        log_warning "QEMU tests failed in ${qemu_time}s (exit code: $exit_code) - continuing development tests"
+        return 0  # Don't fail development tests due to QEMU issues
+    fi
+}
+
 # Run specific test categories for development
 run_quick_validation() {
     log_info "Running quick validation tests..."
@@ -254,12 +299,16 @@ Test Summary:
 - Parallel Execution: Enabled
 - Mocking: Enabled
 - Hardware Dependencies: Disabled
+- QEMU Tests: $([ "$ENABLE_QEMU_TESTS" = "true" ] && echo "Enabled" || echo "Disabled")
 
 Configuration:
 - USBIPD_TEST_MODE=$USBIPD_TEST_MODE
 - USBIPD_ENABLE_MOCKING=$USBIPD_ENABLE_MOCKING
 - USBIPD_MOCK_HARDWARE=$USBIPD_MOCK_HARDWARE
 - USBIPD_LOG_LEVEL=$USBIPD_LOG_LEVEL
+- ENABLE_QEMU_TESTS=$ENABLE_QEMU_TESTS
+- QEMU_TEST_MODE=$QEMU_TEST_MODE
+- QEMU_TIMEOUT=$QEMU_TIMEOUT
 
 Build Path: $BUILD_DIR
 EOF
@@ -276,13 +325,21 @@ print_usage() {
     echo "  --quick          Run only quick validation tests"
     echo "  --no-lint        Skip SwiftLint code quality checks"
     echo "  --timeout SECS   Set custom timeout (default: $TIMEOUT_SECONDS)"
+    echo "  --qemu           Enable QEMU testing (development mode)"
     echo "  --help           Show this help message"
+    echo ""
+    echo "Environment Variables:"
+    echo "  ENABLE_QEMU_TESTS    Enable/disable QEMU tests (true/false, default: false)"
+    echo "  QEMU_TEST_MODE       QEMU test mode (mock/vm, default: mock)"
+    echo "  QEMU_TIMEOUT         QEMU test timeout in seconds (default: 30)"
     echo ""
     echo "Examples:"
     echo "  $0                     # Run full development test suite"
     echo "  $0 --clean             # Clean build and run tests"
     echo "  $0 --quick             # Run only quick validation"
     echo "  $0 --timeout 30        # Use 30-second timeout"
+    echo "  $0 --qemu              # Enable QEMU testing"
+    echo "  ENABLE_QEMU_TESTS=true $0  # Enable QEMU via environment"
 }
 
 # Main execution flow
@@ -290,6 +347,7 @@ main() {
     local clean_build=false
     local quick_mode=false
     local skip_lint=false
+    local enable_qemu=false
     
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -310,6 +368,10 @@ main() {
                 TIMEOUT_SECONDS="$2"
                 shift 2
                 ;;
+            --qemu)
+                enable_qemu=true
+                shift
+                ;;
             --help)
                 print_usage
                 exit 0
@@ -321,6 +383,11 @@ main() {
                 ;;
         esac
     done
+    
+    # Set QEMU environment variable if --qemu flag is used
+    if [ "$enable_qemu" = true ]; then
+        export ENABLE_QEMU_TESTS="true"
+    fi
     
     # Start execution
     print_header
@@ -350,6 +417,9 @@ main() {
     else
         run_development_tests
     fi
+    
+    # Run QEMU tests if enabled
+    run_qemu_tests
     
     # Generate test report
     generate_test_report
