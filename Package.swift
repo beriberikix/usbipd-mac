@@ -73,5 +73,9 @@ let package = Package(
         .testTarget(
             name: "SystemExtensionTests",
             dependencies: ["SystemExtension", "Common"]),
+        .testTarget(
+            name: "QEMUIntegrationTests",
+            dependencies: ["QEMUTestServer", "USBIPDCore", "Common"],
+            path: "Tests/QEMUIntegrationTests"),
     ]
 )
