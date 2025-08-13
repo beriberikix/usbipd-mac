@@ -8,34 +8,45 @@ import Foundation
 @testable import USBIPDCore
 @testable import QEMUTestServer
 
-// Import shared test utilities
-#if canImport(SharedUtilities)
-import SharedUtilities
-#endif
+// MARK: - Supporting Types
+
+/// VM state enum for testing
+enum VMState: Equatable {
+    case stopped
+    case starting  
+    case running
+    case failed
+    case unknown
+}
 
 /// Test suite for QEMU orchestration integration testing
 final class QEMUOrchestrationTests: XCTestCase, TestSuite {
     
-    // MARK: - TestSuite Protocol Implementation
-    
-    /// Test environment configuration
-    var environmentConfig: TestEnvironmentConfig {
-        return TestEnvironmentDetector.createConfigurationForCurrentEnvironment()
-    }
-    
-    /// Required capabilities for this test suite
-    var requiredCapabilities: TestEnvironmentCapabilities {
-        return [.networkAccess, .filesystemWrite, .qemuIntegration]
-    }
-    
-    /// Test category for timeout configuration
-    var testCategory: String {
-        return "qemu"
-    }
-    
     // MARK: - Test Infrastructure
     
     private var logger: Logger!
+    
+    // TestSuite protocol requirements
+    public let environmentConfig: TestEnvironmentConfig = TestEnvironmentDetector.createConfigurationForCurrentEnvironment()
+    public let requiredCapabilities: TestEnvironmentCapabilities = [.networkAccess, .filesystemWrite, .qemuIntegration]
+    public let testCategory: String = "qemu"
+    
+    /// Check if QEMU is available in the environment
+    private func hasQEMUCapability() -> Bool {
+        let task = Process()
+        task.launchPath = "/usr/bin/which"
+        task.arguments = ["qemu-system-x86_64"]
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
     private var testConfiguration: QEMUTestConfiguration!
     private var orchestrator: MockQEMUOrchestrator!
     private var tempDirectory: URL!
@@ -556,7 +567,7 @@ final class QEMUOrchestrationTests: XCTestCase, TestSuite {
             XCTAssertTrue(integrationResult.scriptExists, "VM manager script should exist")
             XCTAssertTrue(integrationResult.scriptExecutable, "VM manager script should be executable")
             
-            if environmentConfig.hasCapability(.qemuIntegration) {
+            if hasQEMUCapability() {
                 XCTAssertTrue(integrationResult.integrationSuccessful, "Script integration should succeed")
             }
         } else {
@@ -572,7 +583,7 @@ final class QEMUOrchestrationTests: XCTestCase, TestSuite {
             XCTAssertTrue(integrationResult.scriptExists, "Validation script should exist")
             XCTAssertTrue(integrationResult.scriptExecutable, "Validation script should be executable")
             
-            if environmentConfig.hasCapability(.qemuIntegration) {
+            if hasQEMUCapability() {
                 XCTAssertTrue(integrationResult.validationFunctionsWork, "Validation functions should work")
             }
         } else {

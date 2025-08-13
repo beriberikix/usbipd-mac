@@ -76,6 +76,7 @@ let package = Package(
         .testTarget(
             name: "QEMUIntegrationTests",
             dependencies: ["QEMUTestServer", "USBIPDCore", "Common"],
-            path: "Tests/QEMUIntegrationTests"),
+            path: "Tests/QEMUIntegrationTests",
+            sources: [".", "../SharedUtilities"]),
     ]
 )

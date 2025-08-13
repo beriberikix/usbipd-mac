@@ -9,30 +9,8 @@ import Network
 @testable import USBIPDCore
 @testable import QEMUTestServer
 
-// Import shared test utilities
-#if canImport(SharedUtilities)
-import SharedUtilities
-#endif
-
 /// Test suite for QEMU Test Server functionality
 final class QEMUTestServerTests: XCTestCase, TestSuite {
-    
-    // MARK: - TestSuite Protocol Implementation
-    
-    /// Test environment configuration
-    var environmentConfig: TestEnvironmentConfig {
-        return TestEnvironmentDetector.createConfigurationForCurrentEnvironment()
-    }
-    
-    /// Required capabilities for this test suite
-    var requiredCapabilities: TestEnvironmentCapabilities {
-        return [.networkAccess, .filesystemWrite]
-    }
-    
-    /// Test category for timeout configuration
-    var testCategory: String {
-        return "qemu"
-    }
     
     // MARK: - Test Infrastructure
     
@@ -43,6 +21,11 @@ final class QEMUTestServerTests: XCTestCase, TestSuite {
     private var serverConfig: TestServerConfiguration!
     private var tempDirectory: URL!
     private var originalWorkingDirectory: String!
+    
+    // TestSuite protocol requirements
+    public let environmentConfig: TestEnvironmentConfig = TestEnvironmentDetector.createConfigurationForCurrentEnvironment()
+    public let requiredCapabilities: TestEnvironmentCapabilities = [.networkAccess, .filesystemWrite]
+    public let testCategory: String = "qemu"
     
     // MARK: - Test Lifecycle
     
@@ -357,7 +340,7 @@ final class QEMUTestServerTests: XCTestCase, TestSuite {
             if let protocolError = error as? USBIPProtocolError {
                 switch protocolError {
                 case .unsupportedCommand(let command):
-                    XCTAssertEqual(command, USBIPCommand.submitRequest.rawValue)
+                    XCTAssertEqual(command, USBIPProtocol.Command.submitRequest.rawValue)
                 default:
                     XCTFail("Expected unsupportedCommand error, got \(protocolError)")
                 }
@@ -632,10 +615,9 @@ private class MockDeviceClaimManager: DeviceClaimManager {
         return true
     }
     
-    func releaseDevice(_ device: USBDevice) throws -> Bool {
+    func releaseDevice(_ device: USBDevice) throws {
         let deviceID = "\(device.busID)-\(device.deviceID)"
         claimedDevices.remove(deviceID)
-        return true
     }
     
     func isDeviceClaimed(deviceID: String) -> Bool {
