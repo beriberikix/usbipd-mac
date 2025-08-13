@@ -1,0 +1,2 @@
+# This file ensures the Scripts/qemu directory is tracked by git
+# QEMU testing infrastructure scripts will be placed in this directory
