@@ -1,164 +1,104 @@
-# QEMU USB/IP Test Tool
+# QEMU Test Tool
 
 ## Overview
 
-The QEMU USB/IP Test Tool is a comprehensive testing framework that provides automated validation of the usbipd-mac server implementation using minimal QEMU virtual machines. The tool creates lightweight Linux environments that act as USB/IP clients, enabling end-to-end testing of the USB/IP protocol implementation.
+The QEMU test tool components provide testing infrastructure for validating USB/IP protocol implementation. Currently, this consists of test validation utilities and a placeholder test server, with plans for expanded QEMU-based testing capabilities.
 
-## Features
+## Current Implementation Status
 
-- **Automated Image Creation**: Creates minimal Alpine Linux images with USB/IP client capabilities
-- **QEMU Instance Management**: Launches and manages QEMU virtual machines with optimized resource allocation
-- **Structured Logging**: Provides standardized output for automated test validation
-- **Error Handling**: Comprehensive error detection and recovery mechanisms
-- **CI Integration**: Designed for seamless integration with GitHub Actions CI pipeline
-- **Resource Optimization**: Minimal memory and disk usage suitable for CI environments
+### Available Components
 
-## Architecture
+#### Test Validation Utility (`Scripts/qemu-test-validation.sh`)
+A comprehensive script for parsing and validating test logs with environment-aware functionality:
 
-The tool consists of several interconnected components:
+- **Console Log Parsing**: Extracts structured messages from test output
+- **Environment Detection**: Automatically detects development, CI, or production environments  
+- **USB/IP Client Validation**: Checks for client readiness and functionality
+- **Server Connectivity Testing**: Validates USB/IP server connectivity
+- **Test Report Generation**: Creates detailed test reports with statistics
+- **Multi-Environment Support**: Adapts timeouts and validation based on test environment
+
+#### Placeholder Test Server (`Sources/QEMUTestServer/`)
+A minimal Swift executable that serves as a foundation for future QEMU test server implementation.
+
+### Architecture
+
+Current test infrastructure:
 
 ```
 Scripts/
-├── create-qemu-image.sh          # Image creation and configuration
-├── start-qemu-client.sh          # QEMU instance management
-├── qemu-test-validation.sh       # Test output parsing and validation
-├── test-error-handling.sh        # Error handling mechanism tests
-└── test-qemu-logging.sh          # Logging functionality tests
+└── qemu-test-validation.sh       # Test validation and log parsing utilities
+
+Sources/
+└── QEMUTestServer/
+    └── main.swift                # Placeholder test server executable
 ```
 
-### Component Responsibilities
-
-- **Image Creation**: Downloads Alpine Linux, configures USB/IP client tools, and creates bootable QEMU images
-- **Instance Management**: Launches QEMU with appropriate networking and resource configuration
-- **Test Validation**: Parses structured console output and validates USB/IP client functionality
-- **Error Handling**: Provides robust error detection, retry mechanisms, and diagnostic information
-- **Logging Tests**: Validates structured logging and output parsing capabilities
-
-## Quick Start
-
-### Prerequisites
-
-```bash
-# Install QEMU (required for virtual machine functionality)
-brew install qemu
-
-# Install socat (optional, for monitor socket communication)
-brew install socat
-```
+## Using the Test Validation Utility
 
 ### Basic Usage
 
-1. **Create QEMU Image**:
-   ```bash
-   ./Scripts/create-qemu-image.sh
-   ```
-
-2. **Start QEMU Client**:
-   ```bash
-   ./Scripts/start-qemu-client.sh
-   ```
-
-3. **Validate Test Results**:
-   ```bash
-   ./Scripts/qemu-test-validation.sh check-readiness console.log
-   ```
-
-### CI Integration
-
-The tool is automatically integrated into the GitHub Actions CI pipeline:
-
 ```bash
-# Run QEMU validation (as used in CI)
-./Scripts/run-qemu-tests.sh
-```
+# Parse structured log messages
+./Scripts/qemu-test-validation.sh parse-log console.log
 
-## Detailed Usage
-
-### Image Creation
-
-The `create-qemu-image.sh` script creates a minimal Linux environment with USB/IP client capabilities:
-
-```bash
-# Create image with default configuration
-./Scripts/create-qemu-image.sh
-
-# The script will:
-# 1. Download Alpine Linux 3.19 with checksum validation
-# 2. Create a 512MB QCOW2 disk image
-# 3. Configure cloud-init for automated setup
-# 4. Install usbip-utils and configure kernel modules
-# 5. Set up structured logging and readiness reporting
-```
-
-**Output Files**:
-- `.build/qemu/qemu-usbip-client.qcow2` - Bootable disk image
-- `.build/qemu/cloud-init/` - Cloud-init configuration files
-- `.build/qemu/image-creation.log` - Detailed creation log
-
-### QEMU Instance Management
-
-The `start-qemu-client.sh` script manages QEMU virtual machine instances:
-
-```bash
-# Start QEMU instance with default configuration
-./Scripts/start-qemu-client.sh
-
-# The script provides:
-# - Minimal resource allocation (256MB RAM, 1 CPU core)
-# - User mode networking with port forwarding
-# - Serial console logging to structured output files
-# - QEMU monitor socket for command interface
-# - Automatic boot timeout and error detection
-```
-
-**Network Configuration**:
-- SSH access: `ssh -p 2222 testuser@localhost`
-- USB/IP port: `localhost:3240`
-- Console log: `.build/qemu/logs/{instance-id}-console.log`
-
-### Test Validation
-
-The `qemu-test-validation.sh` script provides comprehensive test validation utilities:
-
-```bash
 # Check if USB/IP client is ready
 ./Scripts/qemu-test-validation.sh check-readiness console.log
 
 # Wait for client readiness with timeout
 ./Scripts/qemu-test-validation.sh wait-readiness console.log 60
 
-# Parse structured log messages
-./Scripts/qemu-test-validation.sh parse-log console.log USBIP_CLIENT_READY
-
 # Generate comprehensive test report
 ./Scripts/qemu-test-validation.sh generate-report console.log
+```
 
-# Check USB/IP server connectivity
+### Environment-Aware Testing
+
+The validation utility automatically detects and adapts to different test environments:
+
+```bash
+# Automatic environment detection
+./Scripts/qemu-test-validation.sh environment-info
+
+# Explicit environment setting
+TEST_ENVIRONMENT=ci ./Scripts/qemu-test-validation.sh validate-environment
+
+# Environment-specific validation
+./Scripts/qemu-test-validation.sh environment-validation console.log full
+```
+
+### Server Connectivity Testing
+
+```bash
+# Check basic server connectivity
 ./Scripts/qemu-test-validation.sh check-server localhost 3240
 
-# Monitor connection status over time
+# Test server response (requires usbip client tools)
+./Scripts/qemu-test-validation.sh test-server localhost 3240
+
+# Monitor connection over time
 ./Scripts/qemu-test-validation.sh monitor-connection console.log localhost 3240 120
 ```
 
 ## Structured Logging Format
 
-The tool uses standardized structured logging for automated parsing:
+The validation utility expects structured log messages in this format:
 
 ```
 [YYYY-MM-DD HH:MM:SS.mmm] MESSAGE_TYPE: details
 ```
 
-### Key Message Types
+### Supported Message Types
 
 - `USBIP_CLIENT_READY` - USB/IP client initialization complete
-- `VHCI_MODULE_LOADED: SUCCESS/FAILED` - Kernel module loading status
+- `VHCI_MODULE_LOADED: SUCCESS/FAILED` - Kernel module loading status  
 - `USBIP_VERSION: version_info` - USB/IP client version information
 - `CONNECTING_TO_SERVER: host:port` - Server connection attempts
 - `DEVICE_LIST_REQUEST: SUCCESS/FAILED` - Device enumeration results
 - `DEVICE_IMPORT_REQUEST: device_id SUCCESS/FAILED` - Device import operations
 - `TEST_COMPLETE: SUCCESS/FAILED` - Overall test completion status
 
-### Example Console Output
+### Example Log Output
 
 ```
 [2024-01-15 10:30:15.123] USBIP_STARTUP_BEGIN
@@ -170,219 +110,116 @@ The tool uses standardized structured logging for automated parsing:
 [2024-01-15 10:30:23.234] TEST_COMPLETE: SUCCESS
 ```
 
-## Error Handling and Diagnostics
+## Environment-Specific Behavior
 
-The tool provides comprehensive error handling and diagnostic capabilities:
+### Development Environment
+- **Timeouts**: Shorter timeouts for fast feedback (30s readiness, 5s connection)
+- **Validation**: Basic validation with partial completion allowed
+- **Use Case**: Local development and IDE integration
 
-### Automatic Error Detection
+### CI Environment  
+- **Timeouts**: Moderate timeouts for reliable automation (60s readiness, 10s connection)
+- **Validation**: Comprehensive validation requiring full completion
+- **Use Case**: Pull request validation and automated testing
 
-- **Boot Timeouts**: Detects stalled boot processes and provides diagnostic information
-- **Network Failures**: Identifies port conflicts and connectivity issues
-- **QEMU Crashes**: Captures process failures with detailed crash diagnostics
-- **Resource Constraints**: Monitors disk space and memory availability
+### Production Environment
+- **Timeouts**: Extended timeouts for thorough testing (120s readiness, 30s connection)
+- **Validation**: Exhaustive validation with detailed reporting
+- **Use Case**: Release candidate validation and comprehensive testing
 
-### Diagnostic Information
+## CI Integration
 
-When errors occur, the tool automatically generates diagnostic files:
-
-```
-.build/qemu/logs/
-├── diagnostics-{instance-id}.log     # General failure diagnostics
-├── boot-timeout-{instance-id}.log    # Boot timeout analysis
-├── network-failure-{instance-id}.log # Network configuration issues
-└── qemu-crash-{instance-id}.log      # QEMU process crash details
-```
-
-### Retry Mechanisms
-
-- **Download Retries**: Automatic retry with exponential backoff for network downloads
-- **Port Availability**: Retry logic for network port conflicts
-- **Boot Process**: Multiple boot attempts with different configurations
-- **Connection Validation**: Persistent retry for server connectivity checks
-
-## Testing and Validation
-
-### Unit Tests
-
-The tool includes comprehensive unit tests for all major components:
+The validation utility integrates with the project's CI pipeline:
 
 ```bash
-# Test error handling mechanisms
-./Scripts/test-error-handling.sh
-
-# Test structured logging functionality
-./Scripts/test-qemu-logging.sh
+# Run QEMU validation (as used in CI)
+./Scripts/qemu-test-validation.sh
 ```
 
-### Integration Testing
-
-Integration with the main project test suite:
+Integration with test suites:
 
 ```bash
 # Run all tests including QEMU validation
 swift test
 
-# Run only QEMU-related integration tests
+# Run only QEMU-related validation tests  
 swift test --filter QEMUTestValidationTests
 ```
 
-### CI Pipeline Integration
+## Available Commands
 
-The tool is integrated into the GitHub Actions CI pipeline with the following validation steps:
+### Standard Commands
+- `parse-log <file> [type]` - Parse console log messages
+- `check-readiness <file>` - Check USB/IP client readiness
+- `wait-readiness <file> [timeout]` - Wait for client readiness
+- `validate-test <file>` - Validate test completion
+- `generate-report <file> [output]` - Generate test report
+- `check-server <host> [port]` - Check server connectivity
+- `validate-format <file>` - Validate log format
+- `get-stats <file>` - Get test statistics
 
-1. **Build Validation**: Ensures QEMU test server builds successfully
-2. **Script Validation**: Runs `run-qemu-tests.sh` to validate basic functionality
-3. **Integration Tests**: Executes comprehensive integration test suite
-4. **Error Handling**: Validates error detection and recovery mechanisms
+### Environment-Aware Commands
+- `validate-environment` - Validate current test environment
+- `environment-validation <file> [type]` - Run environment-aware validation
+- `monitor-execution <file> [host] [port]` - Environment-aware test monitoring
+- `environment-info` - Show current environment configuration
 
-## Configuration
+## Future Development
 
-### Environment Variables
+### Planned Features
 
-- `QEMU_MEMORY` - Memory allocation for QEMU instances (default: 256M)
-- `QEMU_CPU_COUNT` - CPU core count (default: 1)
-- `BOOT_TIMEOUT` - Boot timeout in seconds (default: 60)
-- `HOST_SSH_PORT` - SSH port forwarding (default: 2222)
-- `HOST_USBIP_PORT` - USB/IP port forwarding (default: 3240)
+The following components are planned for future implementation:
 
-### Cloud-init Configuration
+- **QEMU Image Creation**: Scripts for creating minimal Linux images with USB/IP client capabilities
+- **QEMU Instance Management**: VM lifecycle management with optimized resource allocation
+- **Automated Testing Framework**: End-to-end testing with virtual USB/IP clients
+- **CI Pipeline Integration**: Comprehensive QEMU-based validation in GitHub Actions
 
-The tool uses cloud-init for automated VM configuration. Key configuration files:
+### Development Roadmap
 
-- `user-data` - User creation, package installation, and startup scripts
-- `meta-data` - Instance metadata and identification
-- `network-config` - Network interface configuration
-
-### Resource Optimization
-
-The tool is optimized for CI environments with minimal resource requirements:
-
-- **Memory**: 256MB RAM per instance
-- **Disk**: ~50MB Alpine Linux base image with QCOW2 compression
-- **CPU**: Single core allocation with hardware acceleration when available
-- **Network**: User mode networking to avoid privilege requirements
+1. **Phase 1**: Enhanced test server implementation with basic USB/IP protocol support
+2. **Phase 2**: QEMU image creation and management utilities
+3. **Phase 3**: Full automated testing framework with virtual client support
+4. **Phase 4**: Advanced features like concurrent testing and performance benchmarking
 
 ## Troubleshooting
 
-### Common Issues
+For issues with the current test validation utilities, see the [QEMU Troubleshooting Guide](troubleshooting/qemu-troubleshooting.md).
 
-**Image Creation Failures**:
-```bash
-# Check available disk space
-df -h .build/qemu/
-
-# Verify QEMU installation
-qemu-system-x86_64 --version
-
-# Check network connectivity for downloads
-curl -I https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/
-```
-
-**Boot Timeouts**:
-```bash
-# Check console log for boot progress
-tail -f .build/qemu/logs/{instance-id}-console.log
-
-# Verify image integrity
-qemu-img check .build/qemu/qemu-usbip-client.qcow2
-
-# Test with increased timeout
-BOOT_TIMEOUT=120 ./Scripts/start-qemu-client.sh
-```
-
-**Network Issues**:
-```bash
-# Check port availability
-lsof -i :2222
-lsof -i :3240
-
-# Test with different ports
-HOST_SSH_PORT=2223 HOST_USBIP_PORT=3241 ./Scripts/start-qemu-client.sh
-```
-
-### Debug Mode
-
-Enable verbose logging for troubleshooting:
-
-```bash
-# Enable debug output for all scripts
-export DEBUG=1
-./Scripts/create-qemu-image.sh
-```
-
-### Log Analysis
-
-Use the validation script for detailed log analysis:
-
-```bash
-# Get comprehensive test statistics
-./Scripts/qemu-test-validation.sh get-stats console.log
-
-# Validate log format and structure
-./Scripts/qemu-test-validation.sh validate-format console.log
-
-# Generate detailed test report
-./Scripts/qemu-test-validation.sh generate-report console.log report.txt
-```
-
-## Performance Considerations
-
-### Resource Usage
-
-- **Memory**: Each QEMU instance uses ~256MB RAM
-- **Disk**: Base image ~50MB, overlay images ~10MB per instance
-- **CPU**: Minimal CPU usage with hardware acceleration
-- **Network**: User mode networking with minimal overhead
-
-### Concurrent Execution
-
-The tool supports concurrent QEMU instances:
-
-```bash
-# Each instance gets unique overlay image and log files
-# Network ports are automatically allocated to avoid conflicts
-# Resource usage scales linearly with instance count
-```
-
-### CI Optimization
-
-- **Caching**: Swift packages and QEMU images are cached between CI runs
-- **Parallel Execution**: CI jobs run in parallel for faster feedback
-- **Resource Limits**: Optimized for GitHub Actions runner constraints
+Common issues with current implementation:
+- Log parsing failures due to incorrect format
+- Environment detection issues in CI
+- Server connectivity problems
+- Timeout configuration for different environments
 
 ## Contributing
 
-### Development Guidelines
+When working on QEMU test tool development:
 
-1. **Follow Project Standards**: Use Swift API Design Guidelines and existing patterns
-2. **Maintain Compatibility**: Ensure changes work in CI environment
-3. **Add Tests**: Include unit tests for new functionality
-4. **Update Documentation**: Keep documentation current with changes
+1. **Current Focus**: Enhance the test validation utilities and placeholder test server
+2. **Future Development**: Contribute to planned QEMU image and VM management features
+3. **Testing**: Use existing validation utilities to test changes
+4. **Documentation**: Keep this documentation updated as functionality is implemented
 
 ### Testing Changes
 
 ```bash
-# Test locally before submitting PR
-./Scripts/test-error-handling.sh
-./Scripts/test-qemu-logging.sh
+# Test validation utility functionality
+./Scripts/qemu-test-validation.sh --help
+./Scripts/qemu-test-validation.sh environment-info
+
+# Build placeholder test server
+swift build --product QEMUTestServer
+
+# Run project test suites
 swift test
-./Scripts/run-qemu-tests.sh
 ```
-
-### Code Style
-
-- Use consistent shell scripting patterns
-- Follow project logging conventions
-- Maintain structured output format
-- Include comprehensive error handling
 
 ## References
 
 - [USB/IP Protocol Specification](https://www.kernel.org/doc/html/latest/usb/usbip_protocol.html)
-- [QEMU Documentation](https://www.qemu.org/docs/master/)
-- [Alpine Linux Documentation](https://wiki.alpinelinux.org/)
-- [Cloud-init Documentation](https://cloudinit.readthedocs.io/)
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [Testing Strategy Documentation](development/testing-strategy.md) - Project testing approach
+- [QEMU Troubleshooting Guide](troubleshooting/qemu-troubleshooting.md) - Issue resolution
 
 ## License
 
