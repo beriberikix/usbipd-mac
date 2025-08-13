@@ -157,7 +157,6 @@ struct ServerArguments {
     let verbose: Bool
 }
 
-
 // MARK: - Main Entry Point
 
 do {

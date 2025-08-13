@@ -701,12 +701,12 @@ class MockQEMUOrchestrator {
     func validateConfigurationFile(_ path: String) throws -> MockConfigValidationResult {
         let exists = FileManager.default.fileExists(atPath: path)
         guard exists else {
-            return MockConfigValidationResult(isValid: false, hasEnvironment: { _ in false })
+            return MockConfigValidationResult(isValid: false) { _ in false }
         }
         
-        return MockConfigValidationResult(isValid: true, hasEnvironment: { env in
+        return MockConfigValidationResult(isValid: true) { env in
             return [TestEnvironment.development, TestEnvironment.ci, TestEnvironment.production].contains(env)
-        })
+        }
     }
     
     // MARK: - Test Scenario Methods
@@ -1148,11 +1148,11 @@ struct MockValidationScriptIntegrationResult {
 // MARK: - Test Enums and Errors
 
 enum QEMUTestScenario: String {
-    case basicConnectivity = "basicConnectivity"
-    case protocolValidation = "protocolValidation"
-    case stressTest = "stressTest"
-    case fullSuite = "fullSuite"
-    case invalid = "invalid"
+    case basicConnectivity
+    case protocolValidation
+    case stressTest
+    case fullSuite
+    case invalid
 }
 
 enum QEMUOrchestrationError: Error, LocalizedError {

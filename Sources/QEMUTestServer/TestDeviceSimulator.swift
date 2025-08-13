@@ -274,10 +274,10 @@ public class TestDeviceSimulator: DeviceDiscovery {
     
     /// Get device statistics for testing
     public func getDeviceStatistics() -> [String: Any] {
-        let classCounts = Dictionary(grouping: devices, by: { $0.deviceClass })
+        let classCounts = Dictionary(grouping: devices) { $0.deviceClass }
             .mapValues { $0.count }
         
-        let speedCounts = Dictionary(grouping: devices, by: { $0.speed })
+        let speedCounts = Dictionary(grouping: devices) { $0.speed }
             .mapValues { $0.count }
         
         return [
@@ -438,7 +438,6 @@ public class SimulatedTestRequestProcessor {
             ])
             
             return try response.encode()
-            
         } catch {
             logger.error("Error in simulated device import", context: [
                 "error": error.localizedDescription

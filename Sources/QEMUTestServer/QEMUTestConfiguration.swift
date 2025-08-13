@@ -6,9 +6,9 @@ import Common
 
 /// Test environment types supported by the QEMU test infrastructure
 public enum TestEnvironment: String, CaseIterable, Codable {
-    case development = "development"
-    case ci = "ci"
-    case production = "production"
+    case development
+    case ci
+    case production
     
     /// Detect test environment from system environment variables
     public static func detect() -> TestEnvironment {
@@ -210,10 +210,8 @@ public class QEMUTestConfiguration {
     private static func findConfigurationFile() -> String? {
         let fileManager = FileManager.default
         
-        for path in defaultConfigPaths {
-            if fileManager.fileExists(atPath: path) {
-                return path
-            }
+        for path in defaultConfigPaths where fileManager.fileExists(atPath: path) {
+            return path
         }
         
         return nil
@@ -265,7 +263,6 @@ public class QEMUTestConfiguration {
             
             loadedConfiguration = configuration
             return configuration
-            
         } catch {
             logger.error("Failed to load configuration", context: [
                 "error": error.localizedDescription,
