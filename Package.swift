@@ -47,7 +47,7 @@ let package = Package(
             dependencies: []),
         .executableTarget(
             name: "QEMUTestServer",
-            dependencies: ["Common"]),
+            dependencies: ["Common", "USBIPDCore"]),
         .executableTarget(
             name: "SystemExtension",
             dependencies: ["Common", "USBIPDCore"],
