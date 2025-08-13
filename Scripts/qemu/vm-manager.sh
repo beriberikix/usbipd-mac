@@ -11,6 +11,39 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Enhanced error handling and cleanup
+TEMP_FILES=()
+CLEANUP_PIDS=()
+
+# Signal handler for cleanup
+cleanup_on_exit() {
+    local exit_code=$?
+    
+    # Clean up temporary files
+    if [[ ${#TEMP_FILES[@]} -gt 0 ]]; then
+        for temp_file in "${TEMP_FILES[@]}"; do
+            [[ -f "$temp_file" ]] && rm -f "$temp_file" 2>/dev/null
+        done
+    fi
+    
+    # Clean up background processes
+    if [[ ${#CLEANUP_PIDS[@]} -gt 0 ]]; then
+        for pid in "${CLEANUP_PIDS[@]}"; do
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -TERM "$pid" 2>/dev/null || true
+                sleep 1
+                kill -KILL "$pid" 2>/dev/null || true
+            fi
+        done
+    fi
+    
+    exit $exit_code
+}
+
+# Install cleanup handlers
+trap cleanup_on_exit EXIT
+trap 'log_warning "Operation interrupted by user"; exit 130' INT TERM
+
 # Load configuration
 CONFIG_FILE="${SCRIPT_DIR}/test-vm-config.json"
 VALIDATION_SCRIPT="${PROJECT_ROOT}/Scripts/qemu-test-validation.sh"
@@ -62,6 +95,116 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[VM-MANAGER:${TEST_ENVIRONMENT}]${NC} $1" >&2
+}
+
+# Enhanced error handling functions
+handle_critical_error() {
+    local error_msg="$1"
+    local vm_name="${2:-}"
+    local exit_code="${3:-1}"
+    
+    log_error "CRITICAL ERROR: $error_msg"
+    
+    if [[ -n "$vm_name" ]]; then
+        save_vm_state "$vm_name" "failed" "$error_msg"
+        
+        # Attempt emergency cleanup
+        local vm_pid
+        if vm_pid=$(get_vm_pid "$vm_name" 2>/dev/null); then
+            log_info "Attempting emergency VM cleanup..."
+            kill -KILL "$vm_pid" 2>/dev/null || true
+        fi
+    fi
+    
+    exit "$exit_code"
+}
+
+validate_prerequisites() {
+    local required_commands=("qemu-system-x86_64" "qemu-img")
+    local missing_commands=()
+    
+    for cmd in "${required_commands[@]}"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_commands+=("$cmd")
+        fi
+    done
+    
+    if [[ ${#missing_commands[@]} -gt 0 ]]; then
+        handle_critical_error "Missing required commands: ${missing_commands[*]}"
+    fi
+    
+    # Validate directories
+    local required_dirs=("$VM_STATE_DIR" "$VM_LOG_DIR" "$VM_IMAGE_DIR")
+    for dir in "${required_dirs[@]}"; do
+        if ! mkdir -p "$dir" 2>/dev/null; then
+            handle_critical_error "Cannot create required directory: $dir"
+        fi
+    done
+}
+
+# Robust timeout handler
+wait_with_timeout() {
+    local timeout="$1"
+    local check_interval="$2"
+    local check_function="$3"
+    local description="$4"
+    shift 4
+    local check_args=("$@")
+    
+    local elapsed=0
+    log_info "$description (timeout: ${timeout}s)"
+    
+    while [[ $elapsed -lt $timeout ]]; do
+        if "$check_function" "${check_args[@]}"; then
+            return 0
+        fi
+        
+        sleep "$check_interval"
+        elapsed=$((elapsed + check_interval))
+        
+        # Progress indicator every 10 seconds
+        if [[ $((elapsed % 10)) -eq 0 && $elapsed -lt $timeout ]]; then
+            log_info "Still waiting... (${elapsed}/${timeout}s)"
+        fi
+    done
+    
+    log_error "$description failed after ${timeout}s timeout"
+    return 1
+}
+
+# Enhanced resource validation
+validate_system_resources() {
+    local memory_mb="${1:-256}"
+    local check_disk_space="${2:-true}"
+    
+    # Check available memory (basic check)
+    if [[ "$TEST_ENVIRONMENT" == "production" ]]; then
+        local memory_kb=$((memory_mb * 1024))
+        local available_kb
+        
+        if available_kb=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null); then
+            if [[ $available_kb -lt $memory_kb ]]; then
+                log_warning "Low available memory: ${available_kb}KB < ${memory_kb}KB requested"
+            fi
+        elif available_kb=$(vm_stat 2>/dev/null | awk '/Pages free:/ {print $3}' | tr -d '.'); then
+            # macOS memory check (approximate)
+            available_kb=$((available_kb * 4))  # 4KB pages
+            if [[ $available_kb -lt $memory_kb ]]; then
+                log_warning "Low available memory: ${available_kb}KB < ${memory_kb}KB requested"
+            fi
+        fi
+    fi
+    
+    # Check disk space for VM images
+    if [[ "$check_disk_space" == "true" ]]; then
+        local available_space
+        if available_space=$(df "$VM_IMAGE_DIR" 2>/dev/null | awk 'NR==2 {print $4}'); then
+            # Require at least 1GB available space
+            if [[ $available_space -lt 1048576 ]]; then
+                log_warning "Low disk space in VM image directory: ${available_space}KB available"
+            fi
+        fi
+    fi
 }
 
 # ============================================================================
@@ -144,12 +287,27 @@ save_vm_state() {
     local state="$2"
     local additional_info="${3:-}"
     
-    mkdir -p "$VM_STATE_DIR"
+    # Validate inputs
+    if [[ -z "$vm_name" || -z "$state" ]]; then
+        log_error "Invalid parameters for save_vm_state: vm_name='$vm_name', state='$state'"
+        return 1
+    fi
+    
+    # Ensure directory exists
+    if ! mkdir -p "$VM_STATE_DIR"; then
+        log_error "Cannot create VM state directory: $VM_STATE_DIR"
+        return 1
+    fi
     
     local state_file
     state_file=$(get_vm_state_file "$vm_name")
     
-    cat > "$state_file" << EOF
+    # Create temporary file for atomic write
+    local temp_state_file="${state_file}.tmp"
+    TEMP_FILES+=("$temp_state_file")
+    
+    # Write state to temporary file
+    if ! cat > "$temp_state_file" << EOF
 {
     "vm_name": "$vm_name",
     "state": "$state",
@@ -159,8 +317,21 @@ save_vm_state() {
     "additional_info": "$additional_info"
 }
 EOF
+    then
+        log_error "Failed to write VM state to temporary file: $temp_state_file"
+        rm -f "$temp_state_file" 2>/dev/null
+        return 1
+    fi
+    
+    # Atomically move to final location
+    if ! mv "$temp_state_file" "$state_file"; then
+        log_error "Failed to update VM state file: $state_file"
+        rm -f "$temp_state_file" 2>/dev/null
+        return 1
+    fi
     
     log_info "VM state saved: $vm_name -> $state"
+    return 0
 }
 
 get_vm_state() {
@@ -227,6 +398,9 @@ create_vm() {
     
     log_info "Creating VM: $vm_name"
     
+    # Validate prerequisites first
+    validate_prerequisites
+    
     # Check if VM already exists
     local current_state
     current_state=$(get_vm_state "$vm_name" 2>/dev/null || echo "unknown")
@@ -237,9 +411,6 @@ create_vm() {
         return 1
     fi
     
-    # Create necessary directories
-    mkdir -p "$VM_STATE_DIR" "$VM_LOG_DIR" "$VM_IMAGE_DIR"
-    
     # Check for VM image
     local image_file="${VM_IMAGE_DIR}/${vm_name}.qcow2"
     if [[ ! -f "$image_file" ]]; then
@@ -248,17 +419,29 @@ create_vm() {
         return 1
     fi
     
-    # Load configuration
+    # Validate VM image integrity
+    if ! qemu-img info "$image_file" >/dev/null 2>&1; then
+        handle_critical_error "VM image is corrupted: $image_file" "$vm_name"
+    fi
+    
+    # Validate system resources
+    local memory_mb=256
     local config
     if config=$(load_vm_config "$vm_name"); then
         log_info "Loaded configuration for environment: $TEST_ENVIRONMENT"
+        memory_mb=$(echo "$config" | jq -r '.vm.memory // "256M"' | sed 's/M$//')
     else
         log_warning "Using default configuration"
         config=""
     fi
     
-    # Save initial state
-    save_vm_state "$vm_name" "created" "VM created but not started"
+    validate_system_resources "$memory_mb" true
+    
+    # Save initial state with error handling
+    if ! save_vm_state "$vm_name" "created" "VM created but not started"; then
+        log_error "Failed to save VM state"
+        return 1
+    fi
     
     log_success "VM created: $vm_name"
     return 0
@@ -365,14 +548,17 @@ start_vm() {
         # Update state
         save_vm_state "$vm_name" "starting" "VM process started, waiting for boot"
         
-        # Wait for boot completion
-        log_info "Waiting for VM to boot (timeout: ${boot_timeout}s)..."
+        # Add PID to cleanup list
+        CLEANUP_PIDS+=("$qemu_pid")
         
-        local elapsed=0
-        local check_interval=2
-        while [[ $elapsed -lt $boot_timeout ]]; do
-            if ! kill -0 "$qemu_pid" 2>/dev/null; then
-                log_error "VM process died during boot"
+        # Helper function to check boot completion
+        check_vm_boot() {
+            local vm_pid="$1"
+            local log_file="$2"
+            
+            # First check if process is still alive
+            if ! kill -0 "$vm_pid" 2>/dev/null; then
+                log_error "VM process died during boot (PID: $vm_pid)"
                 save_vm_state "$vm_name" "failed" "VM process died during boot"
                 return 1
             fi
@@ -381,32 +567,40 @@ start_vm() {
             if grep -q "login:" "$log_file" 2>/dev/null || \
                grep -q "Welcome to Alpine" "$log_file" 2>/dev/null || \
                grep -q "USBIP_CLIENT_READY" "$log_file" 2>/dev/null; then
-                log_success "VM boot completed after ${elapsed}s"
-                save_vm_state "$vm_name" "running" "VM successfully booted and running"
                 return 0
             fi
             
-            sleep "$check_interval"
-            elapsed=$((elapsed + check_interval))
+            return 1
+        }
+        
+        # Use the enhanced timeout handler for boot waiting
+        if wait_with_timeout "$boot_timeout" 2 check_vm_boot "Waiting for VM to boot" "$qemu_pid" "$log_file"; then
+            log_success "VM boot completed successfully"
+            save_vm_state "$vm_name" "running" "VM successfully booted and running"
+            return 0
+        else
+            # Boot timeout - attempt graceful cleanup
+            log_warning "VM boot timeout, attempting graceful shutdown..."
             
-            # Progress indicator
-            if [[ $((elapsed % 10)) -eq 0 ]]; then
-                log_info "Still waiting for boot... (${elapsed}/${boot_timeout}s)"
+            if kill -TERM "$qemu_pid" 2>/dev/null; then
+                # Wait for graceful termination
+                local cleanup_timeout=10
+                local elapsed=0
+                while [[ $elapsed -lt $cleanup_timeout ]] && kill -0 "$qemu_pid" 2>/dev/null; do
+                    sleep 1
+                    elapsed=$((elapsed + 1))
+                done
+                
+                # Force kill if still running
+                if kill -0 "$qemu_pid" 2>/dev/null; then
+                    log_warning "Graceful shutdown failed, force killing VM"
+                    kill -KILL "$qemu_pid" 2>/dev/null || true
+                fi
             fi
-        done
-        
-        log_error "VM boot timeout after ${boot_timeout}s"
-        
-        # Try to stop the VM gracefully
-        if kill -TERM "$qemu_pid" 2>/dev/null; then
-            sleep 5
-            if kill -0 "$qemu_pid" 2>/dev/null; then
-                kill -KILL "$qemu_pid" 2>/dev/null
-            fi
+            
+            save_vm_state "$vm_name" "failed" "VM boot timeout after ${boot_timeout}s"
+            return 1
         fi
-        
-        save_vm_state "$vm_name" "failed" "VM boot timeout"
-        return 1
         
     else
         # Start in foreground (for debugging)
@@ -445,26 +639,23 @@ stop_vm() {
             # Try graceful shutdown first
             kill -TERM "$vm_pid" 2>/dev/null
             
-            # Wait for graceful shutdown
-            local shutdown_timeout=30
-            local elapsed=0
-            local check_interval=1
+            # Helper function to check if process has stopped
+            check_process_stopped() {
+                local pid="$1"
+                ! kill -0 "$pid" 2>/dev/null
+            }
             
-            while [[ $elapsed -lt $shutdown_timeout ]]; do
-                if ! kill -0 "$vm_pid" 2>/dev/null; then
-                    log_success "VM stopped gracefully after ${elapsed}s"
-                    break
-                fi
-                
-                sleep "$check_interval"
-                elapsed=$((elapsed + check_interval))
-            done
-            
-            # Force kill if still running
-            if kill -0 "$vm_pid" 2>/dev/null; then
+            # Use enhanced timeout handler for graceful shutdown
+            if ! wait_with_timeout 30 1 check_process_stopped "Waiting for graceful VM shutdown" "$vm_pid"; then
                 log_warning "Graceful shutdown timeout, force killing VM"
-                kill -KILL "$vm_pid" 2>/dev/null
+                kill -KILL "$vm_pid" 2>/dev/null || true
                 sleep 2
+                
+                # Final verification with timeout
+                if ! wait_with_timeout 5 1 check_process_stopped "Waiting for force kill completion" "$vm_pid"; then
+                    log_error "Unable to terminate VM process even with SIGKILL"
+                    return 1
+                fi
             fi
         fi
         
@@ -805,18 +996,43 @@ EOF
 main() {
     local command="${1:-}"
     
+    # Validate command is provided
+    if [[ -z "$command" ]]; then
+        log_error "No command specified"
+        usage
+        exit 1
+    fi
+    
+    # Validate VM name if provided
+    local vm_name="${2:-$DEFAULT_VM_NAME}"
+    if [[ ! "$vm_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        handle_critical_error "Invalid VM name: '$vm_name'. Only alphanumeric characters, underscores, and hyphens are allowed."
+    fi
+    
     case "$command" in
         "create")
-            create_vm "${2:-$DEFAULT_VM_NAME}" "${3:-false}"
+            if ! create_vm "$vm_name" "${3:-false}"; then
+                log_error "Failed to create VM: $vm_name"
+                exit 1
+            fi
             ;;
         "start")
-            start_vm "${2:-$DEFAULT_VM_NAME}" "${3:-true}"
+            if ! start_vm "$vm_name" "${3:-true}"; then
+                log_error "Failed to start VM: $vm_name"
+                exit 1
+            fi
             ;;
         "stop")
-            stop_vm "${2:-$DEFAULT_VM_NAME}" "${3:-false}"
+            if ! stop_vm "$vm_name" "${3:-false}"; then
+                log_error "Failed to stop VM: $vm_name"
+                exit 1
+            fi
             ;;
         "cleanup")
-            cleanup_vm "${2:-$DEFAULT_VM_NAME}" "${3:-false}"
+            if ! cleanup_vm "$vm_name" "${3:-false}"; then
+                log_error "Failed to cleanup VM: $vm_name"
+                exit 1
+            fi
             ;;
         "status")
             get_vm_status "${2:-$DEFAULT_VM_NAME}" "${3:-false}"
