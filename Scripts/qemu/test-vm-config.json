@@ -1,0 +1,242 @@
+{
+  "_comment": "QEMU VM configuration templates for different test environments",
+  "_documentation": {
+    "description": "Environment-specific VM configurations for usbipd-mac testing",
+    "usage": "Load configuration based on TEST_ENVIRONMENT variable",
+    "environments": {
+      "development": "Fast feedback with minimal resources",
+      "ci": "Automated testing optimized for GitHub Actions",
+      "production": "Comprehensive validation with full resources"
+    }
+  },
+  
+  "environments": {
+    "development": {
+      "description": "Development environment - fast feedback with minimal resources",
+      "vm": {
+        "memory": "128M",
+        "cpu_cores": 1,
+        "disk_size": "512M",
+        "enable_kvm": true,
+        "enable_graphics": false,
+        "boot_timeout": 30,
+        "shutdown_timeout": 10
+      },
+      "network": {
+        "type": "user",
+        "host_forwards": [
+          {
+            "protocol": "tcp",
+            "host_port": 2222,
+            "guest_port": 22,
+            "description": "SSH access"
+          },
+          {
+            "protocol": "tcp", 
+            "host_port": 3240,
+            "guest_port": 3240,
+            "description": "USB/IP protocol port"
+          }
+        ]
+      },
+      "testing": {
+        "max_test_duration": 60,
+        "enable_hardware_tests": false,
+        "enable_system_extension_tests": false,
+        "mock_level": "high",
+        "parallel_tests": true
+      },
+      "qemu_args": [
+        "-nographic",
+        "-serial", "stdio",
+        "-monitor", "none"
+      ]
+    },
+    
+    "ci": {
+      "description": "CI environment - automated testing optimized for GitHub Actions",
+      "vm": {
+        "memory": "256M",
+        "cpu_cores": 2,
+        "disk_size": "1G",
+        "enable_kvm": false,
+        "enable_graphics": false,
+        "boot_timeout": 60,
+        "shutdown_timeout": 30
+      },
+      "network": {
+        "type": "user",
+        "host_forwards": [
+          {
+            "protocol": "tcp",
+            "host_port": 2222,
+            "guest_port": 22,
+            "description": "SSH access"
+          },
+          {
+            "protocol": "tcp",
+            "host_port": 3240,
+            "guest_port": 3240,
+            "description": "USB/IP protocol port"
+          }
+        ]
+      },
+      "testing": {
+        "max_test_duration": 180,
+        "enable_hardware_tests": false,
+        "enable_system_extension_tests": false,
+        "mock_level": "medium",
+        "parallel_tests": true,
+        "ci_optimizations": {
+          "disable_audio": true,
+          "disable_usb": true,
+          "disable_parallel": true,
+          "disable_serial_except_stdio": true
+        }
+      },
+      "qemu_args": [
+        "-nographic",
+        "-serial", "stdio",
+        "-monitor", "none",
+        "-no-reboot",
+        "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"
+      ]
+    },
+    
+    "production": {
+      "description": "Production environment - comprehensive validation with full resources",
+      "vm": {
+        "memory": "512M",
+        "cpu_cores": 4,
+        "disk_size": "2G",
+        "enable_kvm": true,
+        "enable_graphics": false,
+        "boot_timeout": 120,
+        "shutdown_timeout": 60
+      },
+      "network": {
+        "type": "user",
+        "host_forwards": [
+          {
+            "protocol": "tcp",
+            "host_port": 2222,
+            "guest_port": 22,
+            "description": "SSH access"
+          },
+          {
+            "protocol": "tcp",
+            "host_port": 3240,
+            "guest_port": 3240,
+            "description": "USB/IP protocol port"
+          },
+          {
+            "protocol": "tcp",
+            "host_port": 8080,
+            "guest_port": 80,
+            "description": "HTTP test server"
+          }
+        ]
+      },
+      "testing": {
+        "max_test_duration": 600,
+        "enable_hardware_tests": true,
+        "enable_system_extension_tests": true,
+        "mock_level": "low",
+        "parallel_tests": true,
+        "comprehensive_validation": {
+          "protocol_compliance": true,
+          "performance_benchmarks": true,
+          "stress_testing": true,
+          "memory_leak_detection": true
+        }
+      },
+      "qemu_args": [
+        "-nographic",
+        "-serial", "stdio",
+        "-monitor", "telnet:127.0.0.1:9001,server,nowait"
+      ]
+    }
+  },
+  
+  "shared_config": {
+    "vm_defaults": {
+      "architecture": "x86_64",
+      "machine": "pc",
+      "accelerator": "auto",
+      "disk_format": "qcow2",
+      "disk_interface": "virtio"
+    },
+    "paths": {
+      "image_dir": "tmp/qemu-images",
+      "iso_dir": "tmp/qemu-iso",
+      "log_dir": "tmp/qemu-logs",
+      "run_dir": "tmp/qemu-run"
+    },
+    "common_qemu_args": [
+      "-enable-kvm",
+      "-cpu", "host",
+      "-device", "e1000,netdev=net0",
+      "-rtc", "base=utc"
+    ],
+    "environment_variables": {
+      "QEMU_SYSTEM_PREFIX": "/usr/local/bin/",
+      "QEMU_IMG_PREFIX": "/usr/local/bin/",
+      "TMPDIR": "/tmp"
+    }
+  },
+  
+  "validation": {
+    "required_tools": [
+      "qemu-system-x86_64",
+      "qemu-img"
+    ],
+    "optional_tools": [
+      "socat",
+      "netcat",
+      "ssh"
+    ],
+    "minimum_resources": {
+      "disk_space_mb": 2048,
+      "available_memory_mb": 256,
+      "available_ports": [2222, 3240]
+    },
+    "feature_detection": {
+      "kvm_support": "check /dev/kvm accessibility",
+      "nested_virtualization": "check cpu flags for vmx/svm",
+      "network_namespace": "check for network namespace support"
+    }
+  },
+  
+  "templates": {
+    "basic_vm": {
+      "description": "Minimal VM template for quick testing",
+      "base_config": "development",
+      "overrides": {
+        "vm.memory": "64M",
+        "vm.cpu_cores": 1,
+        "testing.max_test_duration": 30
+      }
+    },
+    "protocol_testing": {
+      "description": "Optimized for USB/IP protocol validation",
+      "base_config": "ci",
+      "overrides": {
+        "vm.memory": "256M",
+        "network.host_forwards": [
+          {"protocol": "tcp", "host_port": 3240, "guest_port": 3240}
+        ],
+        "testing.mock_level": "low"
+      }
+    },
+    "stress_testing": {
+      "description": "High-resource configuration for stress testing",
+      "base_config": "production",
+      "overrides": {
+        "vm.memory": "1G",
+        "vm.cpu_cores": 8,
+        "testing.max_test_duration": 1200,
+        "testing.comprehensive_validation.stress_testing": true
+      }
+    }
+  }
+}
