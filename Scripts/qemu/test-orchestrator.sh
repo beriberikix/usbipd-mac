@@ -159,6 +159,16 @@ setup_environment() {
 validate_prerequisites() {
     log_step "Validating prerequisites"
     
+    # Use validation script for environment validation if available
+    if [[ -x "$VALIDATION_SCRIPT" ]]; then
+        log_info "Running comprehensive environment validation..."
+        if "$VALIDATION_SCRIPT" validate-environment; then
+            log_success "Environment validation completed successfully"
+        else
+            log_warning "Environment validation completed with warnings (continuing)"
+        fi
+    fi
+    
     # Check for required tools
     local missing_tools=()
     
@@ -269,18 +279,50 @@ run_protocol_validation_test() {
     
     log_info "Test server ready for protocol testing"
     
-    # Use validation script for protocol testing
+    # Use validation script for comprehensive protocol testing
     local validation_result=0
     if [[ -x "$VALIDATION_SCRIPT" ]]; then
         export TEST_SERVER_PORT="$test_server_port"
         export TEST_SESSION_ID="$TEST_SESSION_ID"
         
-        if "$VALIDATION_SCRIPT" validate-server "$server_log" basic; then
-            log_success "Protocol validation test passed"
-            validation_result=0
+        log_info "Running comprehensive protocol validation..."
+        
+        # Run environment-aware validation
+        if "$VALIDATION_SCRIPT" environment-validation "$server_log" protocol 2>/dev/null; then
+            log_success "Environment-aware protocol validation passed"
         else
-            log_error "Protocol validation test failed"
+            log_warning "Environment-aware protocol validation had issues (continuing)"
+        fi
+        
+        # Check server connectivity
+        if "$VALIDATION_SCRIPT" check-server "127.0.0.1" "$test_server_port" 2>/dev/null; then
+            log_success "Server connectivity check passed"
+        else
+            log_warning "Server connectivity check failed"
             validation_result=1
+        fi
+        
+        # Test server response
+        if "$VALIDATION_SCRIPT" test-server "127.0.0.1" "$test_server_port" 2>/dev/null; then
+            log_success "Server response test passed"
+        else
+            log_warning "Server response test failed"
+            validation_result=1
+        fi
+        
+        # Validate log format if we have logs
+        if [[ -f "$server_log" ]] && [[ -s "$server_log" ]]; then
+            if "$VALIDATION_SCRIPT" validate-format "$server_log" 2>/dev/null; then
+                log_success "Log format validation passed"
+            else
+                log_warning "Log format validation failed"
+            fi
+        fi
+        
+        if [[ $validation_result -eq 0 ]]; then
+            log_success "Complete protocol validation test passed"
+        else
+            log_error "Protocol validation test completed with warnings/errors"
         fi
     else
         log_warning "Validation script not available, skipping detailed protocol test"
@@ -390,8 +432,9 @@ generate_test_report() {
     local test_result="$1"
     local report_file="$LOG_DIR/test_report_${TEST_SESSION_ID}.md"
     
-    log_step "Generating test report"
+    log_step "Generating comprehensive test report"
     
+    # Initialize report with basic information
     cat > "$report_file" << EOF
 # QEMU Test Orchestration Report
 
@@ -411,34 +454,123 @@ generate_test_report() {
 - **Graphics**: $ENABLE_GRAPHICS
 - **Timeout Multiplier**: $TIMEOUT_MULTIPLIER
 
-## Test Execution
+EOF
+
+    # Add detailed validation results using validation script
+    if [[ -x "$VALIDATION_SCRIPT" ]]; then
+        echo "## Detailed Test Analysis" >> "$report_file"
+        echo >> "$report_file"
+        
+        # Process each server log file for detailed analysis
+        local server_logs=()
+        while IFS= read -r -d '' log_file; do
+            server_logs+=("$log_file")
+        done < <(find "$LOG_DIR" -name "*server_${TEST_SESSION_ID}.log" -print0 2>/dev/null || true)
+        
+        if [[ ${#server_logs[@]} -gt 0 ]]; then
+            for server_log in "${server_logs[@]}"; do
+                local log_name=$(basename "$server_log")
+                echo "### Analysis of $log_name" >> "$report_file"
+                echo >> "$report_file"
+                
+                # Generate validation report using the validation script
+                local validation_report_file="${server_log%.log}-validation.txt"
+                if "$VALIDATION_SCRIPT" generate-report "$server_log" "$validation_report_file" 2>/dev/null; then
+                    echo "#### Validation Results" >> "$report_file"
+                    echo '```' >> "$report_file"
+                    cat "$validation_report_file" >> "$report_file" 2>/dev/null || echo "Validation report not available" >> "$report_file"
+                    echo '```' >> "$report_file"
+                    echo >> "$report_file"
+                fi
+                
+                # Add test statistics if available
+                if "$VALIDATION_SCRIPT" get-stats "$server_log" >/dev/null 2>&1; then
+                    echo "#### Test Statistics" >> "$report_file"
+                    echo '```' >> "$report_file"
+                    "$VALIDATION_SCRIPT" get-stats "$server_log" >> "$report_file" 2>/dev/null || echo "Statistics not available" >> "$report_file"
+                    echo '```' >> "$report_file"
+                    echo >> "$report_file"
+                fi
+                
+                # Add environment-specific validation results
+                echo "#### Environment-Specific Validation" >> "$report_file"
+                echo '```' >> "$report_file"
+                if "$VALIDATION_SCRIPT" environment-validation "$server_log" full >/dev/null 2>&1; then
+                    echo "✅ Environment validation: PASSED" >> "$report_file"
+                else
+                    echo "❌ Environment validation: FAILED" >> "$report_file"
+                fi
+                echo '```' >> "$report_file"
+                echo >> "$report_file"
+            done
+        else
+            echo "No server logs found for detailed analysis." >> "$report_file"
+            echo >> "$report_file"
+        fi
+    else
+        echo "## Validation Analysis" >> "$report_file"
+        echo >> "$report_file"
+        echo "Validation script not available for detailed analysis." >> "$report_file"
+        echo >> "$report_file"
+    fi
+
+    # Add test execution details
+    cat >> "$report_file" << EOF
+
+## Test Execution Details
 
 ### Files Generated
 
 - **Session Log**: $SESSION_LOG
 - **Report File**: $report_file
 
-### Log Files
+### All Log Files
 
 $(find "$LOG_DIR" -name "*${TEST_SESSION_ID}*" -type f | sed 's/^/- /')
 
+### Test Environment Status
+
+$(if [[ -x "$VALIDATION_SCRIPT" ]]; then
+    "$VALIDATION_SCRIPT" validate-environment 2>&1 | sed 's/^/- /'
+else
+    echo "- Environment validation not available"
+fi)
+
 ## Summary
 
-$([ $test_result -eq 0 ] && echo "All tests completed successfully." || echo "Some tests failed. Check logs for details.")
+$([ $test_result -eq 0 ] && echo "All tests completed successfully. The QEMU testing infrastructure is functioning correctly." || echo "Some tests failed. Review the detailed analysis above and check individual log files for specific error information.")
 
-Environment: $TEST_ENVIRONMENT | Generated: $(date)
+---
+*Environment: $TEST_ENVIRONMENT | Generated: $(date) | Session: $TEST_SESSION_ID*
 EOF
     
-    log_success "Test report generated: $report_file"
+    log_success "Comprehensive test report generated: $report_file"
     
-    # Display summary
+    # Display enhanced summary
     echo
-    echo -e "${BOLD}=== QEMU Test Summary ===${NC}"
-    echo -e "Session: $TEST_SESSION_ID"
+    echo -e "${BOLD}=== QEMU Test Orchestration Summary ===${NC}"
+    echo -e "Session ID: $TEST_SESSION_ID"
     echo -e "Environment: $TEST_ENVIRONMENT"
-    echo -e "Result: $([ $test_result -eq 0 ] && echo -e "${GREEN}PASSED${NC}" || echo -e "${RED}FAILED${NC}")"
+    echo -e "Duration: $(($(date +%s) - start_time)) seconds"
+    echo -e "Result: $([ $test_result -eq 0 ] && echo -e "${GREEN}✅ PASSED${NC}" || echo -e "${RED}❌ FAILED${NC}")"
     echo -e "Report: $report_file"
+    echo -e "Logs: $LOG_DIR/*${TEST_SESSION_ID}*"
     echo
+    
+    # Show quick validation summary if available
+    if [[ -x "$VALIDATION_SCRIPT" ]] && [[ ${#server_logs[@]} -gt 0 ]]; then
+        echo -e "${BOLD}=== Quick Validation Summary ===${NC}"
+        for server_log in "${server_logs[@]}"; do
+            local log_name=$(basename "$server_log")
+            echo -n "- $log_name: "
+            if "$VALIDATION_SCRIPT" validate-test "$server_log" >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ PASSED${NC}"
+            else
+                echo -e "${RED}❌ FAILED${NC}"
+            fi
+        done
+        echo
+    fi
 }
 
 cleanup_session() {
@@ -496,6 +628,8 @@ ${BOLD}OPTIONS:${NC}
     --report-only          Generate test report from existing session logs
     --cleanup              Clean up orphaned processes and temporary files
     --info                 Display current environment configuration
+    --validate-environment Run comprehensive environment validation
+    --validation-report LOG Generate detailed validation report from log file
     --mode MODE            Set QEMU test mode (mock or vm, default: auto)
     --timeout SECONDS      Override default timeout (environment-specific)
 
@@ -535,6 +669,8 @@ ${BOLD}EXAMPLES:${NC}
     $0 --cleanup                       # Clean up after failed tests
     $0 --report-only                   # Generate report from last session
     $0 --info                         # Show current configuration
+    $0 --validate-environment          # Check environment readiness
+    $0 --validation-report test_server.log  # Analyze specific log file
 
 ${BOLD}ENVIRONMENT DETECTION AND CONFIGURATION:${NC}
     ${YELLOW}Automatic Detection:${NC}
@@ -693,6 +829,28 @@ main() {
                 ;;
             --info)
                 show_environment_info
+                return 0
+                ;;
+            --validate-environment)
+                if [[ -x "$VALIDATION_SCRIPT" ]]; then
+                    "$VALIDATION_SCRIPT" validate-environment
+                else
+                    log_error "Validation script not available"
+                    return 1
+                fi
+                return 0
+                ;;
+            --validation-report)
+                if [[ $# -lt 2 ]]; then
+                    log_error "Usage: $0 --validation-report <log_file>"
+                    return 1
+                fi
+                if [[ -x "$VALIDATION_SCRIPT" ]]; then
+                    "$VALIDATION_SCRIPT" generate-report "$2"
+                else
+                    log_error "Validation script not available"
+                    return 1
+                fi
                 return 0
                 ;;
             --quick-reference|--quick-ref)
