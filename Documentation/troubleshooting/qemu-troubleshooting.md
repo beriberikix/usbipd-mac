@@ -1,202 +1,270 @@
 # QEMU Test Tool Troubleshooting
 
-This document provides troubleshooting guidance for the QEMU USB/IP Test Tool.
+This document provides troubleshooting guidance for the current QEMU test tool implementation, focusing on the test validation utilities and placeholder test server.
 
-## Common Issues
+## Current Implementation Issues
 
-### Image Creation Failures
+### Test Validation Utility Issues
 
-**Symptoms**: QEMU image creation script fails during download or image creation process.
+#### Log Parsing Failures
 
-**Diagnosis**:
-```bash
-# Check available disk space
-df -h .build/qemu/
-
-# Verify QEMU installation
-qemu-system-x86_64 --version
-
-# Check network connectivity for downloads
-curl -I https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/
-```
-
-**Solutions**:
-- Ensure sufficient disk space (minimum 1GB free)
-- Install or update QEMU: `brew install qemu`
-- Check internet connectivity and proxy settings
-- Verify write permissions in `.build/qemu/` directory
-
-### Boot Timeouts
-
-**Symptoms**: QEMU instance fails to boot within the timeout period, hanging at boot process.
+**Symptoms**: The validation script fails to parse console logs or reports no structured messages found.
 
 **Diagnosis**:
 ```bash
-# Check console log for boot progress
-tail -f .build/qemu/logs/{instance-id}-console.log
-
-# Verify image integrity
-qemu-img check .build/qemu/qemu-usbip-client.qcow2
-
-# Test with increased timeout
-BOOT_TIMEOUT=120 ./Scripts/start-qemu-client.sh
-```
-
-**Solutions**:
-- Increase boot timeout: `BOOT_TIMEOUT=120`
-- Recreate QEMU image if corrupted
-- Check system resources (CPU/memory availability)
-- Disable hardware acceleration if causing issues
-
-### Network Issues
-
-**Symptoms**: Unable to connect to QEMU instance via SSH or USB/IP protocol.
-
-**Diagnosis**:
-```bash
-# Check port availability
-lsof -i :2222
-lsof -i :3240
-
-# Test with different ports
-HOST_SSH_PORT=2223 HOST_USBIP_PORT=3241 ./Scripts/start-qemu-client.sh
-```
-
-**Solutions**:
-- Use alternative ports if defaults are occupied
-- Check firewall settings and port forwarding
-- Verify QEMU networking configuration
-- Restart network services if needed
-
-### QEMU Process Crashes
-
-**Symptoms**: QEMU process terminates unexpectedly during execution.
-
-**Diagnosis**:
-- Check crash logs in `.build/qemu/logs/qemu-crash-{instance-id}.log`
-- Verify system compatibility and hardware acceleration support
-- Monitor system resources during execution
-
-**Solutions**:
-- Disable hardware acceleration: add `-accel tcg` to QEMU args
-- Reduce memory allocation: `QEMU_MEMORY=128M`
-- Update QEMU to latest version
-- Check for conflicting virtualization software
-
-## Debug Mode
-
-Enable verbose logging for detailed troubleshooting:
-
-```bash
-# Enable debug output for all scripts
-export DEBUG=1
-./Scripts/create-qemu-image.sh
-```
-
-**Debug Features**:
-- Detailed command execution logging
-- Network configuration diagnostics
-- Resource usage monitoring
-- Extended error reporting
-
-## Log Analysis
-
-Use the validation script for comprehensive log analysis:
-
-```bash
-# Get comprehensive test statistics
-./Scripts/qemu-test-validation.sh get-stats console.log
-
-# Validate log format and structure
+# Check log file format
 ./Scripts/qemu-test-validation.sh validate-format console.log
 
-# Generate detailed test report
-./Scripts/qemu-test-validation.sh generate-report console.log report.txt
+# View raw log content
+head -20 console.log
+
+# Check for structured messages
+./Scripts/qemu-test-validation.sh parse-log console.log
 ```
 
-## Error Detection and Recovery
+**Solutions**:
+- Ensure log files use the correct structured format: `[YYYY-MM-DD HH:MM:SS.mmm] MESSAGE_TYPE: details`
+- Verify log files are not empty or corrupted
+- Check file permissions for log files
+- Use absolute paths when referencing log files
 
-### Automatic Error Detection
+#### Environment Detection Issues
 
-The tool automatically detects and handles:
+**Symptoms**: Script fails to detect correct test environment or uses wrong timeout values.
 
-- **Boot Timeouts**: Detects stalled boot processes and provides diagnostic information
-- **Network Failures**: Identifies port conflicts and connectivity issues
-- **QEMU Crashes**: Captures process failures with detailed crash diagnostics
-- **Resource Constraints**: Monitors disk space and memory availability
+**Diagnosis**:
+```bash
+# Check current environment detection
+./Scripts/qemu-test-validation.sh environment-info
 
-### Diagnostic Files
-
-When errors occur, diagnostic files are automatically generated:
-
-```
-.build/qemu/logs/
-├── diagnostics-{instance-id}.log     # General failure diagnostics
-├── boot-timeout-{instance-id}.log    # Boot timeout analysis
-├── network-failure-{instance-id}.log # Network configuration issues
-└── qemu-crash-{instance-id}.log      # QEMU process crash details
+# Verify environment variables
+echo "CI: ${CI:-unset}"
+echo "GITHUB_ACTIONS: ${GITHUB_ACTIONS:-unset}"
+echo "TEST_ENVIRONMENT: ${TEST_ENVIRONMENT:-unset}"
 ```
 
-### Retry Mechanisms
+**Solutions**:
+- Set explicit environment: `TEST_ENVIRONMENT=ci ./Scripts/qemu-test-validation.sh`
+- Verify CI environment variables are set correctly
+- Check script permissions and execution context
 
-The tool includes automatic retry logic for:
+#### Server Connectivity Problems
 
-- **Download Retries**: Automatic retry with exponential backoff for network downloads
-- **Port Availability**: Retry logic for network port conflicts
-- **Boot Process**: Multiple boot attempts with different configurations
-- **Connection Validation**: Persistent retry for server connectivity checks
+**Symptoms**: Server connectivity tests fail even when server is running.
 
-## Performance Issues
+**Diagnosis**:
+```bash
+# Test basic connectivity
+nc -z localhost 3240
 
-### Resource Constraints
+# Check if USB/IP server is running
+lsof -i :3240
 
-**Memory Issues**:
-- Reduce QEMU memory allocation: `QEMU_MEMORY=128M`
-- Limit concurrent instances
-- Monitor system memory usage
+# Test with different timeout
+./Scripts/qemu-test-validation.sh check-server localhost 3240
+```
 
-**Disk Space Issues**:
-- Clean up old QEMU images: `rm -rf .build/qemu/old-*`
-- Use QCOW2 compression for space efficiency
-- Monitor disk space before operations
+**Solutions**:
+- Ensure USB/IP server is running and listening on correct port
+- Check firewall settings blocking local connections
+- Verify network configuration allows local connections
+- Install required tools: `brew install netcat` (if using nc)
 
-**CPU Performance**:
-- Adjust CPU core allocation: `QEMU_CPU_COUNT=1`
-- Enable hardware acceleration when available
-- Avoid CPU-intensive background processes during testing
+#### Timeout Configuration Issues
 
-## CI Environment Issues
+**Symptoms**: Tests timeout prematurely or take too long in certain environments.
 
-### GitHub Actions Specific Issues
+**Diagnosis**:
+```bash
+# Check current timeout configuration
+./Scripts/qemu-test-validation.sh environment-info
 
-**Runner Resource Limits**:
-- Use optimized resource allocation for CI
-- Enable aggressive caching for faster builds
-- Monitor CI runner performance metrics
+# Test with custom timeouts
+TEST_ENVIRONMENT=development ./Scripts/qemu-test-validation.sh wait-readiness console.log 30
+```
 
-**Network Connectivity**:
-- Handle intermittent network failures in CI
-- Use retry mechanisms for download operations
-- Cache Alpine Linux images to reduce download needs
+**Solutions**:
+- Adjust environment-specific timeouts by setting `TEST_ENVIRONMENT`
+- Use longer timeouts for slower systems: `TEST_ENVIRONMENT=production`
+- For CI environments, ensure reasonable timeout values (60-120s)
 
-**Permission Issues**:
-- Ensure proper file permissions in CI environment
-- Use user mode networking to avoid privilege requirements
-- Verify write access to build directories
+### Placeholder Test Server Issues
+
+#### Build Failures
+
+**Symptoms**: QEMUTestServer fails to build with Swift Package Manager.
+
+**Diagnosis**:
+```bash
+# Build with verbose output
+swift build --product QEMUTestServer --verbose
+
+# Check for compilation errors
+swift build --product QEMUTestServer 2>&1 | grep error
+```
+
+**Solutions**:
+- Ensure Swift toolchain is properly installed
+- Clean build directory: `swift package clean`
+- Update dependencies: `swift package resolve`
+- Check Package.swift configuration for QEMUTestServer target
+
+#### Runtime Issues
+
+**Symptoms**: QEMUTestServer crashes or doesn't start properly.
+
+**Diagnosis**:
+```bash
+# Run with direct execution
+./.build/debug/QEMUTestServer
+
+# Check for runtime errors
+swift run QEMUTestServer 2>&1
+```
+
+**Solutions**:
+- Current implementation is a placeholder - limited functionality expected
+- Check console output for error messages
+- Verify system permissions for executable
+
+## Environment-Specific Troubleshooting
+
+### Development Environment
+
+**Common Issues**:
+- Faster timeouts may cause false failures on slower development machines
+- Log parsing issues when testing with incomplete logs
+
+**Solutions**:
+```bash
+# Use development-friendly settings
+TEST_ENVIRONMENT=development ./Scripts/qemu-test-validation.sh check-readiness console.log
+
+# Allow partial validation
+./Scripts/qemu-test-validation.sh environment-validation console.log basic
+```
+
+### CI Environment
+
+**Common Issues**:
+- Environment detection failures in CI runners
+- Network connectivity restrictions
+- Missing system tools (nc, telnet)
+
+**Solutions**:
+```bash
+# Explicit CI environment setting
+TEST_ENVIRONMENT=ci ./Scripts/qemu-test-validation.sh validate-environment
+
+# Install required tools in CI
+brew install netcat
+```
+
+### Production Environment
+
+**Common Issues**:
+- Extended timeouts may be too long for some use cases
+- Comprehensive validation may fail on resource-constrained systems
+
+**Solutions**:
+```bash
+# Adjust validation level
+./Scripts/qemu-test-validation.sh environment-validation console.log basic
+
+# Monitor resource usage
+top -l 1 | grep -E "(CPU|Memory)"
+```
+
+## Future Implementation Issues
+
+### Missing QEMU Functionality
+
+**Current Limitation**: Full QEMU testing framework (image creation, VM management) is not yet implemented.
+
+**Workarounds**:
+- Use existing test validation utilities for log analysis
+- Implement custom test scenarios using the placeholder test server
+- Focus on unit and integration tests rather than full QEMU testing
+
+**Planned Solutions**:
+- QEMU image creation scripts (planned)
+- VM lifecycle management utilities (planned)
+- Automated testing framework (future development)
+
+### Limited Test Server Functionality
+
+**Current Limitation**: QEMUTestServer is a minimal placeholder.
+
+**Workarounds**:
+- Use other testing methods for USB/IP protocol validation
+- Develop against the main usbipd server implementation
+- Implement mock test scenarios for development
+
+## Diagnostic Commands
+
+### Comprehensive System Check
+
+```bash
+# Check all components
+echo "=== Environment ==="
+./Scripts/qemu-test-validation.sh environment-info
+
+echo "=== Build Status ==="
+swift build --product QEMUTestServer
+
+echo "=== Script Availability ==="
+ls -la Scripts/qemu-test-validation.sh
+
+echo "=== System Tools ==="
+which nc || echo "netcat not available"
+which telnet || echo "telnet not available"
+```
+
+### Log Analysis
+
+```bash
+# Analyze existing log file
+if [ -f console.log ]; then
+    echo "=== Log Format Validation ==="
+    ./Scripts/qemu-test-validation.sh validate-format console.log
+    
+    echo "=== Log Statistics ==="
+    ./Scripts/qemu-test-validation.sh get-stats console.log
+    
+    echo "=== Generate Report ==="
+    ./Scripts/qemu-test-validation.sh generate-report console.log
+else
+    echo "No console.log found for analysis"
+fi
+```
 
 ## Getting Help
 
-If troubleshooting steps don't resolve the issue:
+### Check Current Implementation
 
-1. **Enable Debug Mode**: Run with `DEBUG=1` for verbose output
-2. **Collect Logs**: Gather all relevant log files from `.build/qemu/logs/`
-3. **Check System Requirements**: Verify QEMU installation and system compatibility
-4. **Test Environment**: Validate that basic QEMU functionality works outside the tool
-5. **Report Issues**: Include debug logs and system information when reporting problems
+1. **Review Documentation**: [QEMU Test Tool](../qemu-test-tool.md) for current capabilities
+2. **Test Validation Script**: Run `./Scripts/qemu-test-validation.sh --help` for available commands
+3. **Build Status**: Verify `swift build --product QEMUTestServer` works
 
-## Additional Resources
+### Report Issues
 
-- [QEMU Test Tool Documentation](../qemu-test-tool.md) - Complete tool documentation
+When reporting issues with the current implementation:
+
+1. **Specify Component**: Test validation utility vs. placeholder test server
+2. **Include Environment**: Development, CI, or production environment
+3. **Provide Logs**: Include relevant console logs and error messages
+4. **System Info**: Include macOS version, Swift version, and hardware details
+
+### Contributing
+
+For enhancing the current implementation:
+
+1. **Test Validation Utility**: Improve parsing, add validation features, enhance environment detection
+2. **Placeholder Test Server**: Implement basic USB/IP protocol support
+3. **Future Features**: Contribute to planned QEMU image and VM management capabilities
+
+## References
+
+- [QEMU Test Tool Documentation](../qemu-test-tool.md) - Current implementation overview
+- [Testing Strategy](../development/testing-strategy.md) - Overall project testing approach
 - [Build Troubleshooting](build-troubleshooting.md) - General build issues
-- [QEMU Documentation](https://www.qemu.org/docs/master/) - Official QEMU documentation
-- [Alpine Linux Documentation](https://wiki.alpinelinux.org/) - Alpine Linux specific guidance
