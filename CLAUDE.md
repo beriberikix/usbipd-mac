@@ -139,10 +139,12 @@ The project uses a three-tier environment-based testing approach:
 - **Execution time**: <10 minutes
 - **Coverage**: QEMU integration, hardware validation, System Extension testing
 - **Use case**: Release candidate validation, comprehensive testing
+- **QEMU Integration**: Full VM-based testing with protocol validation
 
 ### Key Features
 - Environment-specific mock libraries for reliable testing
 - Conditional hardware detection and graceful degradation
+- QEMU-based end-to-end integration testing infrastructure
 - Comprehensive test reporting and environment validation
 - Parallel test execution for optimal performance
 
@@ -170,4 +172,85 @@ Located in `Scripts/` directory:
 
 # Generate comprehensive test report
 ./Scripts/generate-test-report.sh --environment production
+```
+
+## QEMU Testing Infrastructure
+
+The project includes comprehensive QEMU-based testing infrastructure for end-to-end validation of USB/IP protocol implementation.
+
+### QEMU Test Components
+- **QEMUTestServer**: Test server executable for protocol validation
+- **Scripts/qemu/**: QEMU testing infrastructure and utilities
+- **Tests/QEMUIntegrationTests/**: Integration tests for QEMU workflows
+
+### QEMU Test Execution
+```bash
+# QEMU test orchestration (main entry point)
+./Scripts/qemu/test-orchestrator.sh <scenario>
+
+# Available test scenarios:
+./Scripts/qemu/test-orchestrator.sh basic      # Basic connectivity testing
+./Scripts/qemu/test-orchestrator.sh protocol  # USB/IP protocol validation  
+./Scripts/qemu/test-orchestrator.sh stress    # Load testing (production only)
+./Scripts/qemu/test-orchestrator.sh full      # Complete test suite
+
+# Environment-specific QEMU testing
+TEST_ENVIRONMENT=development ./Scripts/qemu/test-orchestrator.sh basic
+TEST_ENVIRONMENT=ci ./Scripts/qemu/test-orchestrator.sh protocol
+TEST_ENVIRONMENT=production ./Scripts/qemu/test-orchestrator.sh full
+
+# QEMU test configuration and status
+./Scripts/qemu/test-orchestrator.sh --info           # Show environment config
+./Scripts/qemu/test-orchestrator.sh --dry-run full   # Preview test execution
+```
+
+### QEMU Environment Management
+```bash
+# Environment validation and setup
+./Scripts/qemu/validate-environment.sh               # Check QEMU prerequisites
+./Scripts/qemu/validate-environment.sh install-help  # Installation guidance
+
+# VM lifecycle management
+./Scripts/qemu/vm-manager.sh create test-vm         # Create VM
+./Scripts/qemu/vm-manager.sh start test-vm          # Start VM
+./Scripts/qemu/vm-manager.sh stop test-vm           # Stop VM
+./Scripts/qemu/vm-manager.sh status test-vm         # Check VM status
+
+# QEMU test maintenance
+./Scripts/qemu/cleanup.sh status                    # Show environment status
+./Scripts/qemu/cleanup.sh full                      # Complete cleanup
+./Scripts/qemu/cleanup.sh processes                 # Clean up processes only
+./Scripts/qemu/cleanup.sh files --max-age 3         # Clean files older than 3 days
+```
+
+### Integration with Test Scripts
+QEMU testing is integrated with the main test execution scripts:
+
+```bash
+# Development tests with QEMU (optional)
+ENABLE_QEMU_TESTS=true ./Scripts/run-development-tests.sh
+
+# CI tests with QEMU mocking
+QEMU_TEST_MODE=mock ./Scripts/run-ci-tests.sh
+
+# Production tests with full QEMU integration
+./Scripts/run-production-tests.sh  # Automatically includes QEMU tests
+```
+
+### QEMU Test Configuration
+
+Environment variables for QEMU testing:
+- `QEMU_TEST_MODE`: Set to `mock` or `vm` (default: auto-detect)
+- `QEMU_TIMEOUT`: Test timeout in seconds (environment-specific default)
+- `ENABLE_QEMU_TESTS`: Enable QEMU tests in development environment
+- `QEMU_VM_MEMORY`: VM memory allocation (e.g., 512M)
+- `QEMU_CPU_CORES`: VM CPU core count (e.g., 2)
+
+### QEMU Test Reporting
+```bash
+# Generate QEMU test reports
+./Scripts/qemu/test-orchestrator.sh --report-only
+
+# Integration with main test reporting
+./Scripts/generate-test-report.sh --environment production  # Includes QEMU results
 ```
