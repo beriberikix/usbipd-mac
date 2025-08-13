@@ -460,40 +460,127 @@ cleanup_session() {
 # Help and usage functions
 show_usage() {
     cat << EOF
-$SCRIPT_NAME v$SCRIPT_VERSION
+${BOLD}$SCRIPT_NAME v$SCRIPT_VERSION${NC}
+${CYAN}Comprehensive QEMU-based USB/IP testing infrastructure with environment awareness${NC}
 
-USAGE:
+${BOLD}USAGE:${NC}
     $0 [OPTIONS] <scenario>
 
-SCENARIOS:
-    basic      Basic connectivity testing
-    protocol   USB/IP protocol validation
-    stress     Stress testing (production only)
-    full       Complete test suite (all scenarios)
+${BOLD}TEST SCENARIOS:${NC}
+    ${GREEN}basic${NC}      Basic connectivity testing (quick validation)
+                 - Tests server startup and basic TCP connectivity
+                 - Suitable for development and CI environments
+                 - Duration: ~30 seconds
+    
+    ${GREEN}protocol${NC}   USB/IP protocol validation (comprehensive)
+                 - Validates USB/IP message handling and responses
+                 - Tests protocol compliance and error handling
+                 - Duration: ~60 seconds
+    
+    ${GREEN}stress${NC}     Stress testing with concurrent connections (production only)
+                 - Multiple simultaneous client connections
+                 - Load testing and resource utilization validation
+                 - Duration: ~120 seconds
+    
+    ${GREEN}full${NC}       Complete test suite (all scenarios)
+                 - Runs basic, protocol, and stress tests sequentially
+                 - Comprehensive validation for release candidates
+                 - Duration: ~300+ seconds
 
-OPTIONS:
-    -e, --environment ENV    Override environment detection (development|ci|production)
-    -v, --verbose            Enable verbose output
-    -h, --help              Show this help message
-    --dry-run               Show what would be executed without running tests
-    --report-only          Generate report from existing logs
+${BOLD}OPTIONS:${NC}
+    -e, --environment ENV    Override automatic environment detection
+                            Valid environments: development, ci, production
+    -v, --verbose           Enable verbose output with detailed logging
+    -h, --help              Show this comprehensive help message
+    --dry-run              Show execution plan without running actual tests
+    --report-only          Generate test report from existing session logs
     --cleanup              Clean up orphaned processes and temporary files
+    --info                 Display current environment configuration
+    --mode MODE            Set QEMU test mode (mock or vm, default: auto)
+    --timeout SECONDS      Override default timeout (environment-specific)
 
-ENVIRONMENT VARIABLES:
-    TEST_ENVIRONMENT       Set test environment explicitly
-    QEMU_TIMEOUT_MULTIPLIER Override timeout multiplier
-    QEMU_SKIP_VALIDATION   Skip prerequisite validation
+${BOLD}ENVIRONMENT VARIABLES:${NC}
+    ${YELLOW}Core Configuration:${NC}
+    TEST_ENVIRONMENT         Set test environment explicitly
+                            (development|ci|production)
+    QEMU_TEST_MODE          QEMU testing mode (mock|vm)
+                            - mock: Fast simulation without VM
+                            - vm: Full VM-based testing
+    QEMU_TIMEOUT            Test timeout in seconds (per-test)
+    
+    ${YELLOW}Advanced Configuration:${NC}
+    QEMU_TIMEOUT_MULTIPLIER  Timeout multiplier for slow systems (default: 1.0)
+    QEMU_SKIP_VALIDATION    Skip prerequisite validation (not recommended)
+    QEMU_VM_MEMORY          Override VM memory allocation (e.g., 512M)
+    QEMU_CPU_CORES          Override VM CPU core count (e.g., 2)
+    QEMU_LOG_LEVEL          Set logging verbosity (error|warn|info|debug)
 
-EXAMPLES:
-    $0 basic                    # Run basic connectivity test
-    $0 --environment ci full    # Run full test suite in CI mode
-    $0 --verbose protocol       # Run protocol tests with verbose output
-    $0 --dry-run stress        # Show stress test plan without execution
+${BOLD}EXAMPLES:${NC}
+    ${YELLOW}Development Workflow:${NC}
+    $0 basic                           # Quick connectivity check
+    $0 --verbose basic                 # Detailed development testing
+    $0 --dry-run full                  # Preview full test execution
+    
+    ${YELLOW}CI/CD Integration:${NC}
+    TEST_ENVIRONMENT=ci $0 protocol    # CI protocol validation
+    $0 --environment ci --timeout 90 basic  # CI with custom timeout
+    QEMU_TEST_MODE=mock $0 full        # Fast CI testing with mocks
+    
+    ${YELLOW}Production Validation:${NC}
+    $0 --environment production full   # Complete production testing
+    $0 stress                          # Production stress testing only
+    QEMU_VM_MEMORY=1G $0 protocol      # High-memory protocol testing
+    
+    ${YELLOW}Maintenance and Debugging:${NC}
+    $0 --cleanup                       # Clean up after failed tests
+    $0 --report-only                   # Generate report from last session
+    $0 --info                         # Show current configuration
 
-ENVIRONMENT DETECTION:
-    Automatic detection: CI=1 or GITHUB_ACTIONS -> ci
-    TEST_ENVIRONMENT variable -> specified environment
-    Default -> development
+${BOLD}ENVIRONMENT DETECTION AND CONFIGURATION:${NC}
+    ${YELLOW}Automatic Detection:${NC}
+    CI=true or GITHUB_ACTIONS=true    → ci environment
+    TEST_ENVIRONMENT=production       → production environment
+    Default                           → development environment
+    
+    ${YELLOW}Environment-Specific Settings:${NC}
+    Development: Fast, minimal resources, quick feedback
+    - Duration: 5 minutes max, Memory: 128M, CPU: 1 core
+    - Optimized for rapid iteration and local testing
+    
+    CI: Balanced, reliable, automated
+    - Duration: 10 minutes max, Memory: 256M, CPU: 2 cores
+    - Designed for automated testing in CI/CD pipelines
+    
+    Production: Comprehensive, thorough, realistic
+    - Duration: 20 minutes max, Memory: 512M, CPU: 4 cores
+    - Full validation with realistic resource allocation
+
+${BOLD}INTEGRATION WITH OTHER SCRIPTS:${NC}
+    This orchestrator integrates with:
+    - Scripts/run-development-tests.sh (--qemu flag)
+    - Scripts/run-ci-tests.sh (automatic QEMU integration)
+    - Scripts/run-production-tests.sh (comprehensive testing)
+    - Scripts/qemu/validate-environment.sh (prerequisite validation)
+
+${BOLD}EXIT CODES:${NC}
+    0    All tests passed successfully
+    1    Test failures or setup errors
+    130  Test interrupted by user (Ctrl+C)
+
+${BOLD}LOG FILES AND REPORTS:${NC}
+    Session logs: \$PROJECT_ROOT/tmp/qemu-logs/orchestrator_SESSIONID.log
+    Test reports: \$PROJECT_ROOT/tmp/qemu-logs/test_report_SESSIONID.md
+    Server logs:  \$PROJECT_ROOT/tmp/qemu-logs/*server_SESSIONID.log
+
+${BOLD}TROUBLESHOOTING:${NC}
+    Common issues and solutions:
+    1. "QEMU not found" → Run: Scripts/qemu/validate-environment.sh install-help
+    2. "Permission denied" → Ensure proper file permissions and dependencies
+    3. "VM creation failed" → Check system resources and virtualization support
+    4. "Tests timeout" → Increase timeout or check system performance
+
+For more detailed information, see project documentation or run:
+    Scripts/qemu/validate-environment.sh --help
 
 EOF
 }
@@ -519,6 +606,46 @@ show_environment_info() {
     echo "  QEMU: $(command -v qemu-system-x86_64 || echo 'Not found')"
     echo "  jq: $(command -v jq || echo 'Not found')"
     echo
+    echo "Environment Variables:"
+    echo "  TEST_ENVIRONMENT: ${TEST_ENVIRONMENT:-'(auto-detected)'}"
+    echo "  QEMU_TEST_MODE: ${QEMU_TEST_MODE:-'(auto)'}"
+    echo "  QEMU_TIMEOUT: ${QEMU_TIMEOUT:-'(environment default)'}"
+    echo "  QEMU_TIMEOUT_MULTIPLIER: ${QEMU_TIMEOUT_MULTIPLIER:-'(environment default)'}"
+    echo
+}
+
+show_quick_reference() {
+    cat << EOF
+${BOLD}=== QEMU Test Orchestrator - Quick Reference ===${NC}
+
+${YELLOW}Most Common Usage Patterns:${NC}
+
+${GREEN}Development Testing:${NC}
+  $0 basic                    # Quick connectivity test (~30s)
+  $0 --verbose protocol       # Detailed protocol validation (~60s)
+
+${GREEN}CI/CD Integration:${NC}
+  TEST_ENVIRONMENT=ci $0 basic           # CI basic testing
+  QEMU_TEST_MODE=mock $0 protocol        # Fast mock testing
+
+${GREEN}Production Validation:${NC}
+  $0 --environment production full       # Complete test suite
+  $0 stress                             # Stress testing only
+
+${YELLOW}Maintenance Commands:${NC}
+  $0 --cleanup               # Clean up after failed tests
+  $0 --info                 # Show current configuration
+  $0 --dry-run full         # Preview test execution
+
+${YELLOW}Integration with Test Scripts:${NC}
+  Scripts/run-development-tests.sh --qemu    # Enable in development
+  Scripts/run-ci-tests.sh --qemu-only       # CI QEMU testing only
+  Scripts/run-production-tests.sh           # Automatic integration
+
+For comprehensive help: $0 --help
+For environment validation: Scripts/qemu/validate-environment.sh --help
+
+EOF
 }
 
 # Main function
@@ -552,12 +679,24 @@ main() {
                 cleanup_only=true
                 shift
                 ;;
+            --mode)
+                export QEMU_TEST_MODE="$2"
+                shift 2
+                ;;
+            --timeout)
+                export QEMU_TIMEOUT="$2"
+                shift 2
+                ;;
             -h|--help)
                 show_usage
                 return 0
                 ;;
             --info)
                 show_environment_info
+                return 0
+                ;;
+            --quick-reference|--quick-ref)
+                show_quick_reference
                 return 0
                 ;;
             -*)
