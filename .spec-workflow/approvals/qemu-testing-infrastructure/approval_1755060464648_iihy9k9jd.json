@@ -1,0 +1,27 @@
+{
+  "id": "approval_1755060464648_iihy9k9jd",
+  "title": "Tasks Phase: qemu-testing-infrastructure - Ready for Review",
+  "filePath": ".spec-workflow/specs/qemu-testing-infrastructure/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-13T04:47:44.648Z",
+  "category": "spec",
+  "categoryName": "qemu-testing-infrastructure",
+  "response": "Feedback Summary (2 comments):\n\nGeneral Comments:\n1. Follow git workflow. Each task should include explicit commit with useful message. First task should create feature branch and commit spec files. Last task should create PR adn ensure CI passes and fix CI issues until all are passing.\n2. Group QEMU scripts to keep the Scripts folder a bit more organized.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Each task should include explicit commit with useful message. First task should create feature branch and commit spec files. Last task should create PR adn ensure CI passes and fix CI issues until all are passing.\",\n      \"timestamp\": \"2025-08-13T11:39:10.571Z\",\n      \"id\": \"comment_1755085150571_r7ligisz7\"\n    },\n    {\n      \"type\": \"general\",\n      \"comment\": \"Group QEMU scripts to keep the Scripts folder a bit more organized.\",\n      \"timestamp\": \"2025-08-13T11:39:33.837Z\",\n      \"id\": \"comment_1755085173837_w6qbandmr\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (2 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Each task should include explicit commit with useful message. First task should create feature branch and commit spec files. Last task should create PR adn ensure CI passes and fix CI issues until all are passing.\\n2. Group QEMU scripts to keep the Scripts folder a bit more organized.\\n\\n\",\n  \"timestamp\": \"2025-08-13T11:39:34.670Z\"\n}",
+  "respondedAt": "2025-08-13T11:39:34.680Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Each task should include explicit commit with useful message. First task should create feature branch and commit spec files. Last task should create PR adn ensure CI passes and fix CI issues until all are passing.",
+      "timestamp": "2025-08-13T11:39:10.571Z",
+      "id": "comment_1755085150571_r7ligisz7"
+    },
+    {
+      "type": "general",
+      "comment": "Group QEMU scripts to keep the Scripts folder a bit more organized.",
+      "timestamp": "2025-08-13T11:39:33.837Z",
+      "id": "comment_1755085173837_w6qbandmr"
+    }
+  ]
+}
