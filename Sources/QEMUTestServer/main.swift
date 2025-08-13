@@ -9,7 +9,7 @@ import USBIPDCore
 class QEMUTestServer {
     private let logger: Logger
     private var server: TCPServer?
-    private var requestProcessor: TestRequestProcessor?
+    private var requestProcessor: SimulatedTestRequestProcessor?
     
     init(verbose: Bool = false) {
         let logLevel: LogLevel = verbose ? .debug : .info
@@ -27,8 +27,8 @@ class QEMUTestServer {
         // Parse command line arguments
         let arguments = parseArguments()
         
-        // Create test request processor
-        requestProcessor = TestRequestProcessor(logger: logger)
+        // Create simulated test request processor
+        requestProcessor = SimulatedTestRequestProcessor(logger: logger)
         
         // Create and configure TCP server
         server = TCPServer()
@@ -157,149 +157,6 @@ struct ServerArguments {
     let verbose: Bool
 }
 
-/// Test request processor for handling USB/IP protocol messages
-class TestRequestProcessor {
-    private let logger: Logger
-    private let testDevices: [USBIPExportedDevice]
-    
-    init(logger: Logger) {
-        self.logger = logger
-        
-        // Create some test devices for simulation
-        self.testDevices = [
-            USBIPExportedDevice(
-                path: "/sys/devices/test/1-1:1.0",
-                busID: "1-1:1.0",
-                busnum: 1,
-                devnum: 2,
-                speed: 2, // Full speed
-                vendorID: 0x1234,
-                productID: 0x5678,
-                deviceClass: 3, // HID
-                deviceSubClass: 1,
-                deviceProtocol: 1,
-                configurationCount: 1,
-                configurationValue: 1,
-                interfaceCount: 1
-            ),
-            USBIPExportedDevice(
-                path: "/sys/devices/test/1-2:1.0",
-                busID: "1-2:1.0",
-                busnum: 1,
-                devnum: 3,
-                speed: 3, // High speed
-                vendorID: 0xABCD,
-                productID: 0xEF00,
-                deviceClass: 9, // Hub
-                deviceSubClass: 0,
-                deviceProtocol: 0,
-                configurationCount: 1,
-                configurationValue: 1,
-                interfaceCount: 1
-            )
-        ]
-    }
-    
-    /// Process incoming USB/IP request and return response
-    func processRequest(_ data: Data) throws -> Data {
-        logger.debug("Processing USB/IP request", context: [
-            "dataSize": data.count
-        ])
-        
-        // Parse the header to determine request type
-        guard data.count >= 8 else {
-            throw USBIPProtocolError.invalidDataLength
-        }
-        
-        let header = try USBIPHeader.decode(from: data)
-        logger.info("Processing request", context: [
-            "command": String(format: "0x%04x", header.command.rawValue),
-            "status": header.status
-        ])
-        
-        switch header.command {
-        case .requestDeviceList:
-            return try handleDeviceListRequest(data)
-            
-        case .requestDeviceImport:
-            return try handleDeviceImportRequest(data)
-            
-        case .submitRequest:
-            logger.warning("USB SUBMIT request not implemented in test server")
-            throw USBIPProtocolError.unsupportedCommand(header.command.rawValue)
-            
-        case .unlinkRequest:
-            logger.warning("USB UNLINK request not implemented in test server")
-            throw USBIPProtocolError.unsupportedCommand(header.command.rawValue)
-            
-        default:
-            logger.error("Unsupported command", context: [
-                "command": String(format: "0x%04x", header.command.rawValue)
-            ])
-            throw USBIPProtocolError.unsupportedCommand(header.command.rawValue)
-        }
-    }
-    
-    /// Handle device list request
-    private func handleDeviceListRequest(_ data: Data) throws -> Data {
-        logger.info("Handling device list request")
-        
-        // Decode request (validation)
-        _ = try DeviceListRequest.decode(from: data)
-        
-        // Create response with test devices
-        let response = DeviceListResponse(devices: testDevices)
-        
-        logger.info("Sending device list response", context: [
-            "deviceCount": testDevices.count
-        ])
-        
-        for (index, device) in testDevices.enumerated() {
-            logger.debug("Test device", context: [
-                "index": index,
-                "busID": device.busID,
-                "vendorID": String(format: "0x%04x", device.vendorID),
-                "productID": String(format: "0x%04x", device.productID),
-                "deviceClass": device.deviceClass
-            ])
-        }
-        
-        return try response.encode()
-    }
-    
-    /// Handle device import request
-    private func handleDeviceImportRequest(_ data: Data) throws -> Data {
-        logger.info("Handling device import request")
-        
-        // Decode request
-        let request = try DeviceImportRequest.decode(from: data)
-        
-        logger.info("Device import request", context: [
-            "busID": request.busID
-        ])
-        
-        // Check if the requested device exists in our test devices
-        let deviceExists = testDevices.contains { $0.busID == request.busID }
-        
-        let response: DeviceImportResponse
-        if deviceExists {
-            logger.info("Device found, allowing import", context: [
-                "busID": request.busID
-            ])
-            response = DeviceImportResponse(returnCode: 0) // Success
-        } else {
-            logger.warning("Device not found", context: [
-                "busID": request.busID
-            ])
-            response = DeviceImportResponse(
-                header: USBIPHeader(command: .replyDeviceImport, status: 1),
-                returnCode: 1
-            ) // Error
-        }
-        
-        return try response.encode()
-    }
-}
 
 // MARK: - Main Entry Point
 
