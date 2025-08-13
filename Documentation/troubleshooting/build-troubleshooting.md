@@ -121,7 +121,7 @@ usbipd status --health           # Health check only
 ```bash
 # Build and test QEMU server
 swift build --product QEMUTestServer
-./Scripts/run-qemu-tests.sh
+./Scripts/qemu-test-validation.sh
 
 # Run integration tests specifically
 swift test --filter IntegrationTests --verbose
@@ -146,7 +146,7 @@ echo "Running unit tests..."
 swift test --parallel --verbose
 
 echo "Running integration tests..."
-./Scripts/run-qemu-tests.sh
+./Scripts/qemu-test-validation.sh
 swift test --filter IntegrationTests --verbose
 
 echo "All checks completed successfully!"

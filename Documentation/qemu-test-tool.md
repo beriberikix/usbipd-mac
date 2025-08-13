@@ -69,7 +69,7 @@ The tool is automatically integrated into the GitHub Actions CI pipeline:
 
 ```bash
 # Run QEMU validation (as used in CI)
-./Scripts/run-qemu-tests.sh
+./Scripts/qemu-test-validation.sh
 ```
 
 ## Detailed Usage
@@ -316,7 +316,7 @@ The tool supports concurrent QEMU instances:
 ./Scripts/test-error-handling.sh
 ./Scripts/test-qemu-logging.sh
 swift test
-./Scripts/run-qemu-tests.sh
+./Scripts/qemu-test-validation.sh
 ```
 
 ### Code Style

@@ -78,7 +78,7 @@ swift test --filter USBIPDCLITests
 swift build --product QEMUTestServer
 
 # Run QEMU validation script
-./Scripts/run-qemu-tests.sh
+./Scripts/qemu-test-validation.sh
 
 # Run integration tests specifically
 swift test --filter IntegrationTests --verbose
@@ -97,7 +97,7 @@ echo "Running unit tests..."
 swift test --parallel --verbose
 
 echo "Running integration tests..."
-./Scripts/run-qemu-tests.sh
+./Scripts/qemu-test-validation.sh
 swift test --filter IntegrationTests --verbose
 
 echo "All checks completed successfully!"
@@ -153,7 +153,7 @@ When CI checks fail or need to be bypassed:
 - At least 1 maintainer approval is required for all PRs
 - Stale reviews are dismissed when new commits are pushed
 
-See [Branch Protection Configuration](.github/branch-protection-config.md) for detailed setup instructions.
+Branch protection rules should be configured through GitHub's repository settings.
 
 ## Troubleshooting CI Issues
 
@@ -205,7 +205,7 @@ swift test --filter USBIPDCLITests
 ```bash
 # Build and test QEMU server
 swift build --product QEMUTestServer
-./Scripts/run-qemu-tests.sh
+./Scripts/qemu-test-validation.sh
 
 # Run integration tests specifically
 swift test --filter IntegrationTests --verbose
@@ -243,7 +243,7 @@ If CI execution exceeds 10 minutes:
 
 ### For Comprehensive Troubleshooting
 
-See the detailed [CI Troubleshooting Guide](.github/CI_TROUBLESHOOTING.md) which covers:
+For comprehensive troubleshooting, refer to the following procedures:
 - Detailed diagnosis procedures for each job type
 - Step-by-step solutions for common issues
 - Swift and macOS version update procedures
@@ -254,7 +254,7 @@ See the detailed [CI Troubleshooting Guide](.github/CI_TROUBLESHOOTING.md) which
 ### Getting Help
 
 If these solutions don't resolve your issue:
-1. Check the [comprehensive troubleshooting guide](.github/CI_TROUBLESHOOTING.md)
+1. Follow the comprehensive troubleshooting procedures documented above
 2. Review CI job logs for detailed error messages
 3. Reproduce the issue locally using the same commands
 4. Check [GitHub Actions status](https://www.githubstatus.com/) for platform issues
