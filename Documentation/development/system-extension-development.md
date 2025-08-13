@@ -298,147 +298,17 @@ The extension includes IOKit personalities for USB device matching:
 
 ## Troubleshooting
 
-The new diagnostic system provides comprehensive troubleshooting capabilities:
+For comprehensive troubleshooting guidance, see the dedicated [System Extension Troubleshooting Guide](../troubleshooting/system-extension-troubleshooting.md).
 
-```bash
-# Comprehensive health check
-./Scripts/extension-status.sh --health --verbose
+Common issues include:
+- System Extension installation failures
+- Permission denied errors
+- Device claiming failures
+- Extension not loading properly
+- Bundle creation and signing issues
+- Development environment problems
 
-# Bundle validation
-./Scripts/validate-bundle.sh --deep --verbose
-
-# Environment validation
-./Scripts/setup-dev-environment.sh --validate
-
-# View recent logs
-./Scripts/extension-status.sh --logs
-```
-
-### Common Issues
-
-#### 1. System Extension Installation Fails
-
-**Symptoms**: Extension installation is blocked or fails silently
-
-**Diagnostic Steps**:
-```bash
-# Check environment setup
-./Scripts/setup-dev-environment.sh --validate
-
-# Validate bundle structure
-./Scripts/validate-bundle.sh
-
-# Check system status
-./Scripts/extension-status.sh --system
-```
-
-**Solutions**:
-- Check SIP status: `./Scripts/setup-dev-environment.sh --check-sip`
-- Verify development mode: `systemextensionsctl developer`
-- Check System Preferences > Security & Privacy for blocked extensions
-- Force reinstall: `./Scripts/install-extension.sh --force`
-- Restart the system and try again
-
-#### 2. Permission Denied Errors
-
-**Symptoms**: USB device access is denied
-
-**Diagnostic Steps**:
-```bash
-# Check extension status
-./Scripts/extension-status.sh
-
-# Verify bundle signing
-./Scripts/validate-bundle.sh --deep
-```
-
-**Solutions**:
-- Verify the extension is properly loaded: `systemextensionsctl list`
-- Check bundle signature: `./Scripts/validate-bundle.sh`
-- Ensure proper entitlements and code signing
-- Reinstall with proper certificates: `./Scripts/install-extension.sh`
-
-#### 3. Device Claiming Fails
-
-**Symptoms**: Devices cannot be claimed for USB/IP sharing
-
-**Diagnostic Steps**:
-```bash
-# Health check
-./Scripts/extension-status.sh --health
-
-# Check recent logs
-./Scripts/extension-status.sh --logs
-```
-
-**Solutions**:
-- Verify System Extension is running: `./Scripts/extension-status.sh`
-- Check for conflicting applications using the USB device
-- Review system logs for IOKit errors
-- Try reinstalling: `./Scripts/install-extension.sh --force`
-
-#### 4. Extension Not Loading
-
-**Symptoms**: System Extension appears inactive or not loaded
-
-**Diagnostic Steps**:
-```bash
-# Check all system extensions
-./Scripts/extension-status.sh --all
-
-# Validate environment
-./Scripts/setup-dev-environment.sh --validate
-```
-
-**Solutions**:
-- Check extension permissions in Security & Privacy preferences
-- Verify bundle identifier and structure: `./Scripts/validate-bundle.sh`
-- Enable development mode: `sudo systemextensionsctl developer on`
-- Check system extension staging area: `/Library/SystemExtensions/`
-- Force reinstall: `./Scripts/install-extension.sh --force --verbose`
-
-### Debug Commands
-
-The new shell script system provides comprehensive debugging tools:
-
-```bash
-# Extension-specific debugging
-./Scripts/extension-status.sh --verbose --logs
-./Scripts/extension-status.sh --watch  # Real-time monitoring
-./Scripts/validate-bundle.sh --deep --verbose
-
-# Environment debugging
-./Scripts/setup-dev-environment.sh --validate
-./Scripts/setup-dev-environment.sh --check-sip
-./Scripts/setup-dev-environment.sh --check-certs
-
-# System-level debugging
-systemextensionsctl list
-systemextensionsctl developer
-
-# Manual log monitoring
-log show --predicate 'subsystem == "com.apple.systemextensions"' --last 1h
-log show --predicate 'category == "systemextensions"' --last 1h
-
-# Development mode management (use with caution)
-sudo systemextensionsctl developer on
-sudo systemextensionsctl reset  # Nuclear option - removes all extensions
-```
-
-### Log Analysis
-
-Monitor logs in real-time during installation:
-
-```bash
-# System extension management logs
-log stream --predicate 'subsystem == "com.apple.systemextensions"'
-
-# USB/IP specific logs
-log stream --predicate 'subsystem == "com.usbipd.mac"'
-
-# IOKit and USB-related logs
-log stream --predicate 'category == "USB"'
-```
+The troubleshooting guide provides detailed diagnostic steps, solutions, and debug techniques for all System Extension issues.
 
 ## Security Considerations
 
@@ -589,40 +459,14 @@ sudo systemextensionsctl reset  # Nuclear option
 
 ### Development Troubleshooting
 
-#### Bundle Creation Issues
+For development-specific troubleshooting, see the [System Extension Troubleshooting Guide](../troubleshooting/system-extension-troubleshooting.md#development-troubleshooting) which covers:
 
-```bash
-# Comprehensive bundle validation
-./Scripts/validate-bundle.sh --deep --verbose
+- Bundle creation issues
+- Installation problems in development mode
+- Certificate and signing problems
+- Environment validation failures
 
-# Check build output
-swift build --verbose
-
-# Validate bundle structure manually
-find .build -name "*.systemextension" -exec ls -la {} \;
-
-# Debug bundle creation
-./Scripts/install-extension.sh --dry-run --verbose
-```
-
-#### Installation Issues in Development Mode
-
-```bash
-# Environment validation
-./Scripts/setup-dev-environment.sh --validate
-
-# Check development mode status
-./Scripts/extension-status.sh --system
-
-# Verify certificates
-./Scripts/setup-dev-environment.sh --check-certs
-
-# Reset development environment (nuclear option)
-sudo systemextensionsctl reset
-sudo systemextensionsctl developer on
-# (restart required)
-./Scripts/setup-dev-environment.sh
-```
+The troubleshooting guide provides comprehensive diagnostic commands and solutions for all development scenarios.
 
 ### Testing and Validation
 
