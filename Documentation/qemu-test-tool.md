@@ -264,66 +264,16 @@ The tool is optimized for CI environments with minimal resource requirements:
 
 ## Troubleshooting
 
-### Common Issues
+For comprehensive troubleshooting guidance, see the dedicated [QEMU Troubleshooting Guide](troubleshooting/qemu-troubleshooting.md).
 
-**Image Creation Failures**:
-```bash
-# Check available disk space
-df -h .build/qemu/
+Common issues include:
+- Image creation failures
+- Boot timeouts
+- Network connectivity problems
+- QEMU process crashes
+- Performance issues in CI environments
 
-# Verify QEMU installation
-qemu-system-x86_64 --version
-
-# Check network connectivity for downloads
-curl -I https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/
-```
-
-**Boot Timeouts**:
-```bash
-# Check console log for boot progress
-tail -f .build/qemu/logs/{instance-id}-console.log
-
-# Verify image integrity
-qemu-img check .build/qemu/qemu-usbip-client.qcow2
-
-# Test with increased timeout
-BOOT_TIMEOUT=120 ./Scripts/start-qemu-client.sh
-```
-
-**Network Issues**:
-```bash
-# Check port availability
-lsof -i :2222
-lsof -i :3240
-
-# Test with different ports
-HOST_SSH_PORT=2223 HOST_USBIP_PORT=3241 ./Scripts/start-qemu-client.sh
-```
-
-### Debug Mode
-
-Enable verbose logging for troubleshooting:
-
-```bash
-# Enable debug output for all scripts
-export DEBUG=1
-./Scripts/create-qemu-image.sh
-```
-
-### Log Analysis
-
-Use the validation script for detailed log analysis:
-
-```bash
-# Get comprehensive test statistics
-./Scripts/qemu-test-validation.sh get-stats console.log
-
-# Validate log format and structure
-./Scripts/qemu-test-validation.sh validate-format console.log
-
-# Generate detailed test report
-./Scripts/qemu-test-validation.sh generate-report console.log report.txt
-```
+The troubleshooting guide provides detailed diagnosis steps, solutions, and debug techniques for all QEMU test tool issues.
 
 ## Performance Considerations
 
