@@ -751,20 +751,176 @@ public class IOKitUSBInterface {
         numberOfPackets: UInt32
     ) throws -> USBTransferResult {
         
-        // Isochronous transfers are the most complex, requiring frame scheduling
-        // This is a placeholder implementation
+        // Validate parameters for isochronous transfers
+        guard numberOfPackets > 0 && numberOfPackets <= 1024 else {  // Reasonable limit for frame packets
+            throw USBRequestError.invalidParameters
+        }
+        
+        guard bufferLength > 0 else {
+            throw USBRequestError.invalidParameters
+        }
+        
+        // Check if this is an IN or OUT transfer based on endpoint direction
+        let isInTransfer = (endpoint & 0x80) != 0
+        let pipeRef = endpoint & 0x7F  // Remove direction bit to get pipe reference
+        
+        logger.debug("Isochronous transfer: endpoint=0x\(String(endpoint, radix: 16)), direction=\(isInTransfer ? "IN" : "OUT"), bufferLength=\(bufferLength), startFrame=\(startFrame), packets=\(numberOfPackets)")
+        
+        // Get interface reference (using endpoint 0 for now, will be enhanced with proper endpoint discovery)
+        guard let interface = interfaceRefs[0] else {
+            logger.error("No interface reference available for isochronous transfer")
+            throw USBRequestError.deviceNotAvailable
+        }
+        
+        let startTime = Date().timeIntervalSince1970
+        var actualLength: UInt32 = 0
+        var transferData: Data?
+        var errorCount: UInt32 = 0
+        let result: IOReturn
+        var actualStartFrame: UInt64 = UInt64(startFrame)
+        
+        // Calculate packet size - distribute buffer evenly across packets
+        let packetSize = bufferLength / numberOfPackets
+        guard packetSize > 0 else {
+            throw USBRequestError.invalidParameters
+        }
+        
+        if isInTransfer {
+            // IN transfer (device to host) - ReadIsochPipeAsync for frame-based reading
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(bufferLength))
+            defer { buffer.deallocate() }
+            
+            // Allocate frame list for isochronous transfer tracking
+            let frameList = UnsafeMutablePointer<IOUSBIsocFrame>.allocate(capacity: Int(numberOfPackets))
+            defer { frameList.deallocate() }
+            
+            // Initialize frame list with packet sizes
+            for i in 0..<Int(numberOfPackets) {
+                frameList[i].frStatus = kIOReturnInvalid  // Initialize status
+                frameList[i].frReqCount = UInt16(packetSize)
+                frameList[i].frActCount = 0
+            }
+            
+            // If startFrame is 0, get current frame and schedule for near future
+            if actualStartFrame == 0 {
+                var currentFrame: UInt64 = 0
+                let frameResult = interface.pointee.GetBusFrameNumber(interface, &currentFrame, nil)
+                if frameResult == kIOReturnSuccess {
+                    actualStartFrame = currentFrame + 10  // Schedule 10 frames in future
+                } else {
+                    actualStartFrame = 100  // Fallback value
+                }
+            }
+            
+            // Perform isochronous read
+            result = interface.pointee.ReadIsochPipeAsync(
+                interface,
+                pipeRef,
+                buffer,
+                actualStartFrame,
+                numberOfPackets,
+                frameList,
+                nil,  // No async callback for synchronous operation
+                nil   // No refCon
+            )
+            
+            if result == kIOReturnSuccess {
+                // Calculate total transferred data and error count
+                actualLength = 0
+                errorCount = 0
+                for i in 0..<Int(numberOfPackets) {
+                    actualLength += UInt32(frameList[i].frActCount)
+                    if frameList[i].frStatus != kIOReturnSuccess {
+                        errorCount += 1
+                    }
+                }
+                
+                if actualLength > 0 {
+                    transferData = Data(bytes: buffer, count: Int(actualLength))
+                }
+                
+                logger.debug("Isochronous IN transfer completed: \(actualLength) bytes read, \(errorCount) packet errors")
+            } else {
+                logger.warning("Isochronous IN transfer failed with result: \(result)")
+            }
+        } else {
+            // OUT transfer (host to device) - WriteIsochPipeAsync for frame-based writing
+            if let data = data {
+                guard data.count <= Int(bufferLength) else {
+                    throw USBRequestError.bufferSizeMismatch(expected: bufferLength, actual: UInt32(data.count))
+                }
+                
+                // Allocate frame list for isochronous transfer tracking
+                let frameList = UnsafeMutablePointer<IOUSBIsocFrame>.allocate(capacity: Int(numberOfPackets))
+                defer { frameList.deallocate() }
+                
+                // Initialize frame list with packet sizes
+                var remainingData = data.count
+                for i in 0..<Int(numberOfPackets) {
+                    let currentPacketSize = min(remainingData, Int(packetSize))
+                    frameList[i].frStatus = kIOReturnInvalid
+                    frameList[i].frReqCount = UInt16(currentPacketSize)
+                    frameList[i].frActCount = 0
+                    remainingData -= currentPacketSize
+                }
+                
+                // If startFrame is 0, get current frame and schedule for near future
+                if actualStartFrame == 0 {
+                    var currentFrame: UInt64 = 0
+                    let frameResult = interface.pointee.GetBusFrameNumber(interface, &currentFrame, nil)
+                    if frameResult == kIOReturnSuccess {
+                        actualStartFrame = currentFrame + 10  // Schedule 10 frames in future
+                    } else {
+                        actualStartFrame = 100  // Fallback value
+                    }
+                }
+                
+                actualLength = UInt32(data.count)
+                result = data.withUnsafeBytes { bytes in
+                    let buffer = UnsafeMutableRawPointer(mutating: bytes.baseAddress!)
+                    return interface.pointee.WriteIsochPipeAsync(
+                        interface,
+                        pipeRef,
+                        buffer,
+                        actualStartFrame,
+                        numberOfPackets,
+                        frameList,
+                        nil,  // No async callback for synchronous operation
+                        nil   // No refCon
+                    )
+                }
+                
+                if result == kIOReturnSuccess {
+                    // Calculate error count from frame results
+                    errorCount = 0
+                    for i in 0..<Int(numberOfPackets) {
+                        if frameList[i].frStatus != kIOReturnSuccess {
+                            errorCount += 1
+                        }
+                    }
+                    logger.debug("Isochronous OUT transfer completed: \(actualLength) bytes written, \(errorCount) packet errors")
+                } else {
+                    logger.warning("Isochronous OUT transfer failed with result: \(result)")
+                }
+            } else {
+                logger.error("No data provided for isochronous OUT transfer")
+                result = kIOReturnBadArgument
+            }
+        }
         
         let completionTime = Date().timeIntervalSince1970
+        logger.debug("Isochronous transfer took \((completionTime - startTime) * 1000)ms")
         
-        // For now, return a placeholder result
-        // Real implementation would use interface methods with frame management
+        // Map result and return
+        let status = USBErrorMapping.mapIOKitError(result)
         
         return USBTransferResult(
-            status: USBStatus.requestFailed,
-            actualLength: 0,
-            errorCount: 0,
+            status: USBStatus(rawValue: status) ?? .requestFailed,
+            actualLength: actualLength,
+            errorCount: errorCount,
+            data: transferData,
             completionTime: completionTime,
-            startFrame: startFrame
+            startFrame: UInt32(actualStartFrame)
         )
     }
     
