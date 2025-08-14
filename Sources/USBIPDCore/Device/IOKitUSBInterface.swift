@@ -19,6 +19,14 @@ fileprivate let kIOUSBDeviceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
     0x39, 0x61, 0x04, 0xf7, 0x94, 0x3d, 0x48, 0x93,
     0x90, 0xf1, 0x69, 0xbd, 0x6c, 0xf5, 0xc2, 0xeb)
 
+fileprivate let kIOUSBInterfaceUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
+    0x2d, 0x97, 0x86, 0xc6, 0x9e, 0xf3, 0x11, 0xd4,
+    0xad, 0x51, 0x00, 0x0a, 0x27, 0x05, 0x28, 0x61)
+
+fileprivate let kIOUSBInterfaceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
+    0xbc, 0xea, 0xad, 0xdc, 0x88, 0x4d, 0x4f, 0x27,
+    0x83, 0x40, 0x36, 0xd6, 0x9f, 0xab, 0x90, 0xf6)
+
 /// IOKit wrapper for USB interface communication
 public class IOKitUSBInterface {
     
@@ -357,16 +365,101 @@ public class IOKitUSBInterface {
     }
     
     private func findAndOpenUSBInterface() throws {
-        guard self.deviceInterface != nil else {
+        guard let deviceInterface = self.deviceInterface else {
             throw USBRequestError.deviceNotAvailable
         }
         
-        // For now, create a simplified interface setup
-        // In a full implementation, we would iterate through actual USB interfaces
-        // This is a placeholder that establishes the interface tracking structure
+        // Create interface iterator with interface request
+        var interfaceRequest = IOUSBFindInterfaceRequest()
+        interfaceRequest.bInterfaceClass = UInt16(kIOUSBFindInterfaceDontCare)
+        interfaceRequest.bInterfaceSubClass = UInt16(kIOUSBFindInterfaceDontCare)
+        interfaceRequest.bInterfaceProtocol = UInt16(kIOUSBFindInterfaceDontCare)
+        interfaceRequest.bAlternateSetting = UInt16(kIOUSBFindInterfaceDontCare)
         
-        logger.debug("Setting up interface tracking for interface \(interfaceNumber)")
-        // Note: Full interface discovery will be implemented when we add endpoint discovery
+        var interfaceIterator: io_iterator_t = 0
+        let iteratorResult = deviceInterface.pointee.CreateInterfaceIterator(deviceInterface, &interfaceRequest, &interfaceIterator)
+        
+        guard iteratorResult == kIOReturnSuccess else {
+            logger.error("Failed to create interface iterator: \(iteratorResult)")
+            throw IOKitError.operationFailed("CreateInterfaceIterator", iteratorResult)
+        }
+        
+        defer {
+            _ = ioKit.objectRelease(interfaceIterator)
+        }
+        
+        // Find and open the specific interface we need
+        var currentInterfaceNum: UInt8 = 0
+        var interfaceService = ioKit.iteratorNext(interfaceIterator)
+        
+        while interfaceService != 0 {
+            defer {
+                _ = ioKit.objectRelease(interfaceService)
+                interfaceService = ioKit.iteratorNext(interfaceIterator)
+            }
+            
+            // Check if this is the interface we want
+            if currentInterfaceNum == interfaceNumber {
+                try openSpecificInterface(interfaceService)
+                return
+            }
+            
+            currentInterfaceNum += 1
+        }
+        
+        throw IOKitError.interfaceCreationFailed("Interface \(interfaceNumber) not found", kIOReturnNotFound)
+    }
+    
+    private func openSpecificInterface(_ interfaceService: io_service_t) throws {
+        // Create plugin interface for this specific interface
+        var pluginInterface: UnsafeMutablePointer<UnsafeMutablePointer<IOCFPlugInInterface>?>?
+        var score: Int32 = 0
+        
+        let pluginResult = IOCreatePlugInInterfaceForService(
+            interfaceService,
+            kIOUSBInterfaceUserClientTypeID,
+            kIOCFPlugInInterfaceID,
+            &pluginInterface,
+            &score
+        )
+        
+        guard pluginResult == kIOReturnSuccess, let plugin = pluginInterface else {
+            logger.error("Failed to create interface plugin: \(pluginResult)")
+            throw IOKitError.pluginCreationFailed("Interface plugin creation", pluginResult)
+        }
+        
+        defer {
+            _ = plugin.pointee?.pointee.Release(plugin)
+        }
+        
+        // Query for the interface
+        var usbInterface: UnsafeMutableRawPointer?
+        let queryResult = plugin.pointee?.pointee.QueryInterface(
+            plugin,
+            CFUUIDGetUUIDBytes(kIOUSBInterfaceInterfaceID300),
+            &usbInterface
+        )
+        
+        guard queryResult == S_OK, let interfacePtr = usbInterface else {
+            logger.error("Failed to query interface: \(String(describing: queryResult))")
+            throw IOKitError.interfaceCreationFailed("QueryInterface for interface", IOReturn(queryResult ?? -2147483640))
+        }
+        
+        let interface = interfacePtr.assumingMemoryBound(to: IOUSBInterfaceInterface300.self)
+        
+        // Open the interface
+        let openResult = interface.pointee.USBInterfaceOpen(interface)
+        guard openResult == kIOReturnSuccess else {
+            logger.error("Failed to open USB interface: \(openResult)")
+            _ = interface.pointee.Release(interface)
+            throw IOKitError.operationFailed("USBInterfaceOpen", openResult)
+        }
+        
+        // Store the interface reference for endpoint 0 (will be enhanced with endpoint discovery)
+        interfaceRefs[0] = interface
+        logger.debug("Successfully opened USB interface \(interfaceNumber)")
+        
+        // TODO: Add endpoint discovery to populate interfaceRefs with proper pipe references
     }
     
     // Note: openSpecificInterface method removed - will be implemented in task 4 when we add transfer execution
@@ -486,18 +579,79 @@ public class IOKitUSBInterface {
         timeout: UInt32
     ) throws -> USBTransferResult {
         
-        // Bulk transfers require interface reference for specific endpoint
-        // This is a placeholder implementation
+        // Validate parameters
+        guard timeout > 0 && timeout <= 60000 else {
+            throw USBRequestError.timeoutInvalid(timeout)
+        }
         
-        _ = Date().timeIntervalSince1970
+        guard bufferLength > 0 else {
+            throw USBRequestError.invalidParameters
+        }
+        
+        // Check if this is an IN or OUT transfer based on endpoint direction
+        let isInTransfer = (endpoint & 0x80) != 0
+        let pipeRef = endpoint & 0x7F  // Remove direction bit to get pipe reference
+        
+        logger.debug("Bulk transfer: endpoint=0x\(String(endpoint, radix: 16)), direction=\(isInTransfer ? "IN" : "OUT"), bufferLength=\(bufferLength)")
+        
+        // Get interface reference (using endpoint 0 for now, will be enhanced with proper endpoint discovery)
+        guard let interface = interfaceRefs[0] else {
+            logger.error("No interface reference available for bulk transfer")
+            throw USBRequestError.deviceNotAvailable
+        }
+        
+        let startTime = Date().timeIntervalSince1970
+        var actualLength: UInt32 = 0
+        var transferData: Data?
+        let result: IOReturn
+        
+        if isInTransfer {
+            // IN transfer (device to host) - ReadPipe
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(bufferLength))
+            defer { buffer.deallocate() }
+            
+            result = interface.pointee.ReadPipe(interface, pipeRef, buffer, &actualLength)
+            
+            if result == kIOReturnSuccess && actualLength > 0 {
+                transferData = Data(bytes: buffer, count: Int(actualLength))
+                logger.debug("Bulk IN transfer completed: \(actualLength) bytes read")
+            } else {
+                logger.warning("Bulk IN transfer failed with result: \(result)")
+            }
+        } else {
+            // OUT transfer (host to device) - WritePipe
+            if let data = data {
+                guard data.count <= Int(bufferLength) else {
+                    throw USBRequestError.bufferSizeMismatch(expected: bufferLength, actual: UInt32(data.count))
+                }
+                
+                actualLength = UInt32(data.count)
+                result = data.withUnsafeBytes { bytes in
+                    let buffer = UnsafeMutableRawPointer(mutating: bytes.baseAddress!)
+                    return interface.pointee.WritePipe(interface, pipeRef, buffer, actualLength)
+                }
+                
+                if result == kIOReturnSuccess {
+                    logger.debug("Bulk OUT transfer completed: \(actualLength) bytes written")
+                } else {
+                    logger.warning("Bulk OUT transfer failed with result: \(result)")
+                }
+            } else {
+                logger.error("No data provided for bulk OUT transfer")
+                result = kIOReturnBadArgument
+            }
+        }
+        
         let completionTime = Date().timeIntervalSince1970
+        logger.debug("Bulk transfer took \((completionTime - startTime) * 1000)ms")
         
-        // For now, return a placeholder result
-        // Real implementation would use interface.WritePipe or ReadPipe
+        // Map result and return
+        let status = USBErrorMapping.mapIOKitError(result)
         
         return USBTransferResult(
-            status: USBStatus.requestFailed,
-            actualLength: 0,
+            status: USBStatus(rawValue: status) ?? .requestFailed,
+            actualLength: actualLength,
+            data: transferData,
             completionTime: completionTime
         )
     }
