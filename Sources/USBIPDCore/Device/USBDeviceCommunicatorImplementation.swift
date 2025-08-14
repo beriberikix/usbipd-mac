@@ -152,26 +152,83 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator {
         return true
     }
     
-    // MARK: - Transfer Methods (Stubs for Task 9)
+    // MARK: - Transfer Methods
     
     public func executeControlTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        // This will be implemented in Task 9
-        throw USBRequestError.transferTypeNotSupported(.control)
+        // Validate device claim and request type
+        _ = try validateDeviceClaim(device: device)
+        try validateRequest(request, expectedType: .control)
+        
+        // Get the USB interface (using interface 0 as default for now)
+        let interface = try getInterface(for: device, interfaceNumber: 0)
+        
+        logger.debug("Executing control transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
+        
+        // Execute control transfer through IOKit interface
+        return try await interface.executeControlTransfer(
+            endpoint: request.endpoint,
+            setupPacket: request.setupPacket ?? Data(),
+            transferBuffer: request.transferBuffer,
+            timeout: request.timeout
+        )
     }
     
     public func executeBulkTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        // This will be implemented in Task 9
-        throw USBRequestError.transferTypeNotSupported(.bulk)
+        // Validate device claim and request type
+        _ = try validateDeviceClaim(device: device)
+        try validateRequest(request, expectedType: .bulk)
+        
+        // Get the USB interface (using interface 0 as default for now)
+        let interface = try getInterface(for: device, interfaceNumber: 0)
+        
+        logger.debug("Executing bulk transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
+        
+        // Execute bulk transfer through IOKit interface
+        return try await interface.executeBulkTransfer(
+            endpoint: request.endpoint,
+            data: request.transferBuffer,
+            bufferLength: request.bufferLength,
+            timeout: request.timeout
+        )
     }
     
     public func executeInterruptTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        // This will be implemented in Task 9
-        throw USBRequestError.transferTypeNotSupported(.interrupt)
+        // Validate device claim and request type
+        _ = try validateDeviceClaim(device: device)
+        try validateRequest(request, expectedType: .interrupt)
+        
+        // Get the USB interface (using interface 0 as default for now)
+        let interface = try getInterface(for: device, interfaceNumber: 0)
+        
+        logger.debug("Executing interrupt transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
+        
+        // Execute interrupt transfer through IOKit interface
+        return try await interface.executeInterruptTransfer(
+            endpoint: request.endpoint,
+            data: request.transferBuffer,
+            bufferLength: request.bufferLength,
+            timeout: request.timeout
+        )
     }
     
     public func executeIsochronousTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        // This will be implemented in Task 9
-        throw USBRequestError.transferTypeNotSupported(.isochronous)
+        // Validate device claim and request type
+        _ = try validateDeviceClaim(device: device)
+        try validateRequest(request, expectedType: .isochronous)
+        
+        // Get the USB interface (using interface 0 as default for now)
+        let interface = try getInterface(for: device, interfaceNumber: 0)
+        
+        logger.debug("Executing isochronous transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
+        
+        // Execute isochronous transfer through IOKit interface
+        return try await interface.executeIsochronousTransfer(
+            endpoint: request.endpoint,
+            data: request.transferBuffer,
+            bufferLength: request.bufferLength,
+            startFrame: request.startFrame,
+            numberOfPackets: max(request.numberOfPackets, 1)
+        )
     }
     
     // MARK: - Helper Methods
@@ -181,6 +238,57 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator {
     /// - Returns: Device identifier string
     private func deviceIdentifier(for device: USBDevice) -> String {
         return "\\(device.busID)-\\(device.deviceID)"
+    }
+    
+    /// Validate that a USB request has the expected transfer type and required parameters
+    /// - Parameters:
+    ///   - request: USB request to validate
+    ///   - expectedType: Expected transfer type
+    /// - Throws: USBRequestError if validation fails
+    private func validateRequest(_ request: USBRequestBlock, expectedType: USBTransferType) throws {
+        // Validate transfer type matches expectation
+        guard request.transferType == expectedType else {
+            logger.error("Request transfer type mismatch: expected \(expectedType), got \(request.transferType)")
+            throw USBRequestError.transferTypeNotSupported(request.transferType)
+        }
+        
+        // Validate timeout is reasonable
+        guard request.timeout > 0 && request.timeout <= 60000 else {
+            logger.error("Invalid timeout value: \(request.timeout)ms")
+            throw USBRequestError.timeoutInvalid(request.timeout)
+        }
+        
+        // Transfer-specific validations
+        switch expectedType {
+        case .control:
+            // Control transfers require setup packet
+            guard request.setupPacket != nil else {
+                logger.error("Control transfer missing setup packet")
+                throw USBRequestError.setupPacketInvalid
+            }
+            
+        case .bulk, .interrupt:
+            // Bulk and interrupt transfers require buffer length
+            guard request.bufferLength > 0 else {
+                logger.error("Bulk/Interrupt transfer requires valid buffer length")
+                throw USBRequestError.invalidParameters
+            }
+            
+        case .isochronous:
+            // Isochronous transfers require buffer length and packet info
+            guard request.bufferLength > 0 else {
+                logger.error("Isochronous transfer requires valid buffer length")
+                throw USBRequestError.invalidParameters
+            }
+            
+            let numberOfPackets = request.numberOfPackets
+            guard numberOfPackets == 0 || (numberOfPackets > 0 && numberOfPackets <= 1024) else {
+                logger.error("Invalid number of packets for isochronous transfer: \(numberOfPackets)")
+                throw USBRequestError.invalidParameters
+            }
+        }
+        
+        logger.debug("Request validation passed for \(expectedType) transfer")
     }
     
     /// Get the IOKit interface for a specific device and interface number
