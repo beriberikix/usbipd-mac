@@ -123,7 +123,8 @@ public final class SystemExtensionInstaller: NSObject, @unchecked Sendable {
             uninstallSystemExtension { [weak self] uninstallResult in
                 if uninstallResult.success {
                     // Wait a moment for system cleanup
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    Task { @MainActor in
+                        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                         self?.installSystemExtension(
                             bundleIdentifier: bundleIdentifier,
                             executablePath: executablePath,
@@ -466,7 +467,8 @@ public final class SystemExtensionInstaller: NSObject, @unchecked Sendable {
                     "maxRetries": maxRetries
                 ])
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) {
+                Task { @MainActor in
+                    try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
                     self?.performRetryInstallation(
                         bundleIdentifier: bundleIdentifier,
                         executablePath: executablePath,

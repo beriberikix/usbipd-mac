@@ -366,8 +366,8 @@ public class SystemExtensionStateManager {
     }
     
     private func startPeriodicPersistence() {
-        persistenceTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
-            self.saveState()
+        persistenceTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.saveState()
         }
     }
     
@@ -376,8 +376,8 @@ public class SystemExtensionStateManager {
     private func schedulePersistence() {
         // Debounce persistence to avoid excessive writes
         pendingPersistenceTimer?.invalidate()
-        pendingPersistenceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
-            self.saveStateInternal()
+        pendingPersistenceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.saveStateInternal()
         }
     }
     

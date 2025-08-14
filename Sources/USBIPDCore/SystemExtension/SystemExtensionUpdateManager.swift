@@ -299,7 +299,8 @@ public class SystemExtensionUpdateManager {
         notifyExtensionOfUpdate(manager: manager)
         
         // Allow time for graceful shutdown
-        DispatchQueue.main.asyncAfter(deadline: .now() + config.gracefulShutdownTimeout) {
+        Task { @MainActor in
+            try await Task.sleep(nanoseconds: UInt64(config.gracefulShutdownTimeout * 1_000_000_000))
             do {
                 try manager.stop()
                 completion(true, nil)
@@ -372,7 +373,8 @@ public class SystemExtensionUpdateManager {
             try manager.start()
             
             // Wait for startup and verify
-            DispatchQueue.main.asyncAfter(deadline: .now() + config.startupTimeout) {
+            Task { @MainActor in
+                try await Task.sleep(nanoseconds: UInt64(config.startupTimeout * 1_000_000_000))
                 let status = manager.getStatus()
                 if status.isRunning {
                     self.stateManager.updateActivationState(activationStatus: .active)
@@ -572,26 +574,26 @@ public class SystemExtensionUpdateManager {
     private func startVersionMonitoring() {
         guard config.versionCheckInterval > 0 else { return }
         
-        versionCheckTimer = Timer.scheduledTimer(withTimeInterval: config.versionCheckInterval, repeats: true) { _ in
-            self.checkForUpdates { result in
+        versionCheckTimer = Timer.scheduledTimer(withTimeInterval: config.versionCheckInterval, repeats: true) { [weak self] _ in
+            self?.checkForUpdates { result in
                 switch result {
                 case .updateAvailable(let from, let to, let bundlePath):
-                    self.logger.info("Automatic version check detected update", context: [
+                    self?.logger.info("Automatic version check detected update", context: [
                         "from": from,
                         "to": to
                     ])
                     
-                    if self.config.enableAutomaticUpdates {
-                        self.handleAutomaticUpdate(oldVersion: from, newVersion: to, newBundlePath: bundlePath) { success, error in
+                    if self?.config.enableAutomaticUpdates == true {
+                        self?.handleAutomaticUpdate(oldVersion: from, newVersion: to, newBundlePath: bundlePath) { success, error in
                             if !success {
-                                self.logger.error("Automatic update failed", context: ["error": error?.localizedDescription ?? "unknown"])
+                                self?.logger.error("Automatic update failed", context: ["error": error?.localizedDescription ?? "unknown"])
                             }
                         }
                     }
                 case .upToDate, .noVersionInfo:
                     break
                 case .error(let error):
-                    self.logger.error("Automatic version check failed", context: ["error": error.localizedDescription])
+                    self?.logger.error("Automatic version check failed", context: ["error": error.localizedDescription])
                 }
             }
         }
@@ -613,7 +615,8 @@ public class SystemExtensionUpdateManager {
     private func restoreDeviceClaim(deviceId: String, completion: @escaping (Bool) -> Void) {
         // This would typically use SystemExtensionManager to reclaim the device
         // For now, simulate the operation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        Task {
+            try await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
             // Simulate 95% success rate for updates (higher than recovery)
             let success = UInt32.random(in: 0..<100) < 95
             completion(success)

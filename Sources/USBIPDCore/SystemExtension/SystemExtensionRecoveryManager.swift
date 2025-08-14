@@ -241,7 +241,8 @@ public class SystemExtensionRecoveryManager {
         stateManager.saveState()
         
         // Brief delay to ensure state is persisted
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        Task {
+            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
             completion(true, nil)
         }
     }
@@ -258,7 +259,8 @@ public class SystemExtensionRecoveryManager {
             try manager.stop()
             
             // Wait for graceful shutdown
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            Task {
+                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 completion(true, nil)
             }
         } catch {
@@ -331,7 +333,8 @@ public class SystemExtensionRecoveryManager {
             try manager.start()
             
             // Wait for startup
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            Task {
+                try await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
                 // Verify it actually started
                 let status = manager.getStatus()
                 completion(status.isRunning, status.isRunning ? nil : RecoveryError.startupFailed)
@@ -393,7 +396,8 @@ public class SystemExtensionRecoveryManager {
     private func restoreDeviceClaim(deviceId: String, completion: @escaping (Bool) -> Void) {
         // This would typically use SystemExtensionManager to reclaim the device
         // For now, simulate the operation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        Task {
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             // Simulate 90% success rate
             let success = UInt32.random(in: 0..<100) < 90
             completion(success)
@@ -442,7 +446,8 @@ public class SystemExtensionRecoveryManager {
             // Retry the recovery operation
             logger.info("Retrying recovery operation", context: ["attempt": operation.currentAttempt + 1])
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + config.retryDelay) {
+            Task {
+                try await Task.sleep(nanoseconds: UInt64(config.retryDelay * 1_000_000_000))
                 self.performRecovery(operation: operation)
             }
         } else {
@@ -493,8 +498,8 @@ public class SystemExtensionRecoveryManager {
     private func startHealthChecking() {
         guard config.healthCheckInterval > 0 else { return }
         
-        healthCheckTimer = Timer.scheduledTimer(withTimeInterval: config.healthCheckInterval, repeats: true) { _ in
-            self.performHealthCheck()
+        healthCheckTimer = Timer.scheduledTimer(withTimeInterval: config.healthCheckInterval, repeats: true) { [weak self] _ in
+            self?.performHealthCheck()
         }
     }
     
