@@ -504,8 +504,6 @@ start_vm() {
         "-hda" "$image_file"
         "-m" "$memory"
         "-smp" "$cpu_cores"
-        "-nographic"
-        "-serial" "stdio"
         "-monitor" "unix:$monitor_file,server,nowait"
         "-netdev" "user,id=net0,hostfwd=tcp::2222-:22,hostfwd=tcp::3240-:3240"
         "-device" "e1000,netdev=net0"

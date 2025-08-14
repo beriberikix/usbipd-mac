@@ -13,7 +13,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Configuration
 ALPINE_VERSION="3.19"
-IMAGE_SIZE="512M"
+IMAGE_SIZE="1G"
 VM_NAME="usbip-test"
 IMAGE_DIR="${PROJECT_ROOT}/tmp/qemu-images"
 ISO_DIR="${PROJECT_ROOT}/tmp/qemu-iso"

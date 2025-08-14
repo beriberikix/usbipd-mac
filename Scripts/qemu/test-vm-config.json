@@ -14,12 +14,12 @@
     "development": {
       "description": "Development environment - fast feedback with minimal resources",
       "vm": {
-        "memory": "128M",
-        "cpu_cores": 1,
-        "disk_size": "512M",
+        "memory": "256M",
+        "cpu_cores": 2,
+        "disk_size": "1G",
         "enable_kvm": true,
         "enable_graphics": false,
-        "boot_timeout": 30,
+        "boot_timeout": 60,
         "shutdown_timeout": 10
       },
       "network": {
@@ -48,8 +48,7 @@
       },
       "qemu_args": [
         "-nographic",
-        "-serial", "stdio",
-        "-monitor", "none"
+        "-serial", "stdio"
       ]
     },
     
@@ -97,7 +96,6 @@
       "qemu_args": [
         "-nographic",
         "-serial", "stdio",
-        "-monitor", "none",
         "-no-reboot",
         "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"
       ]
