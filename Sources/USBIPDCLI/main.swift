@@ -126,9 +126,9 @@ func main() {
         deviceDiscovery: deviceDiscovery,
         serverConfig: serverConfig,
         server: server,
-        deviceClaimManager: deviceClaimManager
+        systemExtensionManager: systemExtensionManager
     )
-    logger.debug("Created CommandLineParser with System Extension integration")
+    logger.debug("Created CommandLineParser with System Extension Manager integration")
     
     do {
         logger.debug("Parsing command line arguments")

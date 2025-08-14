@@ -55,15 +55,15 @@ public class CommandLineParser {
     /// Server instance
     private let server: USBIPServer
     
-    /// Device claim manager for System Extension integration
-    private let deviceClaimManager: DeviceClaimManager?
+    /// System Extension manager for device claiming operations
+    private let systemExtensionManager: SystemExtensionManager?
     
     /// Initialize a new command-line parser with dependencies
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, server: USBIPServer, deviceClaimManager: DeviceClaimManager? = nil) {
+    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, server: USBIPServer, systemExtensionManager: SystemExtensionManager? = nil) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
         self.server = server
-        self.deviceClaimManager = deviceClaimManager
+        self.systemExtensionManager = systemExtensionManager
         registerCommands()
     }
     
@@ -74,9 +74,9 @@ public class CommandLineParser {
         let commands: [Command] = [
             HelpCommand(parser: self),
             ListCommand(deviceDiscovery: deviceDiscovery, outputFormatter: outputFormatter),
-            BindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, deviceClaimManager: deviceClaimManager),
-            UnbindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, deviceClaimManager: deviceClaimManager),
-            StatusCommand(deviceClaimManager: deviceClaimManager, outputFormatter: outputFormatter),
+            BindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, systemExtensionManager: systemExtensionManager),
+            UnbindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, systemExtensionManager: systemExtensionManager),
+            StatusCommand(deviceClaimManager: nil, outputFormatter: outputFormatter),
             AttachCommand(),
             DetachCommand(),
             DaemonCommand(server: server, serverConfig: serverConfig)
