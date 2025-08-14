@@ -47,7 +47,7 @@ let package = Package(
             dependencies: []),
         .executableTarget(
             name: "QEMUTestServer",
-            dependencies: ["Common"]),
+            dependencies: ["Common", "USBIPDCore"]),
         .executableTarget(
             name: "SystemExtension",
             dependencies: ["Common", "USBIPDCore"],
@@ -73,5 +73,10 @@ let package = Package(
         .testTarget(
             name: "SystemExtensionTests",
             dependencies: ["SystemExtension", "Common"]),
+        .testTarget(
+            name: "QEMUIntegrationTests",
+            dependencies: ["QEMUTestServer", "USBIPDCore", "Common"],
+            path: "Tests/QEMUIntegrationTests",
+            sources: [".", "../SharedUtilities"]),
     ]
 )

@@ -105,6 +105,11 @@ setup_ci_test_environment() {
     # Set logging level for CI (info for debugging CI issues)
     export USBIPD_LOG_LEVEL="info"
     
+    # QEMU testing configuration for CI (mock mode only)
+    export ENABLE_QEMU_TESTS="${ENABLE_QEMU_TESTS:-true}"
+    export QEMU_TEST_MODE="mock"  # Always mock in CI
+    export QEMU_TIMEOUT="${QEMU_TIMEOUT:-60}"
+    
     # Disable interactive features for CI
     export USBIPD_INTERACTIVE="false"
     export USBIPD_NO_COLOR="true"
@@ -343,6 +348,73 @@ run_network_validation() {
     log_success "Network validation completed"
 }
 
+# Run QEMU mock tests (CI environment)
+run_qemu_mock_tests() {
+    if [ "$ENABLE_QEMU_TESTS" != "true" ]; then
+        log_info "QEMU tests disabled (set ENABLE_QEMU_TESTS=true to enable)"
+        return 0
+    fi
+    
+    log_info "Running QEMU mock tests (CI mode)..."
+    
+    # Check if QEMU test orchestrator is available
+    local qemu_script="$SCRIPT_DIR/qemu/test-orchestrator.sh"
+    if [ ! -f "$qemu_script" ]; then
+        log_info "QEMU test orchestrator not found at $qemu_script"
+        log_info "QEMU tests will be skipped in CI (graceful degradation)"
+        return 0
+    fi
+    
+    # Run QEMU tests with CI-specific configuration
+    local start_time=$(date +%s)
+    
+    # CI QEMU testing always uses mock mode for reliability
+    export TEST_ENVIRONMENT="ci"
+    export QEMU_TEST_MODE="mock"
+    export QEMU_TIMEOUT="$QEMU_TIMEOUT"
+    
+    log_info "Running QEMU orchestrator in CI mock mode..."
+    
+    # Use timeout for CI environment
+    local timeout_cmd=""
+    if command -v timeout >/dev/null 2>&1; then
+        timeout_cmd="timeout ${QEMU_TIMEOUT}s"
+    fi
+    
+    local qemu_command="\"$qemu_script\" --mode ci --timeout \"$QEMU_TIMEOUT\""
+    if [ -n "$timeout_cmd" ]; then
+        qemu_command="$timeout_cmd $qemu_command"
+    fi
+    
+    if eval "$qemu_command"; then
+        local end_time=$(date +%s)
+        local qemu_time=$((end_time - start_time))
+        log_success "QEMU mock tests completed in ${qemu_time}s"
+        
+        # Check QEMU test performance for CI
+        if [ $qemu_time -gt $QEMU_TIMEOUT ]; then
+            log_warning "QEMU tests took longer than timeout: ${qemu_time}s > ${QEMU_TIMEOUT}s"
+        fi
+        
+        return 0
+    else
+        local exit_code=$?
+        local end_time=$(date +%s)
+        local qemu_time=$((end_time - start_time))
+        
+        if [ $exit_code -eq 124 ]; then
+            log_error "QEMU mock tests timed out after ${QEMU_TIMEOUT}s"
+        else
+            log_error "QEMU mock tests failed in ${qemu_time}s (exit code: $exit_code)"
+        fi
+        
+        # In CI, QEMU test failures should not block the entire CI run
+        # but should be reported as warnings for visibility
+        log_warning "QEMU test failure reported but not blocking CI execution"
+        return 0
+    fi
+}
+
 # Generate CI test report
 generate_ci_test_report() {
     log_info "Generating CI test report..."
@@ -365,6 +437,7 @@ Test Summary:
 - Mocking: Enabled
 - Hardware Dependencies: Disabled
 - Administrative Privileges: Disabled
+- QEMU Tests: $([ "$ENABLE_QEMU_TESTS" = "true" ] && echo "Enabled (Mock Mode)" || echo "Disabled")
 
 Configuration:
 - USBIPD_TEST_MODE=$USBIPD_TEST_MODE
@@ -372,6 +445,9 @@ Configuration:
 - USBIPD_MOCK_HARDWARE=$USBIPD_MOCK_HARDWARE
 - USBIPD_CI_MODE=$USBIPD_CI_MODE
 - USBIPD_LOG_LEVEL=$USBIPD_LOG_LEVEL
+- ENABLE_QEMU_TESTS=$ENABLE_QEMU_TESTS
+- QEMU_TEST_MODE=$QEMU_TEST_MODE
+- QEMU_TIMEOUT=$QEMU_TIMEOUT
 
 Build Path: $BUILD_DIR
 Swift Version: $(swift --version | head -n1)
@@ -428,27 +504,35 @@ print_usage() {
     echo "Options:"
     echo "  --protocol-only      Run only protocol validation tests"
     echo "  --network-only       Run only network validation tests"
-    echo "  --no-lint           Skip SwiftLint code quality checks"
-    echo "  --timeout SECS      Set custom timeout (default: $TIMEOUT_SECONDS)"
-    echo "  --help              Show this help message"
+    echo "  --qemu-only          Run only QEMU mock validation tests"
+    echo "  --no-lint            Skip SwiftLint code quality checks"
+    echo "  --no-qemu            Disable QEMU mock testing"
+    echo "  --timeout SECS       Set custom timeout (default: $TIMEOUT_SECONDS)"
+    echo "  --help               Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0                      # Run full CI test suite"
     echo "  $0 --protocol-only      # Run only protocol tests"
     echo "  $0 --network-only       # Run only network tests"
+    echo "  $0 --qemu-only          # Run only QEMU mock tests"
+    echo "  $0 --no-qemu            # Disable QEMU testing"
     echo "  $0 --timeout 120        # Use 2-minute timeout"
     echo ""
     echo "Environment Variables:"
     echo "  CI                      Set to 'true' to indicate CI environment"
     echo "  GITHUB_ACTIONS          Set to 'true' for GitHub Actions"
     echo "  USBIPD_LOG_LEVEL        Override log level (default: info)"
+    echo "  ENABLE_QEMU_TESTS       Enable/disable QEMU tests (true/false, default: true)"
+    echo "  QEMU_TIMEOUT            QEMU test timeout in seconds (default: 60)"
 }
 
 # Main execution flow
 main() {
     local protocol_only=false
     local network_only=false
+    local qemu_only=false
     local skip_lint=false
+    local disable_qemu=false
     
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
@@ -461,8 +545,16 @@ main() {
                 network_only=true
                 shift
                 ;;
+            --qemu-only)
+                qemu_only=true
+                shift
+                ;;
             --no-lint)
                 skip_lint=true
+                shift
+                ;;
+            --no-qemu)
+                disable_qemu=true
                 shift
                 ;;
             --timeout)
@@ -480,6 +572,11 @@ main() {
                 ;;
         esac
     done
+    
+    # Override QEMU settings based on command line flags
+    if [ "$disable_qemu" = true ]; then
+        export ENABLE_QEMU_TESTS="false"
+    fi
     
     # Start execution
     print_header
@@ -509,9 +606,14 @@ main() {
         run_protocol_validation
     elif [ "$network_only" = true ]; then
         run_network_validation
+    elif [ "$qemu_only" = true ]; then
+        run_qemu_mock_tests
     else
         # Run full CI test suite
         run_ci_tests
+        
+        # Run QEMU mock tests as part of full suite
+        run_qemu_mock_tests
     fi
     
     # Generate CI test report

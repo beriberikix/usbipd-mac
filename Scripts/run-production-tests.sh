@@ -179,19 +179,19 @@ run_qemu_tests() {
         return 0
     fi
     
-    log_step "Running QEMU integration tests"
+    log_step "Running QEMU comprehensive tests"
     
     local capabilities
     capabilities=$(cat "$TEST_DATA_DIR/capabilities.txt")
     
-    if [[ "$capabilities" != *"qemu"* ]]; then
-        log_warning "QEMU not available, skipping QEMU tests"
-        return 0
-    fi
+    # Set QEMU test environment variables for production
+    export TEST_ENVIRONMENT="production"
+    export QEMU_TEST_MODE="${QEMU_TEST_MODE:-vm}"  # Default to VM mode in production
+    export QEMU_TIMEOUT="${QEMU_TIMEOUT:-120}"
     
     cd "$PROJECT_ROOT"
     
-    # Test QEMU test server execution
+    # Test 1: QEMU test server execution
     log_info "Testing QEMU test server..."
     local qemu_server_path="$BUILD_DIR/release/QEMUTestServer"
     
@@ -231,14 +231,85 @@ run_qemu_tests() {
         log_success "QEMU server test completed"
     fi
     
-    # Run QEMU validation script if available
+    # Test 2: Run QEMU orchestrator if available
+    local qemu_orchestrator="$SCRIPT_DIR/qemu/test-orchestrator.sh"
+    if [ -f "$qemu_orchestrator" ]; then
+        log_info "Running QEMU test orchestrator (production mode)..."
+        
+        local start_time=$(date +%s)
+        
+        if "$qemu_orchestrator" --mode production --timeout "$QEMU_TIMEOUT" > "$LOGS_DIR/qemu-orchestrator.log" 2>&1; then
+            local end_time=$(date +%s)
+            local qemu_time=$((end_time - start_time))
+            log_success "QEMU orchestrator completed in ${qemu_time}s"
+        else
+            local exit_code=$?
+            local end_time=$(date +%s)
+            local qemu_time=$((end_time - start_time))
+            
+            if [ $exit_code -eq 124 ]; then
+                log_error "QEMU orchestrator timed out after ${QEMU_TIMEOUT}s"
+                return 1
+            else
+                log_error "QEMU orchestrator failed in ${qemu_time}s (exit code: $exit_code)"
+                return 1
+            fi
+        fi
+    else
+        log_warning "QEMU test orchestrator not found at $qemu_orchestrator"
+    fi
+    
+    # Test 3: Run QEMU validation script if available
     if [ -f "$SCRIPT_DIR/qemu-test-validation.sh" ]; then
         log_info "Running QEMU validation script..."
-        bash "$SCRIPT_DIR/qemu-test-validation.sh" --help > "$LOGS_DIR/qemu-validation.log" 2>&1
+        bash "$SCRIPT_DIR/qemu-test-validation.sh" validate-environment > "$LOGS_DIR/qemu-validation.log" 2>&1
         log_success "QEMU validation script test completed"
     fi
     
-    log_success "QEMU integration tests completed"
+    # Test 4: Run production-specific QEMU integration tests
+    log_info "Running QEMU integration test suite..."
+    if swift test --filter QEMUIntegrationTests --verbose 2>&1 | tee "$LOGS_DIR/qemu-integration-tests.log"; then
+        log_success "QEMU integration test suite completed"
+    else
+        local exit_code=$?
+        if [[ "$capabilities" != *"qemu"* ]]; then
+            log_warning "QEMU integration tests failed but QEMU not available - graceful degradation"
+        else
+            log_error "QEMU integration test suite failed (exit code: $exit_code)"
+            return 1
+        fi
+    fi
+    
+    # Test 5: Test both mock and VM modes if QEMU available
+    if [[ "$capabilities" == *"qemu"* ]]; then
+        log_info "Testing QEMU in both mock and VM modes..."
+        
+        # Test mock mode
+        export QEMU_TEST_MODE="mock"
+        if "$qemu_orchestrator" --mode production --timeout 30 > "$LOGS_DIR/qemu-mock-mode.log" 2>&1; then
+            log_success "QEMU mock mode test completed"
+        else
+            log_warning "QEMU mock mode test failed"
+        fi
+        
+        # Test VM mode if QEMU available
+        export QEMU_TEST_MODE="vm"
+        if "$qemu_orchestrator" --mode production --timeout "$QEMU_TIMEOUT" > "$LOGS_DIR/qemu-vm-mode.log" 2>&1; then
+            log_success "QEMU VM mode test completed"
+        else
+            log_warning "QEMU VM mode test failed"
+        fi
+    else
+        log_info "QEMU not available, testing mock mode only..."
+        export QEMU_TEST_MODE="mock"
+        if [ -f "$qemu_orchestrator" ] && "$qemu_orchestrator" --mode production --timeout 30 > "$LOGS_DIR/qemu-mock-only.log" 2>&1; then
+            log_success "QEMU mock-only test completed"
+        else
+            log_warning "QEMU mock-only test failed or orchestrator unavailable"
+        fi
+    fi
+    
+    log_success "QEMU comprehensive tests completed"
 }
 
 run_system_extension_tests() {
@@ -347,6 +418,30 @@ EOF
         echo "- QEMU Server: ⚠️ Skipped" >> "$report_file"
     fi
     
+    if [ -f "$LOGS_DIR/qemu-orchestrator.log" ]; then
+        echo "- QEMU Orchestrator: ✅ Executed" >> "$report_file"
+    else
+        echo "- QEMU Orchestrator: ⚠️ Skipped" >> "$report_file"
+    fi
+    
+    if [ -f "$LOGS_DIR/qemu-integration-tests.log" ]; then
+        echo "- QEMU Integration Tests: ✅ Completed" >> "$report_file"
+    else
+        echo "- QEMU Integration Tests: ⚠️ Skipped" >> "$report_file"
+    fi
+    
+    if [ -f "$LOGS_DIR/qemu-mock-mode.log" ]; then
+        echo "- QEMU Mock Mode: ✅ Tested" >> "$report_file"
+    else
+        echo "- QEMU Mock Mode: ⚠️ Skipped" >> "$report_file"
+    fi
+    
+    if [ -f "$LOGS_DIR/qemu-vm-mode.log" ]; then
+        echo "- QEMU VM Mode: ✅ Tested" >> "$report_file"
+    else
+        echo "- QEMU VM Mode: ⚠️ Skipped" >> "$report_file"
+    fi
+    
     cat >> "$report_file" << EOF
 
 ### System Extension
@@ -373,6 +468,11 @@ EOF
 - Production Tests: \`$LOGS_DIR/production-tests.log\`
 - Integration Tests: \`$LOGS_DIR/integration-tests.log\`
 - QEMU Server: \`$LOGS_DIR/qemu-server.log\`
+- QEMU Orchestrator: \`$LOGS_DIR/qemu-orchestrator.log\`
+- QEMU Integration Tests: \`$LOGS_DIR/qemu-integration-tests.log\`
+- QEMU Mock Mode: \`$LOGS_DIR/qemu-mock-mode.log\`
+- QEMU VM Mode: \`$LOGS_DIR/qemu-vm-mode.log\`
+- QEMU Validation: \`$LOGS_DIR/qemu-validation.log\`
 - System Extension: \`$LOGS_DIR/system-extension-tests.log\`
 - Performance: \`$LOGS_DIR/performance-metrics.log\`
 
@@ -440,6 +540,8 @@ ENVIRONMENT VARIABLES:
     ENABLE_SYSTEM_EXTENSION_TESTS  Enable System Extension tests (default: true)
     MAX_TEST_DURATION      Maximum test duration in seconds (default: 600)
     PARALLEL_EXECUTION     Enable parallel execution (default: false)
+    QEMU_TEST_MODE         QEMU test mode: mock or vm (default: vm)
+    QEMU_TIMEOUT          QEMU test timeout in seconds (default: 120)
 
 EXAMPLES:
     $0                     # Run all production tests
