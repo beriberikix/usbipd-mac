@@ -209,20 +209,30 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     /// This is a temporary bridge until the protocol can be made async
     private func executeAsyncSynchronously<T>(_ operation: @escaping () async throws -> T) throws -> T {
         let semaphore = DispatchSemaphore(value: 0)
-        var result: Result<T, Error>!
-        
-        Task<Void, Never> {
+        var returnedValue: T?
+        var returnedError: Error?
+
+        Task {
             do {
-                let value = try await operation()
-                result = .success(value)
+                returnedValue = try await operation()
             } catch {
-                result = .failure(error)
+                returnedError = error
             }
             semaphore.signal()
         }
-        
+
         semaphore.wait()
-        return try result.get()
+
+        if let error = returnedError {
+            throw error
+        }
+
+        if let value = returnedValue {
+            return value
+        }
+        
+        // This should not happen
+        fatalError("executeAsyncSynchronously returned without a value or an error")
     }
 }
 
