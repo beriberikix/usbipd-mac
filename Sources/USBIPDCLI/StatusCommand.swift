@@ -5,44 +5,6 @@ import Common
 // Logger for command operations
 private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "cli-commands")
 
-// Placeholder struct for USB operation statistics
-private struct PlaceholderUSBOperationStatistics {
-    let activeRequestCount = 0
-    let currentLoadPercentage = 0.0
-    let activeControlRequests = 0
-    let activeBulkRequests = 0
-    let activeInterruptRequests = 0
-    let activeIsochronousRequests = 0
-    let successfulTransfers = 0
-    let failedTransfers = 0
-    let totalTransfers = 0
-    let controlTransferCount = 0
-    let successfulControlTransfers = 0
-    let failedControlTransfers = 0
-    let bulkTransferCount = 0
-    let successfulBulkTransfers = 0
-    let failedBulkTransfers = 0
-    let interruptTransferCount = 0
-    let successfulInterruptTransfers = 0
-    let failedInterruptTransfers = 0
-    let isochronousTransferCount = 0
-    let successfulIsochronousTransfers = 0
-    let failedIsochronousTransfers = 0
-    let averageTransferLatency = 0.0
-    let averageThroughput = 0.0
-    let peakThroughput = 0.0
-    let totalBytesTransferred: UInt64 = 0
-    let timeoutErrors = 0
-    let deviceNotAvailableErrors = 0
-    let invalidParameterErrors = 0
-    let endpointStallErrors = 0
-    let otherErrors = 0
-    let maxConcurrentRequests = 0
-    let transferBufferMemoryUsage: UInt64 = 0
-    let activeURBCount = 0
-    let lastUpdateTime: Date? = nil
-}
-
 public class StatusCommand: Command {
     public let name = "status"
     public let description = "Show System Extension status and device information"
@@ -312,10 +274,8 @@ public class StatusCommand: Command {
     }
     
     private func displayUSBOperationStatus(coordinator: ServerCoordinator, showDetailed: Bool) {
-        // TODO: Implement USB operation statistics method on ServerCoordinator
-        // let usbStats = coordinator.getUSBOperationStatistics()
-        // Placeholder statistics for compilation
-        let usbStats = PlaceholderUSBOperationStatistics()
+        // Get actual USB operation statistics from ServerCoordinator
+        let usbStats = coordinator.getUSBOperationStatistics()
         
         print("")
         print("USB Operations Status")
