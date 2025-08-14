@@ -6,6 +6,19 @@ import IOKit
 import IOKit.usb
 import Common
 
+// IOKit constants manually defined since macros are unavailable
+fileprivate let kIOUSBDeviceUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
+    0x9d, 0xc7, 0xb7, 0x80, 0x9e, 0xc0, 0x11, 0xd4,
+    0xa5, 0x4f, 0x00, 0x0a, 0x27, 0x05, 0x28, 0x61)
+
+fileprivate let kIOCFPlugInInterfaceID = CFUUIDGetConstantUUIDWithBytes(nil,
+    0xc2, 0x44, 0xe8, 0x58, 0x10, 0x9c, 0x11, 0xd4,
+    0x91, 0xd4, 0x00, 0x50, 0xe4, 0xc6, 0x42, 0x6f)
+
+fileprivate let kIOUSBDeviceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
+    0x39, 0x61, 0x04, 0xf7, 0x94, 0x3d, 0x48, 0x93,
+    0x90, 0xf1, 0x69, 0xbd, 0x6c, 0xf5, 0xc2, 0xeb)
+
 /// IOKit wrapper for USB interface communication
 public class IOKitUSBInterface {
     
@@ -15,11 +28,11 @@ public class IOKitUSBInterface {
     private let interfaceNumber: UInt8
     private let logger: Logger
     
-    /// IOKit USB device interface reference
-    private var deviceInterface: IOUSBDeviceInterface300?
+    /// IOKit USB device interface reference  
+    private var deviceInterface: UnsafeMutablePointer<IOUSBDeviceInterface300>?
     
     /// IOKit USB interface references keyed by endpoint
-    private var interfaceRefs: [UInt8: IOUSBInterfaceInterface300] = [:]
+    private var interfaceRefs: [UInt8: UnsafeMutablePointer<IOUSBInterfaceInterface300>] = [:]
     
     /// Track interface open state
     private var isOpen: Bool = false
@@ -72,17 +85,20 @@ public class IOKitUSBInterface {
         }
         
         return try executeIOKitOperation(operation: "open interface") {
-            // Create device plugin interface
+            // Open the device interface
             guard let deviceInterface = self.deviceInterface else {
                 throw USBRequestError.deviceNotAvailable
             }
             
-            // Open the device - placeholder implementation
-            // In a real implementation, we would call the IOKit interface methods
-            let result = kIOReturnSuccess // Placeholder success for compilation
+            // Open the USB device
+            let openResult = deviceInterface.pointee.USBDeviceOpen(deviceInterface)
+            guard openResult == kIOReturnSuccess else {
+                self.logger.error("Failed to open USB device: \(openResult)")
+                throw IOKitError.operationFailed("USBDeviceOpen", openResult)
+            }
             
-            // TODO: Open specific interface - implementation depends on interface discovery
-            // This will be enhanced when we need to handle specific endpoints
+            // Find and open the specific USB interface
+            try self.findAndOpenUSBInterface()
             
             self.isOpen = true
             self.logger.info("Successfully opened USB interface \(self.interfaceNumber)")
@@ -98,19 +114,25 @@ public class IOKitUSBInterface {
         
         return try executeIOKitOperation(operation: "close interface") {
             // Close all interface references
-            for (_, interface) in self.interfaceRefs {
-                let result = kIOReturnSuccess // Placeholder
+            for (endpoint, interface) in self.interfaceRefs {
+                let result = interface.pointee.USBInterfaceClose(interface)
                 if result != kIOReturnSuccess {
-                    self.logger.warning("Failed to close interface endpoint: \(String(describing: result))")
+                    self.logger.warning("Failed to close interface endpoint \(endpoint): \(result)")
                 }
+                // Release the interface
+                _ = interface.pointee.Release(interface)
             }
+            self.interfaceRefs.removeAll()
             
             // Close device interface
             if let deviceInterface = self.deviceInterface {
-                let result = kIOReturnSuccess // Placeholder
+                let result = deviceInterface.pointee.USBDeviceClose(deviceInterface)
                 if result != kIOReturnSuccess {
                     self.logger.warning("Failed to close device interface: \(result)")
                 }
+                // Release the device interface
+                _ = deviceInterface.pointee.Release(deviceInterface)
+                self.deviceInterface = nil
             }
             
             self.isOpen = false
@@ -261,8 +283,8 @@ public class IOKitUSBInterface {
         let vendorIDNumber = NSNumber(value: device.vendorID)
         let productIDNumber = NSNumber(value: device.productID)
         
-        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBVendorID).toOpaque(), Unmanaged.passUnretained(vendorIDNumber).toOpaque())
-        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBProductID).toOpaque(), Unmanaged.passUnretained(productIDNumber).toOpaque())
+        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBVendorID as CFString).toOpaque(), Unmanaged.passUnretained(vendorIDNumber).toOpaque())
+        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBProductID as CFString).toOpaque(), Unmanaged.passUnretained(productIDNumber).toOpaque())
         
         // Get matching services
         var iterator: io_iterator_t = 0
@@ -288,7 +310,7 @@ public class IOKitUSBInterface {
         return serviceRef
     }
     
-    private func createDevicePluginInterface() throws -> IOUSBDeviceInterface300? {
+    private func createDevicePluginInterface() throws -> UnsafeMutablePointer<IOUSBDeviceInterface300>? {
         guard deviceRef != 0 else {
             throw IOKitError.invalidReference("Invalid device reference")
         }
@@ -325,14 +347,29 @@ public class IOKitUSBInterface {
         
         guard queryResult == S_OK, let deviceInterfacePtr = deviceInterface else {
             logger.error("Failed to query device interface: \(String(describing: queryResult))")
-            throw IOKitError.interfaceCreationFailed("QueryInterface for device", IOReturn(queryResult ?? E_FAIL))
+            throw IOKitError.interfaceCreationFailed("QueryInterface for device", IOReturn(queryResult ?? -2147483640))
         }
         
         let usbDeviceInterface = deviceInterfacePtr.assumingMemoryBound(to: IOUSBDeviceInterface300.self)
         logger.debug("Successfully created device plugin interface")
         
-        return usbDeviceInterface.pointee
+        return usbDeviceInterface
     }
+    
+    private func findAndOpenUSBInterface() throws {
+        guard self.deviceInterface != nil else {
+            throw USBRequestError.deviceNotAvailable
+        }
+        
+        // For now, create a simplified interface setup
+        // In a full implementation, we would iterate through actual USB interfaces
+        // This is a placeholder that establishes the interface tracking structure
+        
+        logger.debug("Setting up interface tracking for interface \(interfaceNumber)")
+        // Note: Full interface discovery will be implemented when we add endpoint discovery
+    }
+    
+    // Note: openSpecificInterface method removed - will be implemented in task 4 when we add transfer execution
     
     private func performControlTransfer(
         endpoint: UInt8,
@@ -341,7 +378,7 @@ public class IOKitUSBInterface {
         timeout: UInt32
     ) throws -> USBTransferResult {
         
-        guard let deviceInterface = self.deviceInterface else {
+        guard self.deviceInterface != nil else {
             throw USBRequestError.deviceNotAvailable
         }
         
@@ -362,7 +399,7 @@ public class IOKitUSBInterface {
         
         if let transferBuffer = transferBuffer, !transferBuffer.isEmpty {
             dataBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: transferBuffer.count)
-            transferBuffer.copyBytes(to: UnsafeMutableBufferPointer(start: dataBuffer!, count: transferBuffer.count))
+            _ = transferBuffer.copyBytes(to: UnsafeMutableBufferPointer(start: dataBuffer!, count: transferBuffer.count))
         } else if wLength > 0 {
             dataBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(wLength))
         }
@@ -382,7 +419,7 @@ public class IOKitUSBInterface {
         request.wLenDone = 0
         
         // Execute the control transfer
-        let startTime = Date().timeIntervalSince1970
+        let _ = Date().timeIntervalSince1970  // startTime for potential timing measurements
         // This is a placeholder implementation since IOKit interfaces are complex
         // In a real implementation, we would need to properly initialize IOKit interfaces
         let result = kIOReturnUnsupported
