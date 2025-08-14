@@ -14,7 +14,7 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     private let deviceClaimManager: DeviceClaimManager
     
     /// USB device communicator for executing USB operations (will be injected later)
-    private var deviceCommunicator: USBDeviceCommunicatorProtocol?
+    private var deviceCommunicator: USBDeviceCommunicator?
     
     /// URB tracker for managing concurrent USB requests
     private let urbTracker: URBTracker
@@ -56,7 +56,7 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     }
     
     /// Set the USB device communicator for actual USB operations
-    public func setUSBDeviceCommunicator(_ communicator: USBDeviceCommunicatorProtocol) {
+    public func setUSBDeviceCommunicator(_ communicator: USBDeviceCommunicator) {
         self.deviceCommunicator = communicator
         // Also set the communicator on the submit processor
         self.submitProcessor.setDeviceCommunicator(communicator)
@@ -186,7 +186,7 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     }
     
     /// Validate that USB device communicator is available
-    private func ensureDeviceCommunicator() throws -> USBDeviceCommunicatorProtocol {
+    private func ensureDeviceCommunicator() throws -> USBDeviceCommunicator {
         guard let communicator = deviceCommunicator else {
             log("USB device communicator not available", .error)
             throw USBRequestError.invalidURB("USB device communicator not configured")

@@ -7,7 +7,7 @@ import IOKit.usb
 import Common
 
 /// Protocol defining USB device communication operations
-public protocol USBDeviceCommunicator {
+public protocol USBDeviceCommunicator: AnyObject {
     /// Execute a control transfer on the specified device
     /// - Parameters:
     ///   - device: Target USB device
