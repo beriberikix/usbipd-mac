@@ -3,7 +3,7 @@ import SystemExtensions
 import Common
 
 /// Advanced System Extension installer with comprehensive installation management
-public class SystemExtensionInstaller: NSObject {
+public final class SystemExtensionInstaller: NSObject, @unchecked Sendable {
     
     // MARK: - Properties
     
@@ -120,7 +120,7 @@ public class SystemExtensionInstaller: NSObject {
         
         Task {
             // First uninstall existing extension
-            await uninstallSystemExtension { [weak self] uninstallResult in
+            uninstallSystemExtension { [weak self] uninstallResult in
                 if uninstallResult.success {
                     // Wait a moment for system cleanup
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -265,28 +265,19 @@ public class SystemExtensionInstaller: NSObject {
     }
     
     private func installBundle(_ bundle: SystemExtensionBundle, warnings: inout [String]) async {
-        do {
-            // Create activation request
-            let request = OSSystemExtensionRequest.activationRequest(
-                forExtensionWithIdentifier: bundle.bundleIdentifier,
-                queue: .main
-            )
-            
-            request.delegate = self
-            self.currentRequest = request
-            
-            // Submit the request
-            logger.info("Submitting System Extension activation request")
-            await MainActor.run {
-                OSSystemExtensionManager.shared.submitRequest(request)
-            }
-        } catch {
-            completeInstallation(
-                success: false,
-                bundle: bundle,
-                errors: [.systemExtensionsCtlFailed(-1, error.localizedDescription)],
-                warnings: warnings
-            )
+        // Create activation request
+        let request = OSSystemExtensionRequest.activationRequest(
+            forExtensionWithIdentifier: bundle.bundleIdentifier,
+            queue: .main
+        )
+        
+        request.delegate = self
+        self.currentRequest = request
+        
+        // Submit the request
+        logger.info("Submitting System Extension activation request")
+        await MainActor.run {
+            OSSystemExtensionManager.shared.submitRequest(request)
         }
     }
     

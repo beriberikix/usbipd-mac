@@ -7,28 +7,28 @@ import IOKit.usb
 import Common
 
 // IOKit constants manually defined since macros are unavailable
-fileprivate let kIOUSBDeviceUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
+private let kIOUSBDeviceUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
     0x9d, 0xc7, 0xb7, 0x80, 0x9e, 0xc0, 0x11, 0xd4,
     0xa5, 0x4f, 0x00, 0x0a, 0x27, 0x05, 0x28, 0x61)
 
-fileprivate let kIOCFPlugInInterfaceID = CFUUIDGetConstantUUIDWithBytes(nil,
+private let kIOCFPlugInInterfaceID = CFUUIDGetConstantUUIDWithBytes(nil,
     0xc2, 0x44, 0xe8, 0x58, 0x10, 0x9c, 0x11, 0xd4,
     0x91, 0xd4, 0x00, 0x50, 0xe4, 0xc6, 0x42, 0x6f)
 
-fileprivate let kIOUSBDeviceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
+private let kIOUSBDeviceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
     0x39, 0x61, 0x04, 0xf7, 0x94, 0x3d, 0x48, 0x93,
     0x90, 0xf1, 0x69, 0xbd, 0x6c, 0xf5, 0xc2, 0xeb)
 
-fileprivate let kIOUSBInterfaceUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
+private let kIOUSBInterfaceUserClientTypeID = CFUUIDGetConstantUUIDWithBytes(nil,
     0x2d, 0x97, 0x86, 0xc6, 0x9e, 0xf3, 0x11, 0xd4,
     0xad, 0x51, 0x00, 0x0a, 0x27, 0x05, 0x28, 0x61)
 
-fileprivate let kIOUSBInterfaceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
+private let kIOUSBInterfaceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
     0xbc, 0xea, 0xad, 0xdc, 0x88, 0x4d, 0x4f, 0x27,
     0x83, 0x40, 0x36, 0xd6, 0x9f, 0xab, 0x90, 0xf6)
 
 /// IOKit wrapper for USB interface communication
-public class IOKitUSBInterface {
+public final class IOKitUSBInterface: @unchecked Sendable {
     
     // MARK: - Properties
     
@@ -777,7 +777,7 @@ public class IOKitUSBInterface {
         var transferData: Data?
         var errorCount: UInt32 = 0
         let result: IOReturn
-        var actualStartFrame: UInt64 = UInt64(startFrame)
+        var actualStartFrame = UInt64(startFrame)
         
         // Calculate packet size - distribute buffer evenly across packets
         let packetSize = bufferLength / numberOfPackets
@@ -893,10 +893,8 @@ public class IOKitUSBInterface {
                 if result == kIOReturnSuccess {
                     // Calculate error count from frame results
                     errorCount = 0
-                    for i in 0..<Int(numberOfPackets) {
-                        if frameList[i].frStatus != kIOReturnSuccess {
-                            errorCount += 1
-                        }
+                    for i in 0..<Int(numberOfPackets) where frameList[i].frStatus != kIOReturnSuccess {
+                        errorCount += 1
                     }
                     logger.debug("Isochronous OUT transfer completed: \(actualLength) bytes written, \(errorCount) packet errors")
                 } else {

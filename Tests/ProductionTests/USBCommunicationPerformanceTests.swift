@@ -257,12 +257,14 @@ final class USBCommunicationPerformanceTests: XCTestCase, TestSuite {
         // Record metrics for regression analysis
         performanceMetrics.recordLatencyResults(
             transferType: "control",
-            averageLatency: averageLatency,
-            p95Latency: p95Latency,
-            p99Latency: p99Latency,
-            stdDeviation: stdDeviation,
-            successRate: successRate,
-            iterations: Self.latencyTestIterations
+            metrics: LatencyMetrics(
+                averageLatency: averageLatency,
+                p95Latency: p95Latency,
+                p99Latency: p99Latency,
+                stdDeviation: stdDeviation,
+                successRate: successRate,
+                iterations: Self.latencyTestIterations
+            )
         )
         
         // Compare against baseline if available
@@ -338,12 +340,14 @@ final class USBCommunicationPerformanceTests: XCTestCase, TestSuite {
         
         performanceMetrics.recordLatencyResults(
             transferType: "bulk",
-            averageLatency: averageLatency,
-            p95Latency: p95Latency,
-            p99Latency: calculatePercentile(latencies.sorted(), percentile: 0.99),
-            stdDeviation: calculateStandardDeviation(latencies, mean: averageLatency),
-            successRate: Double(latencies.count) / Double(Self.regressionTestIterations) * 100,
-            iterations: Self.regressionTestIterations
+            metrics: LatencyMetrics(
+                averageLatency: averageLatency,
+                p95Latency: p95Latency,
+                p99Latency: calculatePercentile(latencies.sorted(), percentile: 0.99),
+                stdDeviation: calculateStandardDeviation(latencies, mean: averageLatency),
+                successRate: Double(latencies.count) / Double(Self.regressionTestIterations) * 100,
+                iterations: Self.regressionTestIterations
+            )
         )
     }
     
@@ -971,23 +975,24 @@ class ProductionPerformanceMetrics {
         let timestamp: Date
     }
     
-    func recordLatencyResults(
-        transferType: String,
-        averageLatency: Double,
-        p95Latency: Double,
-        p99Latency: Double,
-        stdDeviation: Double,
-        successRate: Double,
-        iterations: Int
-    ) {
+    struct LatencyMetrics {
+        let averageLatency: Double
+        let p95Latency: Double
+        let p99Latency: Double
+        let stdDeviation: Double
+        let successRate: Double
+        let iterations: Int
+    }
+    
+    func recordLatencyResults(transferType: String, metrics: LatencyMetrics) {
         latencyResults[transferType] = LatencyResult(
             transferType: transferType,
-            averageLatency: averageLatency,
-            p95Latency: p95Latency,
-            p99Latency: p99Latency,
-            stdDeviation: stdDeviation,
-            successRate: successRate,
-            iterations: iterations,
+            averageLatency: metrics.averageLatency,
+            p95Latency: metrics.p95Latency,
+            p99Latency: metrics.p99Latency,
+            stdDeviation: metrics.stdDeviation,
+            successRate: metrics.successRate,
+            iterations: metrics.iterations,
             timestamp: Date()
         )
     }

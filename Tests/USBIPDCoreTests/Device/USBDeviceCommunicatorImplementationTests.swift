@@ -63,10 +63,8 @@ class USBDeviceCommunicatorImplementationTests: XCTestCase, TestSuite {
         // Clean up communicator
         if let communicator = communicator {
             // Close any open interfaces
-            for device in [testDevice!, testDevice2!] {
-                if communicator.isInterfaceOpen(device: device, interfaceNumber: 0) {
-                    try? await communicator.closeUSBInterface(device: device, interfaceNumber: 0)
-                }
+            for device in [testDevice!, testDevice2!] where communicator.isInterfaceOpen(device: device, interfaceNumber: 0) {
+                try? await communicator.closeUSBInterface(device: device, interfaceNumber: 0)
             }
         }
         

@@ -238,30 +238,25 @@ public class SystemExtensionStateManager {
         // For now, we'll implement a basic state verification
         
         DispatchQueue.global(qos: .utility).async {
-            do {
-                let currentState = self.getCurrentState()
-                
-                // Verify System Extension is actually running
-                let isRunning = self.verifySystemExtensionRunning(bundleIdentifier: currentState.bundleIdentifier)
-                
-                if isRunning {
-                    // Update activation status if needed
-                    if currentState.activationStatus != .active {
-                        self.updateActivationState(activationStatus: .active)
-                    }
-                    
-                    self.logger.info("State synchronization successful - System Extension is running")
-                    completionHandler(true, nil)
-                } else {
-                    // System Extension is not running, update state
-                    self.updateActivationState(activationStatus: .inactive)
-                    
-                    self.logger.warning("State synchronization found System Extension not running")
-                    completionHandler(false, nil)
+            let currentState = self.getCurrentState()
+            
+            // Verify System Extension is actually running
+            let isRunning = self.verifySystemExtensionRunning(bundleIdentifier: currentState.bundleIdentifier)
+            
+            if isRunning {
+                // Update activation status if needed
+                if currentState.activationStatus != .active {
+                    self.updateActivationState(activationStatus: .active)
                 }
-            } catch {
-                self.logger.error("State synchronization failed", context: ["error": error.localizedDescription])
-                completionHandler(false, error)
+                
+                self.logger.info("State synchronization successful - System Extension is running")
+                completionHandler(true, nil)
+            } else {
+                // System Extension is not running, update state
+                self.updateActivationState(activationStatus: .inactive)
+                
+                self.logger.warning("State synchronization found System Extension not running")
+                completionHandler(false, nil)
             }
         }
     }

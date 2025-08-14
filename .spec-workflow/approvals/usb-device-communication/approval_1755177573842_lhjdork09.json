@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755177573842_lhjdork09",
+  "title": "Tasks Phase: usb-device-communication - Ready for Review (Revised)",
+  "filePath": ".spec-workflow/specs/usb-device-communication/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-14T13:19:33.842Z",
+  "category": "spec",
+  "categoryName": "usb-device-communication",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Each taks should include an explicit commit message\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Each taks should include an explicit commit message\",\n      \"timestamp\": \"2025-08-14T13:20:22.609Z\",\n      \"id\": \"comment_1755177622609_nk3guyggz\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Each taks should include an explicit commit message\\n\\n\",\n  \"timestamp\": \"2025-08-14T13:20:23.474Z\"\n}",
+  "respondedAt": "2025-08-14T13:20:23.480Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Each taks should include an explicit commit message",
+      "timestamp": "2025-08-14T13:20:22.609Z",
+      "id": "comment_1755177622609_nk3guyggz"
+    }
+  ]
+}

@@ -302,8 +302,8 @@ public class SystemExtensionRecoveryManager {
     
     private func reinstallSystemExtension(completion: @escaping (Bool, Error?) -> Void) {
         let state = stateManager.getCurrentState()
-        guard let bundlePath = state.bundlePath,
-              let bundleIdentifier = state.bundleIdentifier else {
+        guard state.bundlePath != nil,
+              state.bundleIdentifier != nil else {
             completion(false, RecoveryError.bundleInfoNotFound)
             return
         }

@@ -268,7 +268,7 @@ public class USBUnlinkProcessor {
     
     /// Cancel all pending unlink requests (for cleanup)
     public func cancelAllPendingUnlinks() async -> [USBIPUnlinkRequest] {
-        return await unlinkQueue.sync {
+        return unlinkQueue.sync {
             let pending = Array(pendingUnlinks.values)
             pendingUnlinks.removeAll()
             return pending

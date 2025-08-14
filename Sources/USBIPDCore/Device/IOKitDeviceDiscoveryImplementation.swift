@@ -76,7 +76,7 @@ extension IOKitDeviceDiscovery {
             throw handleIOKitError(result, operation: "get matching USB services")
         }
         
-        return try withIOKitObject(iterator) { iterator in
+        return withIOKitObject(iterator) { iterator in
             var devices: [USBDevice] = []
             
             // Iterate through all matching services
