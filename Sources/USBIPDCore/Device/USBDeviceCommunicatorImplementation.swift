@@ -311,6 +311,66 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator {
         
         return interface
     }
+    
+    // MARK: - Transfer Cancellation
+    
+    public func cancelAllTransfers(device: USBDevice, interfaceNumber: UInt8) async throws {
+        let deviceKey = deviceIdentifier(for: device)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                self.interfaceLock.lock()
+                defer { self.interfaceLock.unlock() }
+                
+                do {
+                    guard let deviceInterfaces = self.activeInterfaces[deviceKey],
+                          let interface = deviceInterfaces[interfaceNumber] else {
+                        self.logger.debug("USB interface \\(interfaceNumber) not open for device \\(deviceKey) - no transfers to cancel")
+                        continuation.resume()
+                        return
+                    }
+                    
+                    // Cancel all transfers on the interface
+                    try interface.cancelAllTransfers()
+                    
+                    self.logger.info("Successfully cancelled all transfers on interface \\(interfaceNumber) for device \\(deviceKey)")
+                    continuation.resume()
+                } catch {
+                    self.logger.error("Failed to cancel transfers on interface \\(interfaceNumber) for device \\(deviceKey): \\(error)")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    public func cancelTransfers(device: USBDevice, interfaceNumber: UInt8, endpoint: UInt8) async throws {
+        let deviceKey = deviceIdentifier(for: device)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                self.interfaceLock.lock()
+                defer { self.interfaceLock.unlock() }
+                
+                do {
+                    guard let deviceInterfaces = self.activeInterfaces[deviceKey],
+                          let interface = deviceInterfaces[interfaceNumber] else {
+                        self.logger.debug("USB interface \\(interfaceNumber) not open for device \\(deviceKey) - no transfers to cancel")
+                        continuation.resume()
+                        return
+                    }
+                    
+                    // Cancel transfers on the specific endpoint
+                    try interface.cancelTransfers(endpoint: endpoint)
+                    
+                    self.logger.info("Successfully cancelled transfers on endpoint 0x\\(String(endpoint, radix: 16)) for device \\(deviceKey)")
+                    continuation.resume()
+                } catch {
+                    self.logger.error("Failed to cancel transfers on endpoint 0x\\(String(endpoint, radix: 16)) for device \\(deviceKey): \\(error)")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - IOKit Interface Factory

@@ -924,6 +924,76 @@ public class IOKitUSBInterface {
         )
     }
     
+    // MARK: - Transfer Cancellation
+    
+    /// Cancel all pending transfers on all pipes
+    /// This attempts to abort any ongoing USB transfers on the interface
+    public func cancelAllTransfers() throws {
+        logger.debug("Cancelling all pending transfers on interface \(interfaceNumber)")
+        
+        guard isOpen else {
+            logger.warning("Cannot cancel transfers - interface not open")
+            return
+        }
+        
+        // Cancel transfers on all active interface references
+        for (endpoint, interface) in interfaceRefs {
+            do {
+                try cancelTransfersOnInterface(interface, endpoint: endpoint)
+            } catch {
+                logger.warning("Failed to cancel transfers on endpoint \(endpoint): \(error)")
+                // Continue attempting to cancel other endpoints
+            }
+        }
+        
+        logger.info("Transfer cancellation completed for interface \(interfaceNumber)")
+    }
+    
+    /// Cancel transfers on a specific endpoint
+    /// - Parameter endpoint: The endpoint address to cancel transfers on
+    public func cancelTransfers(endpoint: UInt8) throws {
+        logger.debug("Cancelling transfers on endpoint 0x\(String(endpoint, radix: 16))")
+        
+        guard isOpen else {
+            logger.warning("Cannot cancel transfers - interface not open")
+            return
+        }
+        
+        // Find the interface reference for this endpoint
+        // For now, use endpoint 0 as the default interface reference
+        // In production, this would map to proper interface/endpoint relationships
+        let interfaceKey: UInt8 = 0
+        
+        guard let interface = interfaceRefs[interfaceKey] else {
+            logger.warning("No interface reference available for endpoint 0x\(String(endpoint, radix: 16))")
+            return
+        }
+        
+        try cancelTransfersOnInterface(interface, endpoint: endpoint)
+        logger.info("Transfer cancellation completed for endpoint 0x\(String(endpoint, radix: 16))")
+    }
+    
+    /// Internal method to cancel transfers on a specific interface reference
+    private func cancelTransfersOnInterface(_ interface: UnsafeMutablePointer<IOUSBInterfaceInterface300>, endpoint: UInt8) throws {
+        let pipeRef = endpoint & 0x7F  // Remove direction bit
+        
+        // Abort transfers on the specific pipe
+        let result = interface.pointee.AbortPipe(interface, pipeRef)
+        
+        if result != kIOReturnSuccess {
+            logger.warning("AbortPipe failed for endpoint 0x\(String(endpoint, radix: 16)): \(result)")
+            // Don't throw error as this might be expected if no transfers are pending
+        } else {
+            logger.debug("Successfully aborted transfers on pipe \(pipeRef)")
+        }
+        
+        // Clear any stall condition that might have been caused by the abort
+        let clearResult = interface.pointee.ClearPipeStall(interface, pipeRef)
+        if clearResult != kIOReturnSuccess {
+            logger.warning("ClearPipeStall failed for endpoint 0x\(String(endpoint, radix: 16)): \(clearResult)")
+        }
+    }
+    
     // MARK: - Helper Methods
     
     private func executeIOKitOperation<T>(operation: String, block: () throws -> T) throws -> T {

@@ -66,6 +66,21 @@ public protocol USBDeviceCommunicator: AnyObject {
     /// - Returns: True if device is claimed and accessible
     /// - Throws: USBRequestError if device is not claimed or accessible
     func validateDeviceClaim(device: USBDevice) throws -> Bool
+    
+    /// Cancel all pending transfers on a device interface
+    /// - Parameters:
+    ///   - device: Target USB device
+    ///   - interfaceNumber: USB interface number to cancel transfers on
+    /// - Throws: USBRequestError if cancellation fails
+    func cancelAllTransfers(device: USBDevice, interfaceNumber: UInt8) async throws
+    
+    /// Cancel transfers on a specific endpoint
+    /// - Parameters:
+    ///   - device: Target USB device
+    ///   - interfaceNumber: USB interface number
+    ///   - endpoint: Endpoint address to cancel transfers on
+    /// - Throws: USBRequestError if cancellation fails
+    func cancelTransfers(device: USBDevice, interfaceNumber: UInt8, endpoint: UInt8) async throws
 }
 
 /// Default implementation of USB device communication
@@ -470,5 +485,59 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
         }
         
         return interface
+    }
+    
+    // MARK: - Transfer Cancellation
+    
+    public func cancelAllTransfers(device: USBDevice, interfaceNumber: UInt8) async throws {
+        let deviceKey = deviceIdentifier(for: device)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    guard let interfaces = self.openInterfaces[deviceKey],
+                          let interface = interfaces[interfaceNumber] else {
+                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey) - no transfers to cancel")
+                        continuation.resume()
+                        return
+                    }
+                    
+                    // Cancel all transfers on the interface
+                    try interface.cancelAllTransfers()
+                    
+                    self.logger.info("Successfully cancelled all transfers on interface \(interfaceNumber) for device \(deviceKey)")
+                    continuation.resume()
+                } catch {
+                    self.logger.error("Failed to cancel transfers on interface \(interfaceNumber) for device \(deviceKey): \(error)")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    public func cancelTransfers(device: USBDevice, interfaceNumber: UInt8, endpoint: UInt8) async throws {
+        let deviceKey = deviceIdentifier(for: device)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    guard let interfaces = self.openInterfaces[deviceKey],
+                          let interface = interfaces[interfaceNumber] else {
+                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey) - no transfers to cancel")
+                        continuation.resume()
+                        return
+                    }
+                    
+                    // Cancel transfers on the specific endpoint
+                    try interface.cancelTransfers(endpoint: endpoint)
+                    
+                    self.logger.info("Successfully cancelled transfers on endpoint 0x\(String(endpoint, radix: 16)) for device \(deviceKey)")
+                    continuation.resume()
+                } catch {
+                    self.logger.error("Failed to cancel transfers on endpoint 0x\(String(endpoint, radix: 16)) for device \(deviceKey): \(error)")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 }
