@@ -663,18 +663,82 @@ public class IOKitUSBInterface {
         timeout: UInt32
     ) throws -> USBTransferResult {
         
-        // Interrupt transfers are similar to bulk but with different timing
-        // This is a placeholder implementation
+        // Validate parameters
+        guard timeout > 0 && timeout <= 60000 else {
+            throw USBRequestError.timeoutInvalid(timeout)
+        }
         
-        _ = Date().timeIntervalSince1970
+        guard bufferLength > 0 && bufferLength <= 8192 else {  // Interrupt transfers typically have smaller payloads
+            throw USBRequestError.invalidParameters
+        }
+        
+        // Check if this is an IN or OUT transfer based on endpoint direction
+        let isInTransfer = (endpoint & 0x80) != 0
+        let pipeRef = endpoint & 0x7F  // Remove direction bit to get pipe reference
+        
+        logger.debug("Interrupt transfer: endpoint=0x\(String(endpoint, radix: 16)), direction=\(isInTransfer ? "IN" : "OUT"), bufferLength=\(bufferLength)")
+        
+        // Get interface reference (using endpoint 0 for now, will be enhanced with proper endpoint discovery)
+        guard let interface = interfaceRefs[0] else {
+            logger.error("No interface reference available for interrupt transfer")
+            throw USBRequestError.deviceNotAvailable
+        }
+        
+        let startTime = Date().timeIntervalSince1970
+        var actualLength: UInt32 = 0
+        var transferData: Data?
+        let result: IOReturn
+        
+        if isInTransfer {
+            // IN transfer (device to host) - ReadPipeTO with timeout for interrupt handling
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(bufferLength))
+            defer { buffer.deallocate() }
+            
+            // Use timeout-based read for interrupt transfers to handle periodic polling
+            result = interface.pointee.ReadPipeTO(interface, pipeRef, buffer, &actualLength, timeout, timeout)
+            
+            if result == kIOReturnSuccess && actualLength > 0 {
+                transferData = Data(bytes: buffer, count: Int(actualLength))
+                logger.debug("Interrupt IN transfer completed: \(actualLength) bytes read")
+            } else if result == kIOReturnTimeout {
+                logger.debug("Interrupt IN transfer timed out (normal for polling)")
+            } else {
+                logger.warning("Interrupt IN transfer failed with result: \(result)")
+            }
+        } else {
+            // OUT transfer (host to device) - WritePipeTO with timeout
+            if let data = data {
+                guard data.count <= Int(bufferLength) else {
+                    throw USBRequestError.bufferSizeMismatch(expected: bufferLength, actual: UInt32(data.count))
+                }
+                
+                actualLength = UInt32(data.count)
+                result = data.withUnsafeBytes { bytes in
+                    let buffer = UnsafeMutableRawPointer(mutating: bytes.baseAddress!)
+                    return interface.pointee.WritePipeTO(interface, pipeRef, buffer, actualLength, timeout, timeout)
+                }
+                
+                if result == kIOReturnSuccess {
+                    logger.debug("Interrupt OUT transfer completed: \(actualLength) bytes written")
+                } else {
+                    logger.warning("Interrupt OUT transfer failed with result: \(result)")
+                }
+            } else {
+                logger.error("No data provided for interrupt OUT transfer")
+                result = kIOReturnBadArgument
+            }
+        }
+        
         let completionTime = Date().timeIntervalSince1970
+        logger.debug("Interrupt transfer took \((completionTime - startTime) * 1000)ms")
         
-        // For now, return a placeholder result
-        // Real implementation would use interface methods with interrupt-specific handling
+        // Map result and return
+        let status = USBErrorMapping.mapIOKitError(result)
         
         return USBTransferResult(
-            status: USBStatus.requestFailed,
-            actualLength: 0,
+            status: USBStatus(rawValue: status) ?? .requestFailed,
+            actualLength: actualLength,
+            data: transferData,
             completionTime: completionTime
         )
     }
