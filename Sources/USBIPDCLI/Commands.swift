@@ -398,6 +398,8 @@ public class UnbindCommand: Command {
                             try extensionManager.releaseDevice(device)
                             logger.info("Successfully released device through System Extension", context: ["deviceID": deviceIdentifier])
                             print("✓ Device \(busid) successfully released by System Extension")
+                            print("  Device: \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
+                            print("  Released at: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium))")
                         } else {
                             // Device may have been disconnected - still try to release by identifier
                             logger.warning("Device not found during release, attempting cleanup", context: ["busid": busid])

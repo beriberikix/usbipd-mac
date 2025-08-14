@@ -95,7 +95,7 @@ All tasks follow a git workflow with feature branch development and commit after
   - _Requirements: 4.1, 4.4_
   - _Leverage: Sources/USBIPDCore/Protocol/USBSubmitProcessor.swift, Sources/USBIPDCore/Protocol/USBUnlinkProcessor.swift_
 
-- [ ] 11. Enhance USBSubmitProcessor with real device communication
+- [x] 11. Enhance USBSubmitProcessor with real device communication
   - File: Sources/USBIPDCore/Protocol/USBSubmitProcessor.swift (processSubmitRequest method)
   - Replace placeholder deviceCommunicator usage with USBDeviceCommunicatorImplementation
   - Add actual USB transfer execution and result processing
@@ -104,7 +104,7 @@ All tasks follow a git workflow with feature branch development and commit after
   - _Requirements: 4.1, 4.2_
   - _Leverage: completed USBDeviceCommunicatorImplementation from task 9_
 
-- [ ] 12. Enhance USBUnlinkProcessor with real operation cancellation
+- [x] 12. Enhance USBUnlinkProcessor with real operation cancellation
   - File: Sources/USBIPDCore/Protocol/USBUnlinkProcessor.swift (processUnlinkRequest method)
   - Implement actual USB transfer cancellation through IOKit interface
   - Add URB tracking and cancellation status reporting
@@ -113,7 +113,7 @@ All tasks follow a git workflow with feature branch development and commit after
   - _Requirements: 4.3_
   - _Leverage: URB tracking from USBSubmitProcessor, IOKit cancellation capabilities_
 
-- [ ] 13. Replace bind command placeholder with System Extension integration
+- [x] 13. Replace bind command placeholder with System Extension integration
   - File: Sources/USBIPDCLI/Commands.swift (handleBindCommand method)
   - Remove placeholder logging and implement actual device claiming through SystemExtensionManager
   - Add device validation and binding status reporting
@@ -122,7 +122,7 @@ All tasks follow a git workflow with feature branch development and commit after
   - _Requirements: 5.1, 5.3_
   - _Leverage: Sources/USBIPDCore/Device/DeviceDiscovery.swift, existing SystemExtensionManager_
 
-- [ ] 14. Replace unbind command placeholder with actual device release
+- [x] 14. Replace unbind command placeholder with actual device release
   - File: Sources/USBIPDCLI/Commands.swift (handleUnbindCommand method)
   - Remove placeholder logging and implement actual device release through System Extension
   - Add device validation and unbinding confirmation
@@ -131,7 +131,7 @@ All tasks follow a git workflow with feature branch development and commit after
   - _Requirements: 5.2, 5.3_
   - _Leverage: existing device claim management, SystemExtension integration_
 
-- [ ] 15. Create IOKit error mapping utilities
+- [x] 15. Create IOKit error mapping utilities
   - File: Sources/USBIPDCore/Device/IOKitErrorMapping.swift (new file)
   - Implement comprehensive mapping from IOKit return codes to USBRequestError types
   - Add contextual error information and recovery suggestions
@@ -140,7 +140,7 @@ All tasks follow a git workflow with feature branch development and commit after
   - _Requirements: 6.1, 6.2_
   - _Leverage: Sources/Common/USBErrorHandling.swift, existing error type definitions_
 
-- [ ] 16. Enhance CLI status command with USB operation diagnostics
+- [x] 16. Enhance CLI status command with USB operation diagnostics
   - File: Sources/USBIPDCLI/StatusCommand.swift (getUSBOperationStatistics method)
   - Replace placeholder TODO with actual USB operation statistics collection
   - Add device interface status and recent error reporting
