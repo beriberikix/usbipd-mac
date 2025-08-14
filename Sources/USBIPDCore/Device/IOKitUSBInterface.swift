@@ -27,14 +27,18 @@ public class IOKitUSBInterface {
     /// IOKit device reference for the USB device
     private var deviceRef: io_service_t = 0
     
+    /// IOKit interface wrapper for testing
+    private let ioKit: IOKitInterface
+    
     /// Synchronization queue for IOKit operations
     private let ioQueue: DispatchQueue
     
     // MARK: - Initialization
     
-    public init(device: USBDevice, interfaceNumber: UInt8) throws {
+    public init(device: USBDevice, interfaceNumber: UInt8, ioKit: IOKitInterface = RealIOKitInterface()) throws {
         self.device = device
         self.interfaceNumber = interfaceNumber
+        self.ioKit = ioKit
         self.logger = Logger(subsystem: "com.usbipd.core", category: "IOKitUSBInterface")
         self.ioQueue = DispatchQueue(label: "com.usbipd.iokit-interface", qos: .userInitiated)
         
@@ -238,27 +242,96 @@ public class IOKitUSBInterface {
     
     private func initializeIOKitReferences() throws {
         // Find the IOKit service for this USB device
-        // This is a simplified version - real implementation would need device matching
         deviceRef = try findIOKitServiceForDevice()
         
         // Create device plugin interface
         deviceInterface = try createDevicePluginInterface()
+        
+        logger.info("Successfully initialized IOKit references for device \(device.busID)")
     }
     
     private func findIOKitServiceForDevice() throws -> io_service_t {
-        // Simplified device finding - real implementation would use IOServiceMatching
-        // with vendor ID, product ID, and location ID matching
+        // Create matching dictionary for USB devices
+        guard let matchingDict = ioKit.serviceMatching(kIOUSBDeviceClassName) else {
+            logger.error("Failed to create USB device matching dictionary")
+            throw IOKitError.serviceNotFound("Failed to create matching dictionary")
+        }
         
-        // For now, return invalid reference - this will be enhanced when needed
-        throw USBRequestError.deviceNotAvailable
+        // Add vendor and product ID constraints
+        let vendorIDNumber = NSNumber(value: device.vendorID)
+        let productIDNumber = NSNumber(value: device.productID)
+        
+        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBVendorID).toOpaque(), Unmanaged.passUnretained(vendorIDNumber).toOpaque())
+        CFDictionarySetValue(matchingDict, Unmanaged.passUnretained(kUSBProductID).toOpaque(), Unmanaged.passUnretained(productIDNumber).toOpaque())
+        
+        // Get matching services
+        var iterator: io_iterator_t = 0
+        let result = ioKit.serviceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator)
+        
+        guard result == KERN_SUCCESS else {
+            logger.error("Failed to get matching USB services: \(result)")
+            throw IOKitError.serviceNotFound("IOServiceGetMatchingServices failed with result: \(result)")
+        }
+        
+        defer {
+            _ = ioKit.objectRelease(iterator)
+        }
+        
+        // Find the specific device by bus ID if multiple matches
+        let serviceRef = ioKit.iteratorNext(iterator)
+        guard serviceRef != 0 else {
+            logger.error("No USB device found matching vendor ID \(device.vendorID), product ID \(device.productID)")
+            throw IOKitError.serviceNotFound("No matching USB device found")
+        }
+        
+        logger.debug("Found IOKit service for USB device: \(device.busID)")
+        return serviceRef
     }
     
     private func createDevicePluginInterface() throws -> IOUSBDeviceInterface300? {
-        // Create plugin interface for the device
-        // This requires IOKit plugin creation which is complex
+        guard deviceRef != 0 else {
+            throw IOKitError.invalidReference("Invalid device reference")
+        }
         
-        // For now, return nil - this will be enhanced when needed
-        return nil
+        // Create plugin interface
+        var pluginInterface: UnsafeMutablePointer<UnsafeMutablePointer<IOCFPlugInInterface>?>?
+        var score: Int32 = 0
+        
+        let result = IOCreatePlugInInterfaceForService(
+            deviceRef,
+            kIOUSBDeviceUserClientTypeID,
+            kIOCFPlugInInterfaceID,
+            &pluginInterface,
+            &score
+        )
+        
+        guard result == kIOReturnSuccess, let plugin = pluginInterface else {
+            logger.error("Failed to create plugin interface: \(result)")
+            throw IOKitError.pluginCreationFailed("IOCreatePlugInInterfaceForService", result)
+        }
+        
+        defer {
+            // Release the plugin interface after we're done with it
+            _ = plugin.pointee?.pointee.Release(plugin)
+        }
+        
+        // Query for the device interface
+        var deviceInterface: UnsafeMutableRawPointer?
+        let queryResult = plugin.pointee?.pointee.QueryInterface(
+            plugin,
+            CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID300),
+            &deviceInterface
+        )
+        
+        guard queryResult == S_OK, let deviceInterfacePtr = deviceInterface else {
+            logger.error("Failed to query device interface: \(String(describing: queryResult))")
+            throw IOKitError.interfaceCreationFailed("QueryInterface for device", IOReturn(queryResult ?? E_FAIL))
+        }
+        
+        let usbDeviceInterface = deviceInterfacePtr.assumingMemoryBound(to: IOUSBDeviceInterface300.self)
+        logger.debug("Successfully created device plugin interface")
+        
+        return usbDeviceInterface.pointee
     }
     
     private func performControlTransfer(
