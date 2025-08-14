@@ -382,6 +382,15 @@ public class IOKitUSBInterface {
             throw USBRequestError.deviceNotAvailable
         }
         
+        // Validate transfer parameters
+        guard timeout > 0 && timeout <= 60000 else {
+            throw USBRequestError.timeoutInvalid(timeout)
+        }
+        
+        guard setupPacket.count == 8 else {
+            throw USBRequestError.setupPacketInvalid
+        }
+        
         // Extract setup packet components
         let setupBytes = setupPacket.withUnsafeBytes { bytes in
             bytes.bindMemory(to: UInt8.self)
@@ -392,6 +401,19 @@ public class IOKitUSBInterface {
         let wValue = UInt16(setupBytes[2]) | (UInt16(setupBytes[3]) << 8)
         let wIndex = UInt16(setupBytes[4]) | (UInt16(setupBytes[5]) << 8)
         let wLength = UInt16(setupBytes[6]) | (UInt16(setupBytes[7]) << 8)
+        
+        // Validate buffer size for OUT transfers (host to device)
+        if (bmRequestType & 0x80) == 0 {  // OUT transfer
+            if let transferBuffer = transferBuffer {
+                guard transferBuffer.count == Int(wLength) else {
+                    throw USBRequestError.bufferSizeMismatch(expected: UInt32(wLength), actual: UInt32(transferBuffer.count))
+                }
+            } else if wLength > 0 {
+                throw USBRequestError.setupPacketInvalid
+            }
+        }
+        
+        logger.debug("Control transfer: bmRequestType=0x\(String(bmRequestType, radix: 16)), bRequest=0x\(String(bRequest, radix: 16)), wValue=0x\(String(wValue, radix: 16)), wIndex=0x\(String(wIndex, radix: 16)), wLength=\(wLength)")
         
         // Prepare data buffer
         var dataBuffer: UnsafeMutablePointer<UInt8>? = nil
@@ -419,11 +441,25 @@ public class IOKitUSBInterface {
         request.wLenDone = 0
         
         // Execute the control transfer
-        let _ = Date().timeIntervalSince1970  // startTime for potential timing measurements
-        // This is a placeholder implementation since IOKit interfaces are complex
-        // In a real implementation, we would need to properly initialize IOKit interfaces
-        let result = kIOReturnUnsupported
+        let startTime = Date().timeIntervalSince1970
+        let result: IOReturn
+        
+        if let deviceInterface = self.deviceInterface {
+            // Perform the actual IOKit device request
+            result = deviceInterface.pointee.DeviceRequest(deviceInterface, &request)
+            
+            if result == kIOReturnSuccess {
+                logger.debug("Control transfer completed successfully: \(request.wLenDone) bytes transferred")
+            } else {
+                logger.warning("Control transfer failed with IOKit result: \(result)")
+            }
+        } else {
+            logger.error("Device interface not available for control transfer")
+            result = kIOReturnNoDevice
+        }
+        
         let completionTime = Date().timeIntervalSince1970
+        logger.debug("Control transfer took \((completionTime - startTime) * 1000)ms")
         
         // Process result
         let status = USBErrorMapping.mapIOKitError(result)
