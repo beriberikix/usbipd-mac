@@ -95,8 +95,14 @@ class ReleaseWorkflowTests: XCTestCase, TestSuite {
         XCTAssertTrue(workflow.hasWorkflowDispatch(), "Release workflow should support manual dispatch")
         
         // Validate required jobs
-        let expectedJobs = ["validate-release", "lint-and-build", "test-validation", 
-                           "build-artifacts", "create-release", "post-release"]
+        let expectedJobs = [
+            "validate-release", 
+            "lint-and-build", 
+            "test-validation", 
+            "build-artifacts", 
+            "create-release", 
+            "post-release"
+        ]
         for job in expectedJobs {
             XCTAssertTrue(workflow.hasJob(named: job), "Release workflow should contain \(job) job")
         }
@@ -118,8 +124,12 @@ class ReleaseWorkflowTests: XCTestCase, TestSuite {
         XCTAssertTrue(workflow.hasWorkflowDispatch(), "Pre-release workflow should support manual dispatch")
         
         // Validate validation levels
-        let expectedJobs = ["determine-validation", "quick-validation", 
-                           "comprehensive-validation", "release-candidate-validation"]
+        let expectedJobs = [
+            "determine-validation", 
+            "quick-validation", 
+            "comprehensive-validation", 
+            "release-candidate-validation"
+        ]
         for job in expectedJobs {
             XCTAssertTrue(workflow.hasJob(named: job), "Pre-release workflow should contain \(job) job")
         }
@@ -182,9 +192,13 @@ class ReleaseWorkflowTests: XCTestCase, TestSuite {
         let workflow = try parseWorkflowYAML(content: workflowContent)
         
         // Validate required environment variables
-        let expectedEnvVars = ["GITHUB_TOKEN", "DEVELOPER_ID_CERTIFICATE", 
-                              "DEVELOPER_ID_CERTIFICATE_PASSWORD", "NOTARIZATION_USERNAME", 
-                              "NOTARIZATION_PASSWORD"]
+        let expectedEnvVars = [
+            "GITHUB_TOKEN", 
+            "DEVELOPER_ID_CERTIFICATE", 
+            "DEVELOPER_ID_CERTIFICATE_PASSWORD", 
+            "NOTARIZATION_USERNAME", 
+            "NOTARIZATION_PASSWORD"
+        ]
         
         for envVar in expectedEnvVars {
             XCTAssertTrue(workflow.hasEnvironmentVariable(envVar), 

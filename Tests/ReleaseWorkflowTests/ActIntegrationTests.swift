@@ -648,10 +648,8 @@ class ActIntegrationTests: XCTestCase, TestSuite {
                 // Handle glob patterns
                 let directory = tempWorkingDirectory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
                 if let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) {
-                    for case let fileURL as URL in enumerator {
-                        if fileURL.lastPathComponent.hasPrefix(pattern.replacingOccurrences(of: "*", with: "")) {
-                            try? FileManager.default.removeItem(at: fileURL)
-                        }
+                    for case let fileURL as URL in enumerator where fileURL.lastPathComponent.hasPrefix(pattern.replacingOccurrences(of: "*", with: "")) {
+                        try? FileManager.default.removeItem(at: fileURL)
                     }
                 }
             } else {

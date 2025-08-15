@@ -4,7 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.usb
-import Common
+@preconcurrency import Common
 
 /// Protocol defining USB device communication operations
 public protocol USBDeviceCommunicator: AnyObject {
@@ -84,7 +84,7 @@ public protocol USBDeviceCommunicator: AnyObject {
 }
 
 /// Default implementation of USB device communication
-public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
+public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator, @unchecked Sendable {
     
     // MARK: - Properties
     
@@ -107,7 +107,7 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
     // MARK: - USB Interface Lifecycle
     
     public func openUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
-        try validateDeviceClaim(device: device)
+        _ = try validateDeviceClaim(device: device)
         
         let deviceKey = deviceIdentifier(for: device)
         
@@ -241,7 +241,7 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
         let deviceID = "\(device.busID)-\(device.deviceID)"
         
         // Perform standard device claim validation
-        try validateDeviceClaim(device: device)
+        _ = try validateDeviceClaim(device: device)
         
         // Additional operation-specific validation
         logger.debug("Validating device \(deviceID) for \(operationType) operation")
@@ -249,7 +249,7 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
         // Check if System Extension has reported any errors for this device
         if let systemExtensionAdapter = deviceClaimManager as? SystemExtensionClaimAdapter {
             let status = systemExtensionAdapter.getSystemExtensionStatus()
-            let stats = systemExtensionAdapter.getSystemExtensionStatistics()
+            _ = systemExtensionAdapter.getSystemExtensionStatistics()
             
             // Check if error count is excessive (indicating system instability)
             if status.errorCount > 100 {
@@ -270,7 +270,7 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
     // MARK: - USB Transfer Execution
     
     public func executeControlTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        try validateDeviceForOperation(device: device, operationType: "control transfer")
+        _ = try validateDeviceForOperation(device: device, operationType: "control transfer")
         
         guard request.transferType == .control else {
             throw USBRequestError.transferTypeNotSupported(request.transferType)
@@ -313,7 +313,7 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
     }
     
     public func executeBulkTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        try validateDeviceForOperation(device: device, operationType: "bulk transfer")
+        _ = try validateDeviceForOperation(device: device, operationType: "bulk transfer")
         
         guard request.transferType == .bulk else {
             throw USBRequestError.transferTypeNotSupported(request.transferType)
@@ -364,7 +364,7 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
     }
     
     public func executeInterruptTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        try validateDeviceForOperation(device: device, operationType: "interrupt transfer")
+        _ = try validateDeviceForOperation(device: device, operationType: "interrupt transfer")
         
         guard request.transferType == .interrupt else {
             throw USBRequestError.transferTypeNotSupported(request.transferType)
@@ -415,7 +415,7 @@ public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator {
     }
     
     public func executeIsochronousTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        try validateDeviceForOperation(device: device, operationType: "isochronous transfer")
+        _ = try validateDeviceForOperation(device: device, operationType: "isochronous transfer")
         
         guard request.transferType == .isochronous else {
             throw USBRequestError.transferTypeNotSupported(request.transferType)

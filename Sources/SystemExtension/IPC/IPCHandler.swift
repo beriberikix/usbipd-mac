@@ -131,7 +131,7 @@ public class XPCIPCHandler: NSObject, IPCHandler {
     // MARK: - IPCHandler Protocol Implementation
     
     public func startListener() throws {
-        try queue.sync {
+        queue.sync {
             guard listener == nil else {
                 logger.warning("IPC listener already started")
                 return
@@ -290,8 +290,8 @@ public class XPCIPCHandler: NSObject, IPCHandler {
     }
     
     private func cleanupTimedOutRequests() {
-        let now = Date()
-        let timeout = config.requestTimeout
+        _ = Date()
+        _ = config.requestTimeout
         
         var timedOutRequests: [UUID] = []
         

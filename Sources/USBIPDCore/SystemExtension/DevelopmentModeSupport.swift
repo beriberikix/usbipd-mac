@@ -211,8 +211,6 @@ public class DevelopmentModeSupport {
                 """
             return SystemExtensionInstallationError.unknownError(enhancedMessage)
         }
-        
-        return error
     }
     
     // MARK: - Private Implementation

@@ -198,7 +198,7 @@ final class ReleaseEndToEndTests: XCTestCase, TestSuite {
     
     // MARK: - Phase 1: Source Code Validation
     
-    private func testSourceCodeReadiness() throws {
+    func testSourceCodeReadiness() throws {
         logger.info("Phase 1: Validating source code readiness for release")
         
         // Test 1.1: Verify all required files exist
@@ -265,7 +265,7 @@ final class ReleaseEndToEndTests: XCTestCase, TestSuite {
     
     // MARK: - Phase 2: Build System Validation
     
-    private func testBuildSystemValidation() throws {
+    func testBuildSystemValidation() throws {
         logger.info("Phase 2: Validating build system capabilities")
         
         // Test 2.1: Clean build validation

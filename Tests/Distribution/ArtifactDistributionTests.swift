@@ -167,7 +167,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.info("✅ Artifact download simulation completed successfully")
     }
     
-    private func testDownloadMainExecutable() throws {
+    func testDownloadMainExecutable() throws {
         logger.info("Simulating main executable download")
         
         let sourceExecutable = mockArtifacts.mainExecutable
@@ -198,7 +198,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Main executable download simulation successful")
     }
     
-    private func testDownloadCompressedArchive() throws {
+    func testDownloadCompressedArchive() throws {
         logger.info("Simulating compressed archive download")
         
         let sourceArchive = mockArtifacts.compressedArchive
@@ -217,7 +217,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Compressed archive download simulation successful")
     }
     
-    private func testDownloadChecksumFile() throws {
+    func testDownloadChecksumFile() throws {
         logger.info("Simulating checksum file download")
         
         let sourceChecksum = mockArtifacts.checksumFile
@@ -238,7 +238,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Checksum file download simulation successful")
     }
     
-    private func testDownloadMetadata() throws {
+    func testDownloadMetadata() throws {
         logger.info("Simulating metadata download")
         
         let sourceMetadata = mockArtifacts.metadataFile
@@ -300,7 +300,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Checksum verified for \(artifactName)")
     }
     
-    private func testChecksumMismatchDetection() throws {
+    func testChecksumMismatchDetection() throws {
         logger.info("Testing checksum mismatch detection")
         
         // Create a corrupted file
@@ -345,7 +345,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.info("✅ Installation procedures testing completed successfully")
     }
     
-    private func testStandardInstallation() throws {
+    func testStandardInstallation() throws {
         logger.info("Testing standard installation procedure")
         
         // Create simulated system directories
@@ -368,7 +368,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Standard installation procedure successful")
     }
     
-    private func testInstallationPermissions() throws {
+    func testInstallationPermissions() throws {
         logger.info("Testing installation permissions")
         
         let installedExecutable = testConfig.installationDirectory.appendingPathComponent("usr/local/bin/usbipd")
@@ -387,7 +387,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Installation permissions verification successful")
     }
     
-    private func testInstallationVerification() throws {
+    func testInstallationVerification() throws {
         logger.info("Testing installation verification")
         
         let installedExecutable = testConfig.installationDirectory.appendingPathComponent("usr/local/bin/usbipd")
@@ -408,7 +408,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Installation verification successful")
     }
     
-    private func testInstallationRollback() throws {
+    func testInstallationRollback() throws {
         logger.info("Testing installation rollback simulation")
         
         // Create backup directory
@@ -456,7 +456,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.info("✅ Cross-platform compatibility testing completed successfully")
     }
     
-    private func testArchitectureCompatibility() throws {
+    func testArchitectureCompatibility() throws {
         logger.info("Testing architecture compatibility")
         
         let executablePath = testConfig.downloadDirectory.appendingPathComponent("usbipd-\(testConfig.testArtifactVersion)-macos")
@@ -495,7 +495,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Architecture compatibility verified for \(currentArch)")
     }
     
-    private func testMacOSVersionCompatibility() throws {
+    func testMacOSVersionCompatibility() throws {
         logger.info("Testing macOS version compatibility")
         
         // Get current macOS version
@@ -512,7 +512,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ macOS version compatibility verified (current: \(currentVersionString), minimum: \(minimumVersion))")
     }
     
-    private func testDependencyValidation() throws {
+    func testDependencyValidation() throws {
         logger.info("Testing dependency validation")
         
         // Check for required system frameworks/libraries
@@ -550,7 +550,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.info("✅ User experience validation completed successfully")
     }
     
-    private func testDownloadExperience() throws {
+    func testDownloadExperience() throws {
         logger.info("Simulating download user experience")
         
         // Simulate download progress tracking
@@ -564,7 +564,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Download experience validation successful (size: \(formatBytes(downloadSize)), estimated time: \(String(format: "%.1f", estimatedDownloadTime))s)")
     }
     
-    private func testInstallationExperience() throws {
+    func testInstallationExperience() throws {
         logger.info("Simulating installation user experience")
         
         // Simulate installation steps
@@ -585,7 +585,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Installation experience simulation successful")
     }
     
-    private func testFirstRunExperience() throws {
+    func testFirstRunExperience() throws {
         logger.info("Testing first-run user experience")
         
         guard testConfig.enableInstallationTests else {
@@ -618,7 +618,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ First-run experience validation successful")
     }
     
-    private func testErrorHandlingExperience() throws {
+    func testErrorHandlingExperience() throws {
         logger.info("Testing error handling user experience")
         
         // Test 1: Invalid download URL handling
@@ -633,7 +633,7 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("✅ Error handling experience validation successful")
     }
     
-    private func testInvalidDownloadHandling() throws {
+    func testInvalidDownloadHandling() throws {
         // Simulate handling of invalid download URL
         let invalidURL = "https://invalid.example.com/nonexistent/file"
         
@@ -644,12 +644,12 @@ final class ArtifactDistributionTests: XCTestCase, TestSuite {
         logger.debug("Invalid download URL handling simulated")
     }
     
-    private func testChecksumMismatchHandling() throws {
+    func testChecksumMismatchHandling() throws {
         // This test was already implemented in testChecksumMismatchDetection()
         logger.debug("Checksum mismatch handling already validated")
     }
     
-    private func testInstallationPermissionHandling() throws {
+    func testInstallationPermissionHandling() throws {
         // Simulate permission error during installation
         let restrictedPath = testConfig.installationDirectory.appendingPathComponent("restricted")
         

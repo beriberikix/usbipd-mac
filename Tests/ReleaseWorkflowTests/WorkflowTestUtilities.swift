@@ -311,10 +311,8 @@ struct WorkflowTestUtilities {
                 "xcodebuild"
             ]
             
-            for pattern in timeIntensivePatterns {
-                if line.lowercased().contains(pattern) {
-                    analysis.timeIntensiveOperations += 1
-                }
+            for pattern in timeIntensivePatterns where line.lowercased().contains(pattern) {
+                analysis.timeIntensiveOperations += 1
             }
             
             // Check for optimization opportunities

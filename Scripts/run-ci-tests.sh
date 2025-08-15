@@ -184,7 +184,7 @@ build_ci_project() {
     
     # Build with CI-optimized settings
     swift build --build-tests \
-        --configuration release \
+        --configuration debug \
         --enable-test-discovery \
         --build-path "$BUILD_DIR" \
         -Xswiftc -warnings-as-errors || {

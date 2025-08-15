@@ -4,11 +4,11 @@
 import Foundation
 import IOKit
 import IOKit.usb
-import Common
+@preconcurrency import Common
 
 /// Production implementation of USB device communication using IOKit integration
 /// Replaces placeholder implementations with real USB/IP device sharing capabilities
-public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator {
+public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchecked Sendable {
     
     // MARK: - Properties
     

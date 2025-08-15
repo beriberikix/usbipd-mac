@@ -141,10 +141,8 @@ class WorkflowConfiguration {
         let jobConfig = job(named: jobName)
         let jobNeeds = jobConfig.dependencies()
         
-        for need in needs {
-            if !jobNeeds.contains(need) {
-                return false
-            }
+        for need in needs where !jobNeeds.contains(need) {
+            return false
         }
         return true
     }
@@ -165,16 +163,14 @@ class WorkflowConfiguration {
         let lines = yamlContent.components(separatedBy: .newlines)
         var usages: [SecretUsage] = []
         
-        for (lineNumber, line) in lines.enumerated() {
-            if line.contains("secrets.") {
-                let secretUsage = SecretUsage(
-                    line: lineNumber + 1,
-                    content: line,
-                    isPlaintext: false,
-                    isFromSecretsContext: true
-                )
-                usages.append(secretUsage)
-            }
+        for (lineNumber, line) in lines.enumerated() where line.contains("secrets.") {
+            let secretUsage = SecretUsage(
+                line: lineNumber + 1,
+                content: line,
+                isPlaintext: false,
+                isFromSecretsContext: true
+            )
+            usages.append(secretUsage)
         }
         
         return usages
@@ -214,15 +210,13 @@ class WorkflowConfiguration {
         var steps: [StepConfiguration] = []
         let lines = yamlContent.components(separatedBy: .newlines)
         
-        for (lineNumber, line) in lines.enumerated() {
-            if line.lowercased().contains(text.lowercased()) {
-                let step = StepConfiguration(
-                    lineNumber: lineNumber + 1,
-                    content: line,
-                    yamlContext: yamlContent
-                )
-                steps.append(step)
-            }
+        for (lineNumber, line) in lines.enumerated() where line.lowercased().contains(text.lowercased()) {
+            let step = StepConfiguration(
+                lineNumber: lineNumber + 1,
+                content: line,
+                yamlContext: yamlContent
+            )
+            steps.append(step)
         }
         
         return steps
@@ -344,12 +338,10 @@ class WorkflowConfiguration {
     private static func extractValue(from content: String, key: String) -> String? {
         let lines = content.components(separatedBy: .newlines)
         
-        for line in lines {
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("\(key):") {
-                let parts = line.components(separatedBy: ":")
-                if parts.count >= 2 {
-                    return parts[1].trimmingCharacters(in: .whitespaces)
-                }
+        for line in lines where line.trimmingCharacters(in: .whitespaces).hasPrefix("\(key):") {
+            let parts = line.components(separatedBy: ":")
+            if parts.count >= 2 {
+                return parts[1].trimmingCharacters(in: .whitespaces)
             }
         }
         
