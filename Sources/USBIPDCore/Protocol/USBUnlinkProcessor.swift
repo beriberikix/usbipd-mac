@@ -131,14 +131,14 @@ public class USBUnlinkProcessor {
     
     /// Add unlink request to pending tracking
     private func addPendingUnlinkRequest(_ request: USBIPUnlinkRequest) async {
-        await unlinkQueue.sync {
+        unlinkQueue.sync {
             pendingUnlinks[request.seqnum] = request
         }
     }
     
     /// Remove unlink request from pending tracking
     private func removePendingUnlinkRequest(_ seqnum: UInt32) async {
-        await unlinkQueue.sync {
+        _ = unlinkQueue.sync {
             pendingUnlinks.removeValue(forKey: seqnum)
         }
     }
@@ -258,12 +258,12 @@ public class USBUnlinkProcessor {
     
     /// Get pending unlink count for monitoring
     public func getPendingUnlinkCount() async -> Int {
-        return await unlinkQueue.sync { pendingUnlinks.count }
+        return unlinkQueue.sync { pendingUnlinks.count }
     }
     
     /// Check if a specific unlink request is pending
     public func isUnlinkRequestPending(_ seqnum: UInt32) async -> Bool {
-        return await unlinkQueue.sync { pendingUnlinks[seqnum] != nil }
+        return unlinkQueue.sync { pendingUnlinks[seqnum] != nil }
     }
     
     /// Cancel all pending unlink requests (for cleanup)

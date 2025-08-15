@@ -153,7 +153,7 @@ public class USBSubmitProcessor {
     
     /// Check concurrent request limit
     private func checkConcurrentRequestLimit() async throws {
-        let activeCount = await urbQueue.sync { activeURBs.count }
+        let activeCount = urbQueue.sync { activeURBs.count }
         
         guard activeCount < maxConcurrentRequests else {
             logger.warning("Concurrent request limit reached", context: [
@@ -166,7 +166,7 @@ public class USBSubmitProcessor {
     
     /// Add URB to active tracking
     private func addActiveURB(_ urb: USBRequestBlock) async throws {
-        try await urbQueue.sync {
+        try urbQueue.sync {
             guard activeURBs[urb.seqnum] == nil else {
                 throw USBRequestError.duplicateRequest
             }
@@ -176,14 +176,14 @@ public class USBSubmitProcessor {
     
     /// Remove URB from active tracking
     private func removeActiveURB(_ seqnum: UInt32) async {
-        await urbQueue.sync {
+        _ = urbQueue.sync {
             activeURBs.removeValue(forKey: seqnum)
         }
     }
     
     /// Update URB status
     private func updateURBStatus(_ seqnum: UInt32, status: URBStatus) async {
-        await urbQueue.sync {
+        urbQueue.sync {
             if var entry = activeURBs[seqnum] {
                 entry.status = status
                 activeURBs[seqnum] = entry
@@ -374,12 +374,12 @@ public class USBSubmitProcessor {
     
     /// Get active URB count for monitoring
     public func getActiveURBCount() async -> Int {
-        return await urbQueue.sync { activeURBs.count }
+        return urbQueue.sync { activeURBs.count }
     }
     
     /// Cancel URB by sequence number (for UNLINK support)
     public func cancelURB(_ seqnum: UInt32) async -> Bool {
-        return await urbQueue.sync {
+        return urbQueue.sync {
             guard var entry = activeURBs[seqnum] else {
                 return false
             }

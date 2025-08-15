@@ -209,27 +209,25 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     /// This is a temporary bridge until the protocol can be made async
     private func executeAsyncSynchronously<T>(_ operation: @escaping () async throws -> T) throws -> T {
         let semaphore = DispatchSemaphore(value: 0)
+        let resultQueue = DispatchQueue(label: "com.usbipd.mac.request-result", attributes: .concurrent)
         var result: Result<T, Error>!
-        let lock = NSLock()
         
         Task<Void, Never> {
             do {
                 let value = try await operation()
-                lock.lock()
-                result = .success(value)
-                lock.unlock()
+                resultQueue.async(flags: .barrier) {
+                    result = .success(value)
+                    semaphore.signal()
+                }
             } catch {
-                lock.lock()
-                result = .failure(error)
-                lock.unlock()
+                resultQueue.async(flags: .barrier) {
+                    result = .failure(error)
+                    semaphore.signal()
+                }
             }
-            semaphore.signal()
         }
         
         semaphore.wait()
-        
-        lock.lock()
-        defer { lock.unlock() }
         return try result.get()
     }
 }
