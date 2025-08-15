@@ -543,6 +543,7 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkResponseNegativeStatus() throws {
         let response = USBIPUnlinkResponse(
             seqnum: 123,
+            unlinkSeqnum: 100,
             devid: 456,
             direction: 0,
             ep: 0x02,
@@ -624,6 +625,7 @@ final class USBIPMessagesTests: XCTestCase {
         for statusValue in testValues {
             let response = USBIPUnlinkResponse(
                 seqnum: 789,
+                unlinkSeqnum: 500,
                 devid: 101,
                 direction: 1,
                 ep: 0x81,
