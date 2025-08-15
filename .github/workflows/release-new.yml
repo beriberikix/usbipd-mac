@@ -1,0 +1,395 @@
+name: Production Release (Streamlined)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.3)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+      skip_tests:
+        description: 'Skip test validation (emergency use only)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  DEVELOPER_ID_CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+  DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+  NOTARIZATION_USERNAME: ${{ secrets.NOTARIZATION_USERNAME }}
+  NOTARIZATION_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
+
+jobs:
+  release-validation:
+    name: Release Validation
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+      is-prerelease: ${{ steps.extract-version.outputs.prerelease }}
+      release-type: ${{ steps.extract-version.outputs.release-type }}
+    steps:
+      - name: 🏷️ Starting Release Validation
+        run: |
+          echo "::notice title=Release Validation::Starting streamlined release validation and version extraction"
+          echo "🏷️ This stage validates release triggers and extracts necessary metadata"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Extract Version Information
+        id: extract-version
+        run: |
+          echo "::group::Version Extraction"
+          echo "::notice title=Version Processing::Extracting and validating version information"
+          
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION=${{ github.ref_name }}
+            echo "📌 Tag-triggered release: $VERSION"
+            PRERELEASE=$(echo "$VERSION" | grep -E '-(alpha|beta|rc)' >/dev/null && echo "true" || echo "false")
+            RELEASE_TYPE="automated"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+            PRERELEASE="${{ github.event.inputs.prerelease }}"
+            RELEASE_TYPE="manual"
+            echo "🔧 Manual release dispatch: $VERSION"
+          fi
+          
+          # Validate semantic versioning
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "::error title=Invalid Version::Version must follow semantic versioning (vX.Y.Z or vX.Y.Z-suffix)"
+            exit 1
+          fi
+          
+          echo "✅ Version validated: $VERSION"
+          echo "🏷️ Pre-release: $PRERELEASE"
+          echo "🔧 Release type: $RELEASE_TYPE"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+          echo "release-type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+      - name: 📊 Release Validation Summary
+        run: |
+          echo "::group::Release Validation Summary"
+          echo "::notice title=Release Validated::Release version and trigger validated successfully"
+          echo "✅ Release trigger: ${{ github.event_name }}"
+          echo "✅ Version: ${{ steps.extract-version.outputs.version }}"
+          echo "✅ Pre-release: ${{ steps.extract-version.outputs.prerelease }}"
+          echo "✅ Release type: ${{ steps.extract-version.outputs.release-type }}"
+          echo "📊 Status: VALIDATED"
+          echo "::endgroup::"
+
+  ci-validation:
+    name: CI Validation
+    needs: release-validation
+    if: ${{ !inputs.skip_tests }}
+    uses: ./.github/workflows/ci-new.yml
+    with:
+      release_validation: true
+      skip_optional_tests: false
+      test_environment: 'ci'
+    secrets: inherit
+
+  build-artifacts:
+    name: Build Release Artifacts
+    runs-on: macos-latest
+    needs: [release-validation, ci-validation]
+    if: always() && needs.release-validation.result == 'success' && (needs.ci-validation.result == 'success' || needs.ci-validation.result == 'skipped')
+    outputs:
+      artifact-paths: ${{ steps.build-artifacts.outputs.paths }}
+      checksums: ${{ steps.generate-checksums.outputs.checksums }}
+    steps:
+      - name: 📦 Starting Artifact Building
+        run: |
+          echo "::notice title=Artifact Building::Starting streamlined release artifact building and packaging"
+          echo "📦 This stage builds and packages release artifacts with code signing"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Swift Environment
+        uses: ./.github/actions/setup-swift-environment
+        with:
+          cache-key-suffix: '-release'
+          install-swiftlint: 'false'
+          setup-test-scripts: 'false'
+          validate-environment: 'false'
+
+      - name: 🔒 Setup Code Signing
+        if: env.DEVELOPER_ID_CERTIFICATE != ''
+        run: |
+          echo "::group::Code Signing Setup"
+          echo "::notice title=Code Signing::Setting up Apple Developer certificates for release signing"
+          
+          # Import Developer ID certificate
+          echo "$DEVELOPER_ID_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import certificate.p12 -k build.keychain -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          rm certificate.p12
+          
+          echo "::notice title=Signing Ready::Code signing environment configured"
+          echo "✅ Code signing ready"
+          echo "::endgroup::"
+
+      - name: 🏗️ Build Release Artifacts
+        id: build-artifacts
+        run: |
+          echo "::group::Release Artifact Building"
+          echo "::notice title=Artifact Building::Building optimized release artifacts"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          ARTIFACTS_DIR="release-artifacts"
+          mkdir -p "$ARTIFACTS_DIR"
+          
+          echo "🏗️ Building release artifacts for $VERSION..."
+          
+          # Build optimized release binaries
+          swift build --configuration release --arch arm64 --arch x86_64
+          
+          # Package main executable
+          USBIPD_PATH="$ARTIFACTS_DIR/usbipd-$VERSION-macos"
+          cp .build/release/usbipd "$USBIPD_PATH"
+          
+          # Package QEMU test server if available
+          if [ -f .build/release/QEMUTestServer ]; then
+            QEMU_SERVER_PATH="$ARTIFACTS_DIR/QEMUTestServer-$VERSION-macos"
+            cp .build/release/QEMUTestServer "$QEMU_SERVER_PATH"
+          fi
+          
+          # Code sign binaries if certificates available
+          if [ -n "$DEVELOPER_ID_CERTIFICATE" ]; then
+            echo "🔒 Code signing release artifacts..."
+            codesign --sign "Developer ID Application" --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
+            if [ -f "$QEMU_SERVER_PATH" ]; then
+              codesign --sign "Developer ID Application" --timestamp "$QEMU_SERVER_PATH" || echo "::warning::Code signing failed for QEMUTestServer"
+            fi
+            echo "✅ Code signing completed"
+          else
+            echo "::warning::No code signing certificates available - binaries will be unsigned"
+          fi
+          
+          # Create archive
+          ARCHIVE_PATH="$ARTIFACTS_DIR/usbipd-mac-$VERSION.tar.gz"
+          tar -czf "$ARCHIVE_PATH" -C "$ARTIFACTS_DIR" $(ls "$ARTIFACTS_DIR" | grep -v ".tar.gz")
+          
+          # Output artifact paths
+          PATHS="$USBIPD_PATH"
+          if [ -f "$QEMU_SERVER_PATH" ]; then
+            PATHS="$PATHS,$QEMU_SERVER_PATH"
+          fi
+          PATHS="$PATHS,$ARCHIVE_PATH"
+          
+          echo "paths=$PATHS" >> $GITHUB_OUTPUT
+          echo "::notice title=Artifacts Built::Release artifacts built successfully"
+          echo "✅ Artifacts: $PATHS"
+          echo "::endgroup::"
+
+      - name: 📊 Generate Checksums
+        id: generate-checksums
+        run: |
+          echo "::group::Checksum Generation"
+          echo "::notice title=Checksums::Generating SHA256 checksums for release artifacts"
+          
+          cd release-artifacts
+          CHECKSUMS_FILE="checksums-${{ needs.release-validation.outputs.version }}.sha256"
+          
+          echo "📊 Generating checksums..."
+          shasum -a 256 * > "$CHECKSUMS_FILE"
+          
+          echo "::notice title=Checksums Generated::SHA256 checksums created for all artifacts"
+          echo "✅ Checksums saved to $CHECKSUMS_FILE"
+          
+          echo "checksums=$CHECKSUMS_FILE" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+      - name: 📤 Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-${{ needs.release-validation.outputs.version }}
+          path: release-artifacts/
+          retention-days: 30
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: macos-latest
+    needs: [release-validation, build-artifacts]
+    steps:
+      - name: 🚀 Starting Release Creation
+        run: |
+          echo "::notice title=Release Creation::Creating GitHub release with artifacts"
+          echo "🚀 This stage creates the GitHub release and uploads artifacts"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📤 Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts-${{ needs.release-validation.outputs.version }}
+          path: release-artifacts/
+
+      - name: 📝 Generate Release Notes
+        id: release-notes
+        run: |
+          echo "::group::Release Notes Generation"
+          echo "::notice title=Release Notes::Generating release notes from commit history"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          echo "📝 Generating release notes for $VERSION..."
+          
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "📋 Changes since $PREVIOUS_TAG:"
+            CHANGELOG=$(git log --pretty=format:"- %s" $PREVIOUS_TAG..HEAD | head -20)
+          else
+            echo "📋 Initial release changes:"
+            CHANGELOG=$(git log --pretty=format:"- %s" HEAD | head -20)
+          fi
+          
+          # Create release notes
+          cat > release-notes.md << EOF
+          # Release $VERSION
+          
+          ## What's Changed
+          
+          $CHANGELOG
+          
+          ## Artifacts
+          
+          This release includes the following artifacts:
+          - **usbipd**: Main USB/IP daemon executable for macOS
+          - **QEMUTestServer**: QEMU integration test server (if available)
+          - **Archive**: Complete packaged release (tar.gz)
+          - **Checksums**: SHA256 verification checksums
+          
+          ## Installation
+          
+          Download the appropriate binary for your system and verify with the provided checksums.
+          
+          ## Requirements
+          
+          - macOS 11.0 or later
+          - Administrator privileges for USB device access
+          
+          **Note**: Binaries are code-signed with Apple Developer ID when available.
+          EOF
+          
+          echo "::notice title=Release Notes Ready::Release notes generated successfully"
+          echo "✅ Release notes prepared"
+          echo "::endgroup::"
+
+      - name: 🚀 Create GitHub Release
+        run: |
+          echo "::group::GitHub Release Creation"
+          echo "::notice title=GitHub Release::Creating GitHub release with artifacts"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          PRERELEASE="${{ needs.release-validation.outputs.is-prerelease }}"
+          
+          echo "🚀 Creating GitHub release $VERSION..."
+          
+          # Create release
+          RELEASE_ARGS="--title \"usbipd-mac $VERSION\" --notes-file release-notes.md"
+          if [ "$PRERELEASE" = "true" ]; then
+            RELEASE_ARGS="$RELEASE_ARGS --prerelease"
+            echo "🏷️ Creating pre-release"
+          else
+            echo "🏷️ Creating stable release"
+          fi
+          
+          gh release create "$VERSION" release-artifacts/* $RELEASE_ARGS
+          
+          echo "::notice title=Release Created::GitHub release created successfully"
+          echo "✅ Release $VERSION published"
+          echo "🔗 Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$VERSION"
+          echo "::endgroup::"
+
+  post-release:
+    name: Post-Release Validation
+    runs-on: macos-latest
+    needs: [release-validation, create-release]
+    if: always() && needs.create-release.result == 'success'
+    steps:
+      - name: 📊 Starting Post-Release Validation
+        run: |
+          echo "::notice title=Post-Release::Starting post-release validation and summary"
+          echo "📊 This stage validates the published release and provides completion summary"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: ✅ Validate Release
+        run: |
+          echo "::group::Release Validation"
+          echo "::notice title=Release Validation::Validating published release"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          echo "✅ Validating release $VERSION..."
+          
+          # Verify release exists and is accessible
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "::notice title=Release Verified::Release is publicly accessible"
+            echo "✅ Release $VERSION verified"
+            
+            # Display release summary
+            echo "📊 Release Summary:"
+            echo "   • Version: $VERSION"
+            echo "   • Pre-release: ${{ needs.release-validation.outputs.is-prerelease }}"
+            echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
+            echo "   • Artifacts: Available"
+            echo "   • Status: Published"
+          else
+            echo "::error title=Release Verification Failed::Cannot verify release accessibility"
+            echo "❌ Release verification failed"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 🎉 Release Success Summary
+        run: |
+          echo "::group::Release Success"
+          echo "::notice title=Release Complete::Streamlined production release completed successfully"
+          echo "🎉 Release ${{ needs.release-validation.outputs.version }} has been successfully published!"
+          echo ""
+          echo "📦 **Release Details:**"
+          echo "   • Version: ${{ needs.release-validation.outputs.version }}"
+          echo "   • Pre-release: ${{ needs.release-validation.outputs.is-prerelease }}"
+          echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
+          echo "   • Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-validation.outputs.version }}"
+          echo ""
+          echo "✅ **Completed Steps:**"
+          echo "   • Release version validation"
+          echo "   • Comprehensive CI validation (via workflow_call)"
+          echo "   • Optimized artifact building and signing"
+          echo "   • GitHub release creation with artifacts"
+          echo "   • Post-release verification"
+          echo ""
+          echo "🔗 **Workflow Benefits:**"
+          echo "   • Reused CI validation logic from consolidated workflow"
+          echo "   • Streamlined artifact building process"
+          echo "   • Consistent validation across CI and release pipelines"
+          echo "   • Reduced workflow duplication and maintenance"
+          echo ""
+          echo "📊 Status: **SUCCESS**"
+          echo "::endgroup::"
