@@ -9,6 +9,9 @@ public class USBUnlinkProcessor {
     /// Reference to submit processor for URB cancellation
     private weak var submitProcessor: USBSubmitProcessor?
     
+    /// Device communicator for IOKit-level transfer cancellation
+    private weak var deviceCommunicator: USBDeviceCommunicator?
+    
     /// Pending unlink requests tracking
     private var pendingUnlinks: [UInt32: USBIPUnlinkRequest] = [:]
     private let unlinkQueue = DispatchQueue(label: "com.usbipd.mac.unlink", attributes: .concurrent)
@@ -24,6 +27,13 @@ public class USBUnlinkProcessor {
     /// Set the submit processor for URB cancellation
     public func setSubmitProcessor(_ processor: USBSubmitProcessor) {
         self.submitProcessor = processor
+        logger.info("USBUnlinkProcessor configured with submit processor for real URB cancellation")
+    }
+    
+    /// Set the device communicator for IOKit-level transfer cancellation
+    public func setDeviceCommunicator(_ communicator: USBDeviceCommunicator) {
+        self.deviceCommunicator = communicator
+        logger.info("USBUnlinkProcessor configured with device communicator for IOKit cancellation")
     }
     
     /// Process a USB UNLINK request and return response data
@@ -121,19 +131,19 @@ public class USBUnlinkProcessor {
     
     /// Add unlink request to pending tracking
     private func addPendingUnlinkRequest(_ request: USBIPUnlinkRequest) async {
-        await unlinkQueue.sync {
+        unlinkQueue.sync {
             pendingUnlinks[request.seqnum] = request
         }
     }
     
     /// Remove unlink request from pending tracking
     private func removePendingUnlinkRequest(_ seqnum: UInt32) async {
-        await unlinkQueue.sync {
+        _ = unlinkQueue.sync {
             pendingUnlinks.removeValue(forKey: seqnum)
         }
     }
     
-    /// Perform URB cancellation
+    /// Perform URB cancellation using both URB tracking and IOKit-level cancellation
     private func performURBCancellation(_ request: USBIPUnlinkRequest) async -> (success: Bool, reason: String?) {
         guard let processor = submitProcessor else {
             logger.warning("Submit processor not available for URB cancellation")
@@ -147,11 +157,49 @@ public class USBUnlinkProcessor {
             "activeURBCount": String(activeCount)
         ])
         
-        // Attempt to cancel the URB
-        let success = await processor.cancelURB(request.unlinkSeqnum)
+        // Attempt to cancel the URB at the protocol level first
+        let urbCancelSuccess = await processor.cancelURB(request.unlinkSeqnum)
         
-        if success {
-            logger.debug("URB cancellation successful", context: [
+        // If we have a device communicator, also attempt IOKit-level cancellation
+        var ioKitCancelSuccess = false
+        if let communicator = deviceCommunicator {
+            do {
+                // Create device from request info for cancellation
+                let device = createUSBDeviceFromRequest(request)
+                
+                // Determine interface number (defaulting to 0, would be improved with proper tracking)
+                let interfaceNumber: UInt8 = 0
+                
+                // Cancel transfers on the specific endpoint
+                try await communicator.cancelTransfers(
+                    device: device,
+                    interfaceNumber: interfaceNumber,
+                    endpoint: UInt8(request.ep & 0xFF)
+                )
+                
+                ioKitCancelSuccess = true
+                logger.debug("IOKit-level transfer cancellation successful", context: [
+                    "unlinkSeqnum": String(request.unlinkSeqnum),
+                    "endpoint": String(format: "0x%02x", request.ep)
+                ])
+            } catch {
+                logger.warning("IOKit-level transfer cancellation failed", context: [
+                    "unlinkSeqnum": String(request.unlinkSeqnum),
+                    "error": error.localizedDescription
+                ])
+            }
+        }
+        
+        // Consider cancellation successful if either method succeeded
+        let overallSuccess = urbCancelSuccess || ioKitCancelSuccess
+        
+        if overallSuccess {
+            let methods = [
+                urbCancelSuccess ? "URB tracking" : nil,
+                ioKitCancelSuccess ? "IOKit cancellation" : nil
+            ].compactMap { $0 }.joined(separator: ", ")
+            
+            logger.debug("URB cancellation successful via: \(methods)", context: [
                 "unlinkSeqnum": String(request.unlinkSeqnum)
             ])
             return (success: true, reason: nil)
@@ -210,17 +258,17 @@ public class USBUnlinkProcessor {
     
     /// Get pending unlink count for monitoring
     public func getPendingUnlinkCount() async -> Int {
-        return await unlinkQueue.sync { pendingUnlinks.count }
+        return unlinkQueue.sync { pendingUnlinks.count }
     }
     
     /// Check if a specific unlink request is pending
     public func isUnlinkRequestPending(_ seqnum: UInt32) async -> Bool {
-        return await unlinkQueue.sync { pendingUnlinks[seqnum] != nil }
+        return unlinkQueue.sync { pendingUnlinks[seqnum] != nil }
     }
     
     /// Cancel all pending unlink requests (for cleanup)
     public func cancelAllPendingUnlinks() async -> [USBIPUnlinkRequest] {
-        return await unlinkQueue.sync {
+        return unlinkQueue.sync {
             let pending = Array(pendingUnlinks.values)
             pendingUnlinks.removeAll()
             return pending
@@ -250,7 +298,32 @@ public class USBUnlinkProcessor {
         
         return UnlinkProcessorStatistics(
             pendingUnlinkRequests: pendingCount,
-            hasSubmitProcessor: submitProcessor != nil
+            hasSubmitProcessor: submitProcessor != nil,
+            hasDeviceCommunicator: deviceCommunicator != nil
+        )
+    }
+    
+    /// Create a USBDevice object from USB/IP UNLINK request information
+    /// This mirrors the approach in USBSubmitProcessor for consistency
+    private func createUSBDeviceFromRequest(_ request: USBIPUnlinkRequest) -> USBDevice {
+        // Convert devid to bus and device components
+        // USB/IP devid is typically encoded as (busnum << 16) | devnum
+        let busID = String((request.devid >> 16) & 0xFF)
+        let deviceID = String(request.devid & 0xFFFF)
+        
+        // Create device with available information for cancellation operations
+        return USBDevice(
+            busID: busID,
+            deviceID: deviceID,
+            vendorID: 0x0000,  // Not needed for cancellation operations
+            productID: 0x0000, // Not needed for cancellation operations
+            deviceClass: 0x00, // Not needed for cancellation operations
+            deviceSubClass: 0x00, // Not needed for cancellation operations
+            deviceProtocol: 0x00, // Not needed for cancellation operations
+            speed: .unknown,   // Not needed for cancellation operations
+            manufacturerString: "Unknown", // Not needed for cancellation operations
+            productString: "Unknown",       // Not needed for cancellation operations
+            serialNumberString: nil // Not needed for cancellation operations
         )
     }
 }
@@ -263,9 +336,13 @@ public struct UnlinkProcessorStatistics {
     /// Whether submit processor is available for cancellation
     public let hasSubmitProcessor: Bool
     
-    public init(pendingUnlinkRequests: Int, hasSubmitProcessor: Bool) {
+    /// Whether device communicator is available for IOKit-level cancellation
+    public let hasDeviceCommunicator: Bool
+    
+    public init(pendingUnlinkRequests: Int, hasSubmitProcessor: Bool, hasDeviceCommunicator: Bool = false) {
         self.pendingUnlinkRequests = pendingUnlinkRequests
         self.hasSubmitProcessor = hasSubmitProcessor
+        self.hasDeviceCommunicator = hasDeviceCommunicator
     }
 }
 

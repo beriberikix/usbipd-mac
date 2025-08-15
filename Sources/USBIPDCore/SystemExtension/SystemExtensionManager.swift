@@ -169,7 +169,7 @@ public class SystemExtensionManager {
     /// Stop the System Extension manager
     /// - Throws: SystemExtensionError if shutdown fails
     public func stop() throws {
-        try queue.sync {
+        queue.sync {
             guard state == .running else {
                 logger.warning("Attempted to stop manager that is not running", context: [
                     "currentState": state.description

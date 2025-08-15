@@ -164,12 +164,12 @@ public class BindCommand: Command {
     
     private let deviceDiscovery: DeviceDiscovery
     private let serverConfig: ServerConfig
-    private let deviceClaimManager: DeviceClaimManager?
+    private let systemExtensionManager: SystemExtensionManager?
     
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, deviceClaimManager: DeviceClaimManager? = nil) {
+    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, systemExtensionManager: SystemExtensionManager? = nil) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
-        self.deviceClaimManager = deviceClaimManager
+        self.systemExtensionManager = systemExtensionManager
     }
     
     public func execute(with arguments: [String]) throws {
@@ -227,11 +227,11 @@ public class BindCommand: Command {
             
             // Step 1: Validate System Extension is available and ready
             print("Checking System Extension status...")
-            if let claimManager = deviceClaimManager {
-                logger.debug("System Extension available for device claiming")
+            if let extensionManager = systemExtensionManager {
+                logger.debug("System Extension Manager available for device claiming")
                 
                 // Check if device is already claimed
-                if claimManager.isDeviceClaimed(deviceID: deviceIdentifier) {
+                if extensionManager.isDeviceClaimed(deviceID: deviceIdentifier) {
                     logger.info("Device already claimed by System Extension", context: ["deviceID": deviceIdentifier])
                     print("Device \(busid) is already claimed by System Extension")
                     
@@ -248,15 +248,16 @@ public class BindCommand: Command {
                 logger.debug("Attempting device claim", context: ["deviceID": deviceIdentifier])
                 
                 do {
-                    let claimSuccess = try claimManager.claimDevice(device)
+                    let claimedDevice = try extensionManager.claimDevice(device)
                     
-                    if claimSuccess {
-                        logger.info("Successfully claimed device through System Extension", context: ["deviceID": deviceIdentifier])
-                        print("✓ Device \(busid) successfully claimed by System Extension")
-                    } else {
-                        logger.error("System Extension failed to claim device", context: ["deviceID": deviceIdentifier])
-                        throw CommandHandlerError.deviceBindingFailed("System Extension failed to claim device \(busid)")
-                    }
+                    logger.info("Successfully claimed device through System Extension", context: [
+                        "deviceID": claimedDevice.deviceID,
+                        "claimMethod": claimedDevice.claimMethod.rawValue,
+                        "claimTime": claimedDevice.claimTime.timeIntervalSince1970
+                    ])
+                    print("✓ Device \(busid) successfully claimed by System Extension")
+                    print("  Claim method: \(claimedDevice.claimMethod.rawValue)")
+                    print("  Claimed at: \(DateFormatter.localizedString(from: claimedDevice.claimTime, dateStyle: .medium, timeStyle: .medium))")
                 } catch {
                     logger.error("System Extension device claiming failed", context: [
                         "deviceID": deviceIdentifier,
@@ -268,8 +269,8 @@ public class BindCommand: Command {
                     throw CommandHandlerError.deviceBindingFailed(errorMsg)
                 }
             } else {
-                logger.warning("System Extension not available, using configuration-only binding")
-                print("⚠ System Extension not available - device will be bound in configuration only")
+                logger.warning("System Extension Manager not available, using configuration-only binding")
+                print("⚠ System Extension Manager not available - device will be bound in configuration only")
                 print("Note: Device claiming through System Extension is not active")
             }
             
@@ -285,10 +286,10 @@ public class BindCommand: Command {
             print("✓ Device \(busid) added to server configuration")
             print("Successfully bound device \(busid): \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
             
-            if deviceClaimManager != nil {
+            if systemExtensionManager != nil {
                 print("Device is now ready for USB/IP sharing with exclusive System Extension control")
             } else {
-                print("Device is configured for USB/IP sharing (System Extension claiming not available)")
+                print("Device is configured for USB/IP sharing (System Extension Manager not available)")
             }
         } catch let deviceError as DeviceDiscoveryError {
             logger.error("Device discovery error during bind", context: ["error": deviceError.localizedDescription])
@@ -331,12 +332,12 @@ public class UnbindCommand: Command {
     
     private let deviceDiscovery: DeviceDiscovery
     private let serverConfig: ServerConfig
-    private let deviceClaimManager: DeviceClaimManager?
+    private let systemExtensionManager: SystemExtensionManager?
     
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, deviceClaimManager: DeviceClaimManager? = nil) {
+    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, systemExtensionManager: SystemExtensionManager? = nil) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
-        self.deviceClaimManager = deviceClaimManager
+        self.systemExtensionManager = systemExtensionManager
     }
     
     public func execute(with arguments: [String]) throws {
@@ -381,11 +382,11 @@ public class UnbindCommand: Command {
             logger.debug("Device binding status in config", context: ["busid": busid, "wasBound": wasBound])
             
             // Step 2: Attempt to release device through System Extension if available
-            if let claimManager = deviceClaimManager {
-                logger.debug("System Extension available for device release")
+            if let extensionManager = systemExtensionManager {
+                logger.debug("System Extension Manager available for device release")
                 
                 let deviceIdentifier = busid
-                let isDeviceClaimed = claimManager.isDeviceClaimed(deviceID: deviceIdentifier)
+                let isDeviceClaimed = extensionManager.isDeviceClaimed(deviceID: deviceIdentifier)
                 
                 if isDeviceClaimed {
                     print("Releasing device through System Extension...")
@@ -394,9 +395,11 @@ public class UnbindCommand: Command {
                     do {
                         // Try to get the device info for release
                         if let device = try deviceDiscovery.getDevice(busID: busPart, deviceID: devicePart) {
-                            try claimManager.releaseDevice(device)
+                            try extensionManager.releaseDevice(device)
                             logger.info("Successfully released device through System Extension", context: ["deviceID": deviceIdentifier])
                             print("✓ Device \(busid) successfully released by System Extension")
+                            print("  Device: \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
+                            print("  Released at: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium))")
                         } else {
                             // Device may have been disconnected - still try to release by identifier
                             logger.warning("Device not found during release, attempting cleanup", context: ["busid": busid])
@@ -417,7 +420,7 @@ public class UnbindCommand: Command {
                                 productString: nil,
                                 serialNumberString: nil
                             )
-                            try claimManager.releaseDevice(cleanupDevice)
+                            try extensionManager.releaseDevice(cleanupDevice)
                             logger.info("Successfully cleaned up disconnected device claim", context: ["deviceID": deviceIdentifier])
                             print("✓ Cleaned up System Extension claim for disconnected device \(busid)")
                         }
@@ -438,8 +441,8 @@ public class UnbindCommand: Command {
                     logger.info("Device was not bound or claimed", context: ["busid": busid])
                 }
             } else if wasBound {
-                logger.warning("System Extension not available for device release")
-                print("⚠ System Extension not available - releasing from configuration only")
+                logger.warning("System Extension Manager not available for device release")
+                print("⚠ System Extension Manager not available - releasing from configuration only")
                 print("Note: Device claiming through System Extension is not active")
             }
             
@@ -454,13 +457,13 @@ public class UnbindCommand: Command {
                 logger.info("Successfully unbound device from configuration", context: ["busid": busid])
                 print("✓ Device \(busid) removed from server configuration")
                 
-                if deviceClaimManager != nil {
+                if systemExtensionManager != nil {
                     print("Device \(busid) successfully unbound and released from System Extension control")
                 } else {
                     print("Device \(busid) successfully unbound from USB/IP sharing")
                 }
             } else {
-                if wasBound || deviceClaimManager?.isDeviceClaimed(deviceID: busid) == true {
+                if wasBound || systemExtensionManager?.isDeviceClaimed(deviceID: busid) == true {
                     logger.info("Device was claimed but not in config, still attempted release", context: ["busid": busid])
                     print("✓ Device \(busid) System Extension claim released (was not bound in configuration)")
                 } else {

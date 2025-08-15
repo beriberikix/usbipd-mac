@@ -3,7 +3,7 @@ import SystemExtensions
 import Common
 
 /// Advanced System Extension installer with comprehensive installation management
-public class SystemExtensionInstaller: NSObject {
+public final class SystemExtensionInstaller: NSObject, @unchecked Sendable {
     
     // MARK: - Properties
     
@@ -120,10 +120,11 @@ public class SystemExtensionInstaller: NSObject {
         
         Task {
             // First uninstall existing extension
-            await uninstallSystemExtension { [weak self] uninstallResult in
+            uninstallSystemExtension { [weak self] uninstallResult in
                 if uninstallResult.success {
                     // Wait a moment for system cleanup
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    Task { @MainActor [weak self] in
+                        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                         self?.installSystemExtension(
                             bundleIdentifier: bundleIdentifier,
                             executablePath: executablePath,
@@ -265,28 +266,19 @@ public class SystemExtensionInstaller: NSObject {
     }
     
     private func installBundle(_ bundle: SystemExtensionBundle, warnings: inout [String]) async {
-        do {
-            // Create activation request
-            let request = OSSystemExtensionRequest.activationRequest(
-                forExtensionWithIdentifier: bundle.bundleIdentifier,
-                queue: .main
-            )
-            
-            request.delegate = self
-            self.currentRequest = request
-            
-            // Submit the request
-            logger.info("Submitting System Extension activation request")
-            await MainActor.run {
-                OSSystemExtensionManager.shared.submitRequest(request)
-            }
-        } catch {
-            completeInstallation(
-                success: false,
-                bundle: bundle,
-                errors: [.systemExtensionsCtlFailed(-1, error.localizedDescription)],
-                warnings: warnings
-            )
+        // Create activation request
+        let request = OSSystemExtensionRequest.activationRequest(
+            forExtensionWithIdentifier: bundle.bundleIdentifier,
+            queue: .main
+        )
+        
+        request.delegate = self
+        self.currentRequest = request
+        
+        // Submit the request
+        logger.info("Submitting System Extension activation request")
+        await MainActor.run {
+            OSSystemExtensionManager.shared.submitRequest(request)
         }
     }
     
@@ -475,7 +467,8 @@ public class SystemExtensionInstaller: NSObject {
                     "maxRetries": maxRetries
                 ])
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) {
+                Task { @MainActor [weak self] in
+                    try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
                     self?.performRetryInstallation(
                         bundleIdentifier: bundleIdentifier,
                         executablePath: executablePath,

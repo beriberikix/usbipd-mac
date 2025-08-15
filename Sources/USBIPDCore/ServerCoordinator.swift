@@ -51,6 +51,97 @@ private class ActiveRequestTracker {
     }
 }
 
+/// Statistics tracker for USB operations and server performance
+private class USBOperationStatsTracker {
+    private var stats = USBOperationStatistics()
+    private let queue = DispatchQueue(label: "com.usbipd.usb-stats", attributes: .concurrent)
+    private let startTime = Date()
+    
+    /// Get current statistics snapshot
+    func getStatistics() -> USBOperationStatistics {
+        return queue.sync {
+            return USBOperationStatistics(
+                activeRequestCount: stats.activeRequestCount,
+                currentLoadPercentage: stats.currentLoadPercentage,
+                activeControlRequests: stats.activeControlRequests,
+                activeBulkRequests: stats.activeBulkRequests,
+                activeInterruptRequests: stats.activeInterruptRequests,
+                activeIsochronousRequests: stats.activeIsochronousRequests,
+                successfulTransfers: stats.successfulTransfers,
+                failedTransfers: stats.failedTransfers,
+                totalTransfers: stats.totalTransfers,
+                controlTransferCount: stats.controlTransferCount,
+                successfulControlTransfers: stats.successfulControlTransfers,
+                failedControlTransfers: stats.failedControlTransfers,
+                bulkTransferCount: stats.bulkTransferCount,
+                successfulBulkTransfers: stats.successfulBulkTransfers,
+                failedBulkTransfers: stats.failedBulkTransfers,
+                interruptTransferCount: stats.interruptTransferCount,
+                successfulInterruptTransfers: stats.successfulInterruptTransfers,
+                failedInterruptTransfers: stats.failedInterruptTransfers,
+                isochronousTransferCount: stats.isochronousTransferCount,
+                successfulIsochronousTransfers: stats.successfulIsochronousTransfers,
+                failedIsochronousTransfers: stats.failedIsochronousTransfers,
+                averageTransferLatency: stats.averageTransferLatency,
+                averageThroughput: stats.averageThroughput,
+                peakThroughput: stats.peakThroughput,
+                totalBytesTransferred: stats.totalBytesTransferred,
+                timeoutErrors: stats.timeoutErrors,
+                deviceNotAvailableErrors: stats.deviceNotAvailableErrors,
+                invalidParameterErrors: stats.invalidParameterErrors,
+                endpointStallErrors: stats.endpointStallErrors,
+                otherErrors: stats.otherErrors,
+                maxConcurrentRequests: stats.maxConcurrentRequests,
+                transferBufferMemoryUsage: stats.transferBufferMemoryUsage,
+                activeURBCount: stats.activeURBCount,
+                lastUpdateTime: Date()
+            )
+        }
+    }
+    
+    /// Update active request count and load percentage
+    func updateActiveRequests(_ count: Int, maxConcurrent: Int) {
+        queue.async(flags: .barrier) {
+            self.stats = USBOperationStatistics(
+                activeRequestCount: count,
+                currentLoadPercentage: maxConcurrent > 0 ? (Double(count) / Double(maxConcurrent)) * 100.0 : 0.0,
+                activeControlRequests: self.stats.activeControlRequests,
+                activeBulkRequests: self.stats.activeBulkRequests,
+                activeInterruptRequests: self.stats.activeInterruptRequests,
+                activeIsochronousRequests: self.stats.activeIsochronousRequests,
+                successfulTransfers: self.stats.successfulTransfers,
+                failedTransfers: self.stats.failedTransfers,
+                totalTransfers: self.stats.totalTransfers,
+                controlTransferCount: self.stats.controlTransferCount,
+                successfulControlTransfers: self.stats.successfulControlTransfers,
+                failedControlTransfers: self.stats.failedControlTransfers,
+                bulkTransferCount: self.stats.bulkTransferCount,
+                successfulBulkTransfers: self.stats.successfulBulkTransfers,
+                failedBulkTransfers: self.stats.failedBulkTransfers,
+                interruptTransferCount: self.stats.interruptTransferCount,
+                successfulInterruptTransfers: self.stats.successfulInterruptTransfers,
+                failedInterruptTransfers: self.stats.failedInterruptTransfers,
+                isochronousTransferCount: self.stats.isochronousTransferCount,
+                successfulIsochronousTransfers: self.stats.successfulIsochronousTransfers,
+                failedIsochronousTransfers: self.stats.failedIsochronousTransfers,
+                averageTransferLatency: self.stats.averageTransferLatency,
+                averageThroughput: self.stats.averageThroughput,
+                peakThroughput: self.stats.peakThroughput,
+                totalBytesTransferred: self.stats.totalBytesTransferred,
+                timeoutErrors: self.stats.timeoutErrors,
+                deviceNotAvailableErrors: self.stats.deviceNotAvailableErrors,
+                invalidParameterErrors: self.stats.invalidParameterErrors,
+                endpointStallErrors: self.stats.endpointStallErrors,
+                otherErrors: self.stats.otherErrors,
+                maxConcurrentRequests: max(self.stats.maxConcurrentRequests, maxConcurrent),
+                transferBufferMemoryUsage: self.stats.transferBufferMemoryUsage,
+                activeURBCount: self.stats.activeURBCount,
+                lastUpdateTime: Date()
+            )
+        }
+    }
+}
+
 /// Extension for DateFormatter to provide consistent log formatting
 extension DateFormatter {
     static let logFormatter: DateFormatter = {
@@ -70,6 +161,116 @@ public struct SystemExtensionLifecycleStatus {
         self.enabled = enabled
         self.state = state
         self.health = health
+    }
+}
+
+/// USB operation statistics for monitoring transfer performance
+public struct USBOperationStatistics {
+    public let activeRequestCount: Int
+    public let currentLoadPercentage: Double
+    public let activeControlRequests: Int
+    public let activeBulkRequests: Int
+    public let activeInterruptRequests: Int
+    public let activeIsochronousRequests: Int
+    public let successfulTransfers: Int
+    public let failedTransfers: Int
+    public let totalTransfers: Int
+    public let controlTransferCount: Int
+    public let successfulControlTransfers: Int
+    public let failedControlTransfers: Int
+    public let bulkTransferCount: Int
+    public let successfulBulkTransfers: Int
+    public let failedBulkTransfers: Int
+    public let interruptTransferCount: Int
+    public let successfulInterruptTransfers: Int
+    public let failedInterruptTransfers: Int
+    public let isochronousTransferCount: Int
+    public let successfulIsochronousTransfers: Int
+    public let failedIsochronousTransfers: Int
+    public let averageTransferLatency: Double
+    public let averageThroughput: Double
+    public let peakThroughput: Double
+    public let totalBytesTransferred: UInt64
+    public let timeoutErrors: Int
+    public let deviceNotAvailableErrors: Int
+    public let invalidParameterErrors: Int
+    public let endpointStallErrors: Int
+    public let otherErrors: Int
+    public let maxConcurrentRequests: Int
+    public let transferBufferMemoryUsage: UInt64
+    public let activeURBCount: Int
+    public let lastUpdateTime: Date?
+    
+    public init(
+        activeRequestCount: Int = 0,
+        currentLoadPercentage: Double = 0.0,
+        activeControlRequests: Int = 0,
+        activeBulkRequests: Int = 0,
+        activeInterruptRequests: Int = 0,
+        activeIsochronousRequests: Int = 0,
+        successfulTransfers: Int = 0,
+        failedTransfers: Int = 0,
+        totalTransfers: Int = 0,
+        controlTransferCount: Int = 0,
+        successfulControlTransfers: Int = 0,
+        failedControlTransfers: Int = 0,
+        bulkTransferCount: Int = 0,
+        successfulBulkTransfers: Int = 0,
+        failedBulkTransfers: Int = 0,
+        interruptTransferCount: Int = 0,
+        successfulInterruptTransfers: Int = 0,
+        failedInterruptTransfers: Int = 0,
+        isochronousTransferCount: Int = 0,
+        successfulIsochronousTransfers: Int = 0,
+        failedIsochronousTransfers: Int = 0,
+        averageTransferLatency: Double = 0.0,
+        averageThroughput: Double = 0.0,
+        peakThroughput: Double = 0.0,
+        totalBytesTransferred: UInt64 = 0,
+        timeoutErrors: Int = 0,
+        deviceNotAvailableErrors: Int = 0,
+        invalidParameterErrors: Int = 0,
+        endpointStallErrors: Int = 0,
+        otherErrors: Int = 0,
+        maxConcurrentRequests: Int = 0,
+        transferBufferMemoryUsage: UInt64 = 0,
+        activeURBCount: Int = 0,
+        lastUpdateTime: Date? = nil
+    ) {
+        self.activeRequestCount = activeRequestCount
+        self.currentLoadPercentage = currentLoadPercentage
+        self.activeControlRequests = activeControlRequests
+        self.activeBulkRequests = activeBulkRequests
+        self.activeInterruptRequests = activeInterruptRequests
+        self.activeIsochronousRequests = activeIsochronousRequests
+        self.successfulTransfers = successfulTransfers
+        self.failedTransfers = failedTransfers
+        self.totalTransfers = totalTransfers
+        self.controlTransferCount = controlTransferCount
+        self.successfulControlTransfers = successfulControlTransfers
+        self.failedControlTransfers = failedControlTransfers
+        self.bulkTransferCount = bulkTransferCount
+        self.successfulBulkTransfers = successfulBulkTransfers
+        self.failedBulkTransfers = failedBulkTransfers
+        self.interruptTransferCount = interruptTransferCount
+        self.successfulInterruptTransfers = successfulInterruptTransfers
+        self.failedInterruptTransfers = failedInterruptTransfers
+        self.isochronousTransferCount = isochronousTransferCount
+        self.successfulIsochronousTransfers = successfulIsochronousTransfers
+        self.failedIsochronousTransfers = failedIsochronousTransfers
+        self.averageTransferLatency = averageTransferLatency
+        self.averageThroughput = averageThroughput
+        self.peakThroughput = peakThroughput
+        self.totalBytesTransferred = totalBytesTransferred
+        self.timeoutErrors = timeoutErrors
+        self.deviceNotAvailableErrors = deviceNotAvailableErrors
+        self.invalidParameterErrors = invalidParameterErrors
+        self.endpointStallErrors = endpointStallErrors
+        self.otherErrors = otherErrors
+        self.maxConcurrentRequests = maxConcurrentRequests
+        self.transferBufferMemoryUsage = transferBufferMemoryUsage
+        self.activeURBCount = activeURBCount
+        self.lastUpdateTime = lastUpdateTime
     }
 }
 
@@ -101,6 +302,9 @@ public class ServerCoordinator: USBIPServer {
     
     /// Active request tracking for concurrent processing
     private let activeRequests = ActiveRequestTracker()
+    
+    /// USB operation statistics tracker
+    private let usbStatsTracker = USBOperationStatsTracker()
     
     /// Maximum concurrent requests per client connection
     private let maxConcurrentRequestsPerClient: Int
@@ -579,6 +783,15 @@ public class ServerCoordinator: USBIPServer {
         let healthDescription = "healthy: \(healthStatus.isHealthy), failures: \(healthStatus.consecutiveFailures), uptime: \(Int(healthStatus.uptime))s"
         
         return SystemExtensionLifecycleStatus(enabled: true, state: stateDescription, health: healthDescription)
+    }
+    
+    /// Get USB operation statistics for monitoring and diagnostics
+    public func getUSBOperationStatistics() -> USBOperationStatistics {
+        // Update active request count before returning statistics
+        let currentActiveRequests = activeRequests.totalActiveRequests
+        usbStatsTracker.updateActiveRequests(currentActiveRequests, maxConcurrent: maxConcurrentRequestsPerClient)
+        
+        return usbStatsTracker.getStatistics()
     }
 }
 

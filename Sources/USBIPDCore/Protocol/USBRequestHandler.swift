@@ -14,10 +14,16 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     private let deviceClaimManager: DeviceClaimManager
     
     /// USB device communicator for executing USB operations (will be injected later)
-    private var deviceCommunicator: USBDeviceCommunicatorProtocol?
+    private var deviceCommunicator: USBDeviceCommunicator?
     
     /// URB tracker for managing concurrent USB requests
     private let urbTracker: URBTracker
+    
+    /// USB Submit Processor for handling SUBMIT requests
+    private let submitProcessor: USBSubmitProcessor
+    
+    /// USB Unlink Processor for handling UNLINK requests  
+    private let unlinkProcessor: USBUnlinkProcessor
     
     /// Logger for diagnostic information
     private let logger: ((String, LogLevel) -> Void)?
@@ -40,22 +46,27 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         self.deviceClaimManager = deviceClaimManager
         self.urbTracker = URBTracker()
         self.logger = logger
+        
+        // Initialize processors
+        self.submitProcessor = USBSubmitProcessor()
+        self.unlinkProcessor = USBUnlinkProcessor()
+        
+        // Link processors together for URB cancellation
+        self.unlinkProcessor.setSubmitProcessor(self.submitProcessor)
     }
     
     /// Set the USB device communicator for actual USB operations
-    public func setUSBDeviceCommunicator(_ communicator: USBDeviceCommunicatorProtocol) {
+    public func setUSBDeviceCommunicator(_ communicator: USBDeviceCommunicator) {
         self.deviceCommunicator = communicator
+        // Also set the communicator on the submit processor
+        self.submitProcessor.setDeviceCommunicator(communicator)
     }
     
     // MARK: - USBRequestHandlerProtocol Implementation
     
     /// Handle a USB SUBMIT request and return response data
     public func handleSubmitRequest(_ data: Data) throws -> Data {
-        log("Processing USB SUBMIT request", .debug)
-        
-        // For now, return a placeholder response since message types aren't implemented yet
-        // This will be updated in task 2.3 when USBSubmitProcessor is created
-        log("USB SUBMIT request handler not yet fully implemented", .warning)
+        log("Processing USB SUBMIT request with USBSubmitProcessor", .debug)
         
         // Validate minimum data length for USB/IP header
         guard data.count >= 8 else {
@@ -70,24 +81,19 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
             throw USBIPProtocolError.invalidMessageFormat
         }
         
-        log("USB SUBMIT request validated but processing deferred to USBSubmitProcessor", .info)
+        // Use Task to handle async processor call synchronously for now
+        // In a real implementation, the protocol should be async
+        let result = try executeAsyncSynchronously {
+            try await self.submitProcessor.processSubmitRequest(data)
+        }
         
-        // Create a placeholder error response for now
-        let errorResponse = USBIPHeader(
-            command: .submitReply,
-            status: 1 // Error status
-        )
-        
-        return try errorResponse.encode()
+        log("USB SUBMIT request processed successfully", .info)
+        return result
     }
     
     /// Handle a USB UNLINK request and return response data
     public func handleUnlinkRequest(_ data: Data) throws -> Data {
-        log("Processing USB UNLINK request", .debug)
-        
-        // For now, return a placeholder response since message types aren't implemented yet
-        // This will be updated in task 2.4 when USBUnlinkProcessor is created
-        log("USB UNLINK request handler not yet fully implemented", .warning)
+        log("Processing USB UNLINK request with USBUnlinkProcessor", .debug)
         
         // Validate minimum data length for USB/IP header
         guard data.count >= 8 else {
@@ -102,15 +108,14 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
             throw USBIPProtocolError.invalidMessageFormat
         }
         
-        log("USB UNLINK request validated but processing deferred to USBUnlinkProcessor", .info)
+        // Use Task to handle async processor call synchronously for now
+        // In a real implementation, the protocol should be async
+        let result = try executeAsyncSynchronously {
+            try await self.unlinkProcessor.processUnlinkRequest(data)
+        }
         
-        // Create a placeholder error response for now
-        let errorResponse = USBIPHeader(
-            command: .unlinkReply,
-            status: 1 // Error status
-        )
-        
-        return try errorResponse.encode()
+        log("USB UNLINK request processed successfully", .info)
+        return result
     }
     
     /// Validate that a device is accessible for USB operations
@@ -181,7 +186,7 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     }
     
     /// Validate that USB device communicator is available
-    private func ensureDeviceCommunicator() throws -> USBDeviceCommunicatorProtocol {
+    private func ensureDeviceCommunicator() throws -> USBDeviceCommunicator {
         guard let communicator = deviceCommunicator else {
             log("USB device communicator not available", .error)
             throw USBRequestError.invalidURB("USB device communicator not configured")
@@ -198,6 +203,32 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
             let contextString = context.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
             logger?("Context: \(contextString)", level)
         }
+    }
+    
+    /// Execute an async throwing task synchronously
+    /// This is a temporary bridge until the protocol can be made async
+    private func executeAsyncSynchronously<T>(_ operation: @escaping () async throws -> T) throws -> T {
+        let semaphore = DispatchSemaphore(value: 0)
+        let resultQueue = DispatchQueue(label: "com.usbipd.mac.request-result", attributes: .concurrent)
+        var result: Result<T, Error>!
+        
+        Task<Void, Never> {
+            do {
+                let value = try await operation()
+                resultQueue.async(flags: .barrier) {
+                    result = .success(value)
+                    semaphore.signal()
+                }
+            } catch {
+                resultQueue.async(flags: .barrier) {
+                    result = .failure(error)
+                    semaphore.signal()
+                }
+            }
+        }
+        
+        semaphore.wait()
+        return try result.get()
     }
 }
 

@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755176994746_5v8t6mc94",
+  "title": "Tasks Phase: usb-device-communication - Ready for Review",
+  "filePath": ".spec-workflow/specs/usb-device-communication/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-14T13:09:54.746Z",
+  "category": "spec",
+  "categoryName": "usb-device-communication",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow a git workflow. Each task should have an explicit git commit with a helpful message. First task should be to create a feature branch and submit the spec files. Last task should be to create a PR and verify CI passes without issues and fixes any issues.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow a git workflow. Each task should have an explicit git commit with a helpful message. First task should be to create a feature branch and submit the spec files. Last task should be to create a PR and verify CI passes without issues and fixes any issues.\",\n      \"timestamp\": \"2025-08-14T13:17:39.627Z\",\n      \"id\": \"comment_1755177459627_p8obbcjfn\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow a git workflow. Each task should have an explicit git commit with a helpful message. First task should be to create a feature branch and submit the spec files. Last task should be to create a PR and verify CI passes without issues and fixes any issues.\\n\\n\",\n  \"timestamp\": \"2025-08-14T13:18:01.143Z\"\n}",
+  "respondedAt": "2025-08-14T13:18:01.152Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow a git workflow. Each task should have an explicit git commit with a helpful message. First task should be to create a feature branch and submit the spec files. Last task should be to create a PR and verify CI passes without issues and fixes any issues.",
+      "timestamp": "2025-08-14T13:17:39.627Z",
+      "id": "comment_1755177459627_p8obbcjfn"
+    }
+  ]
+}
