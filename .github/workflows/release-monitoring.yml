@@ -1,0 +1,633 @@
+name: Release Workflow Monitoring
+
+on:
+  workflow_run:
+    workflows:
+      - "Production Release"
+      - "Pre-Release Validation"
+    types:
+      - completed
+      - requested
+  workflow_dispatch:
+    inputs:
+      monitoring_mode:
+        description: 'Monitoring mode'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - 'status'
+          - 'metrics'
+          - 'health-check'
+          - 'failure-analysis'
+      workflow_name:
+        description: 'Target workflow for monitoring'
+        required: false
+        type: string
+      time_window:
+        description: 'Time window for metrics (hours)'
+        required: false
+        default: '24'
+        type: string
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  monitor-workflow-status:
+    name: Monitor Workflow Status
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_run'
+    outputs:
+      workflow-name: ${{ steps.extract-info.outputs.workflow-name }}
+      workflow-status: ${{ steps.extract-info.outputs.workflow-status }}
+      workflow-conclusion: ${{ steps.extract-info.outputs.workflow-conclusion }}
+      failure-detected: ${{ steps.analyze-status.outputs.failure-detected }}
+      metrics-collected: ${{ steps.collect-metrics.outputs.metrics-collected }}
+    steps:
+      - name: 📊 Starting Workflow Monitoring
+        run: |
+          echo "::notice title=Workflow Monitoring::Starting release workflow monitoring and alerting"
+          echo "📊 This workflow monitors release pipeline execution and provides failure notifications"
+          echo "🔍 Monitoring workflow: ${{ github.event.workflow_run.name }}"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Extract Workflow Information
+        id: extract-info
+        run: |
+          echo "::group::Workflow Information Extraction"
+          echo "::notice title=Workflow Info::Extracting workflow execution details"
+          
+          WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
+          WORKFLOW_STATUS="${{ github.event.workflow_run.status }}"
+          WORKFLOW_CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          WORKFLOW_URL="${{ github.event.workflow_run.html_url }}"
+          WORKFLOW_ID="${{ github.event.workflow_run.id }}"
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
+          
+          echo "📋 Workflow Details:"
+          echo "   • Name: $WORKFLOW_NAME"
+          echo "   • Status: $WORKFLOW_STATUS"
+          echo "   • Conclusion: $WORKFLOW_CONCLUSION"
+          echo "   • Branch: $HEAD_BRANCH"
+          echo "   • Commit: ${HEAD_SHA:0:8}"
+          echo "   • URL: $WORKFLOW_URL"
+          
+          echo "workflow-name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+          echo "workflow-status=$WORKFLOW_STATUS" >> $GITHUB_OUTPUT
+          echo "workflow-conclusion=$WORKFLOW_CONCLUSION" >> $GITHUB_OUTPUT
+          echo "workflow-url=$WORKFLOW_URL" >> $GITHUB_OUTPUT
+          echo "workflow-id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+          echo "head-sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "head-branch=$HEAD_BRANCH" >> $GITHUB_OUTPUT
+          
+          echo "::notice title=Workflow Info Extracted::Workflow information extracted successfully"
+          echo "✅ Workflow info: $WORKFLOW_NAME ($WORKFLOW_STATUS)"
+          echo "::endgroup::"
+
+      - name: 📊 Analyze Workflow Status
+        id: analyze-status
+        run: |
+          echo "::group::Workflow Status Analysis"
+          echo "::notice title=Status Analysis::Analyzing workflow execution status and outcomes"
+          
+          WORKFLOW_NAME="${{ steps.extract-info.outputs.workflow-name }}"
+          WORKFLOW_STATUS="${{ steps.extract-info.outputs.workflow-status }}"
+          WORKFLOW_CONCLUSION="${{ steps.extract-info.outputs.workflow-conclusion }}"
+          FAILURE_DETECTED="false"
+          ALERT_LEVEL="info"
+          
+          echo "🔍 Analyzing workflow status..."
+          
+          case "$WORKFLOW_CONCLUSION" in
+            "success")
+              echo "✅ Workflow completed successfully"
+              ALERT_LEVEL="success"
+              ;;
+            "failure")
+              echo "❌ Workflow failed"
+              FAILURE_DETECTED="true"
+              ALERT_LEVEL="error"
+              ;;
+            "cancelled")
+              echo "⏹️ Workflow was cancelled"
+              FAILURE_DETECTED="true"
+              ALERT_LEVEL="warning"
+              ;;
+            "timed_out")
+              echo "⏱️ Workflow timed out"
+              FAILURE_DETECTED="true"
+              ALERT_LEVEL="error"
+              ;;
+            "skipped")
+              echo "⏭️ Workflow was skipped"
+              ALERT_LEVEL="info"
+              ;;
+            *)
+              if [ "$WORKFLOW_STATUS" = "completed" ]; then
+                echo "❓ Workflow completed with unknown conclusion: $WORKFLOW_CONCLUSION"
+                FAILURE_DETECTED="true"
+                ALERT_LEVEL="warning"
+              else
+                echo "🔄 Workflow is still running or queued"
+                ALERT_LEVEL="info"
+              fi
+              ;;
+          esac
+          
+          echo "failure-detected=$FAILURE_DETECTED" >> $GITHUB_OUTPUT
+          echo "alert-level=$ALERT_LEVEL" >> $GITHUB_OUTPUT
+          
+          echo "::notice title=Status Analysis Complete::Workflow status analysis completed"
+          echo "✅ Analysis: $ALERT_LEVEL (failure: $FAILURE_DETECTED)"
+          echo "::endgroup::"
+
+      - name: 📈 Collect Workflow Metrics
+        id: collect-metrics
+        run: |
+          echo "::group::Workflow Metrics Collection"
+          echo "::notice title=Metrics Collection::Collecting workflow execution metrics and performance data"
+          
+          WORKFLOW_ID="${{ steps.extract-info.outputs.workflow-id }}"
+          WORKFLOW_NAME="${{ steps.extract-info.outputs.workflow-name }}"
+          
+          echo "📈 Collecting metrics for workflow ID: $WORKFLOW_ID"
+          
+          # Get workflow run details
+          WORKFLOW_DATA=$(gh api "/repos/${{ github.repository }}/actions/runs/$WORKFLOW_ID" --jq '{
+            id: .id,
+            name: .name,
+            status: .status,
+            conclusion: .conclusion,
+            created_at: .created_at,
+            updated_at: .updated_at,
+            run_started_at: .run_started_at,
+            run_attempt: .run_attempt,
+            html_url: .html_url
+          }')
+          
+          echo "📊 Workflow Metrics:"
+          echo "$WORKFLOW_DATA" | jq -r '
+            "   • Run ID: \(.id)",
+            "   • Attempt: \(.run_attempt)",
+            "   • Created: \(.created_at)",
+            "   • Started: \(.run_started_at // "N/A")",
+            "   • Updated: \(.updated_at)",
+            "   • Status: \(.status)",
+            "   • Conclusion: \(.conclusion // "N/A")"
+          '
+          
+          # Calculate duration if available
+          CREATED_AT=$(echo "$WORKFLOW_DATA" | jq -r '.created_at')
+          UPDATED_AT=$(echo "$WORKFLOW_DATA" | jq -r '.updated_at')
+          
+          if [ "$CREATED_AT" != "null" ] && [ "$UPDATED_AT" != "null" ]; then
+            CREATED_TIMESTAMP=$(date -d "$CREATED_AT" +%s 2>/dev/null || echo "0")
+            UPDATED_TIMESTAMP=$(date -d "$UPDATED_AT" +%s 2>/dev/null || echo "0")
+            
+            if [ "$CREATED_TIMESTAMP" -gt 0 ] && [ "$UPDATED_TIMESTAMP" -gt 0 ]; then
+              DURATION=$((UPDATED_TIMESTAMP - CREATED_TIMESTAMP))
+              DURATION_MINUTES=$((DURATION / 60))
+              echo "   • Duration: ${DURATION_MINUTES} minutes"
+            fi
+          fi
+          
+          # Store metrics data
+          echo "$WORKFLOW_DATA" > workflow-metrics.json
+          
+          echo "metrics-collected=true" >> $GITHUB_OUTPUT
+          echo "::notice title=Metrics Collected::Workflow metrics collected successfully"
+          echo "✅ Metrics collected for workflow $WORKFLOW_ID"
+          echo "::endgroup::"
+
+      - name: 🚨 Generate Failure Alert
+        if: steps.analyze-status.outputs.failure-detected == 'true'
+        run: |
+          echo "::group::Failure Alert Generation"
+          echo "::error title=Workflow Failure Detected::Release workflow failure requires attention"
+          
+          WORKFLOW_NAME="${{ steps.extract-info.outputs.workflow-name }}"
+          WORKFLOW_CONCLUSION="${{ steps.extract-info.outputs.workflow-conclusion }}"
+          WORKFLOW_URL="${{ steps.extract-info.outputs.workflow-url }}"
+          HEAD_BRANCH="${{ steps.extract-info.outputs.head-branch }}"
+          HEAD_SHA="${{ steps.extract-info.outputs.head-sha }}"
+          
+          echo "🚨 **RELEASE WORKFLOW FAILURE ALERT** 🚨"
+          echo ""
+          echo "**Workflow Details:**"
+          echo "• **Workflow:** $WORKFLOW_NAME"
+          echo "• **Status:** $WORKFLOW_CONCLUSION"
+          echo "• **Branch:** $HEAD_BRANCH"
+          echo "• **Commit:** ${HEAD_SHA:0:8}"
+          echo "• **URL:** $WORKFLOW_URL"
+          echo ""
+          echo "**Action Required:**"
+          echo "1. Review workflow logs for failure details"
+          echo "2. Identify root cause of failure"
+          echo "3. Apply necessary fixes"
+          echo "4. Retry workflow execution"
+          echo ""
+          echo "**Quick Links:**"
+          echo "• [View Workflow Run]($WORKFLOW_URL)"
+          echo "• [View Repository](https://github.com/${{ github.repository }})"
+          echo "• [View Actions](https://github.com/${{ github.repository }}/actions)"
+          
+          # Create issue for critical failures
+          if [ "$WORKFLOW_NAME" = "Production Release" ] && [ "$WORKFLOW_CONCLUSION" = "failure" ]; then
+            echo ""
+            echo "🚨 **CRITICAL: Production Release Failure**"
+            echo ""
+            echo "This is a critical failure in the production release workflow."
+            echo "Immediate attention required to resolve release pipeline issues."
+          fi
+          echo "::endgroup::"
+
+      - name: ✅ Generate Success Report
+        if: steps.analyze-status.outputs.failure-detected == 'false' && steps.extract-info.outputs.workflow-conclusion == 'success'
+        run: |
+          echo "::group::Success Report Generation"
+          echo "::notice title=Workflow Success::Release workflow completed successfully"
+          
+          WORKFLOW_NAME="${{ steps.extract-info.outputs.workflow-name }}"
+          HEAD_BRANCH="${{ steps.extract-info.outputs.head-branch }}"
+          HEAD_SHA="${{ steps.extract-info.outputs.head-sha }}"
+          
+          echo "✅ **RELEASE WORKFLOW SUCCESS** ✅"
+          echo ""
+          echo "**Workflow Details:**"
+          echo "• **Workflow:** $WORKFLOW_NAME"
+          echo "• **Branch:** $HEAD_BRANCH"
+          echo "• **Commit:** ${HEAD_SHA:0:8}"
+          echo ""
+          echo "**Status:** Workflow completed successfully"
+          
+          if [ "$WORKFLOW_NAME" = "Production Release" ]; then
+            echo ""
+            echo "🎉 **Production Release Completed Successfully**"
+            echo ""
+            echo "The production release workflow has completed successfully."
+            echo "New release artifacts should now be available."
+          fi
+          echo "::endgroup::"
+
+  manual-monitoring:
+    name: Manual Monitoring and Metrics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: 🔧 Starting Manual Monitoring
+        run: |
+          echo "::notice title=Manual Monitoring::Starting manual workflow monitoring and analysis"
+          echo "🔧 Mode: ${{ github.event.inputs.monitoring_mode }}"
+          echo "📊 Time window: ${{ github.event.inputs.time_window }} hours"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📊 Generate Workflow Status Report
+        if: github.event.inputs.monitoring_mode == 'status'
+        run: |
+          echo "::group::Workflow Status Report"
+          echo "::notice title=Status Report::Generating current workflow status report"
+          
+          TIME_WINDOW="${{ github.event.inputs.time_window }}"
+          WORKFLOW_NAME="${{ github.event.inputs.workflow_name }}"
+          
+          echo "📊 **Release Workflow Status Report**"
+          echo ""
+          echo "**Report Parameters:**"
+          echo "• Time Window: Last $TIME_WINDOW hours"
+          if [ -n "$WORKFLOW_NAME" ]; then
+            echo "• Workflow Filter: $WORKFLOW_NAME"
+          else
+            echo "• Workflow Filter: All release workflows"
+          fi
+          echo ""
+          
+          # Calculate time threshold
+          if command -v date >/dev/null 2>&1; then
+            SINCE_TIME=$(date -u -d "$TIME_WINDOW hours ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-${TIME_WINDOW}H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+          else
+            SINCE_TIME=""
+          fi
+          
+          echo "🔍 Fetching recent workflow runs..."
+          
+          # Get recent workflow runs
+          RUNS_DATA=""
+          if [ -n "$SINCE_TIME" ]; then
+            if [ -n "$WORKFLOW_NAME" ]; then
+              RUNS_DATA=$(gh api "/repos/${{ github.repository }}/actions/runs" --paginate \
+                --jq ".workflow_runs[] | select(.name == \"$WORKFLOW_NAME\" and .created_at >= \"$SINCE_TIME\")" 2>/dev/null || echo "")
+            else
+              RUNS_DATA=$(gh api "/repos/${{ github.repository }}/actions/runs" --paginate \
+                --jq ".workflow_runs[] | select((.name == \"Production Release\" or .name == \"Pre-Release Validation\") and .created_at >= \"$SINCE_TIME\")" 2>/dev/null || echo "")
+            fi
+          else
+            echo "⚠️ Unable to calculate time threshold, showing recent runs"
+            if [ -n "$WORKFLOW_NAME" ]; then
+              RUNS_DATA=$(gh api "/repos/${{ github.repository }}/actions/runs" \
+                --jq ".workflow_runs[] | select(.name == \"$WORKFLOW_NAME\") | . as \$run | if (\$run | length) > 0 then \$run else empty end" 2>/dev/null | head -10 || echo "")
+            else
+              RUNS_DATA=$(gh api "/repos/${{ github.repository }}/actions/runs" \
+                --jq ".workflow_runs[] | select(.name == \"Production Release\" or .name == \"Pre-Release Validation\") | . as \$run | if (\$run | length) > 0 then \$run else empty end" 2>/dev/null | head -10 || echo "")
+            fi
+          fi
+          
+          if [ -n "$RUNS_DATA" ]; then
+            echo "**Recent Workflow Runs:**"
+            echo ""
+            echo "$RUNS_DATA" | jq -r '
+              "• **\(.name)** (\(.status)) - \(.conclusion // "running")",
+              "  - Branch: \(.head_branch)",
+              "  - Commit: \(.head_sha[0:8])",
+              "  - Created: \(.created_at)",
+              "  - [View Run](\(.html_url))",
+              ""
+            ' | head -50
+          else
+            echo "No workflow runs found in the specified time window."
+          fi
+          echo "::endgroup::"
+
+      - name: 📈 Collect Release Metrics
+        if: github.event.inputs.monitoring_mode == 'metrics'
+        run: |
+          echo "::group::Release Metrics Collection"
+          echo "::notice title=Metrics Collection::Collecting comprehensive release workflow metrics"
+          
+          TIME_WINDOW="${{ github.event.inputs.time_window }}"
+          
+          echo "📈 **Release Workflow Metrics Report**"
+          echo ""
+          echo "**Metrics Period:** Last $TIME_WINDOW hours"
+          echo ""
+          
+          # Calculate time threshold
+          if command -v date >/dev/null 2>&1; then
+            SINCE_TIME=$(date -u -d "$TIME_WINDOW hours ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-${TIME_WINDOW}H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+          else
+            SINCE_TIME=""
+          fi
+          
+          echo "📊 Collecting workflow execution metrics..."
+          
+          # Get workflow runs for metrics
+          if [ -n "$SINCE_TIME" ]; then
+            METRICS_DATA=$(gh api "/repos/${{ github.repository }}/actions/runs" --paginate \
+              --jq ".workflow_runs[] | select((.name == \"Production Release\" or .name == \"Pre-Release Validation\") and .created_at >= \"$SINCE_TIME\")" 2>/dev/null || echo "[]")
+          else
+            METRICS_DATA=$(gh api "/repos/${{ github.repository }}/actions/runs" \
+              --jq ".workflow_runs[] | select(.name == \"Production Release\" or .name == \"Pre-Release Validation\")" 2>/dev/null | head -20 || echo "[]")
+          fi
+          
+          if [ "$METRICS_DATA" != "[]" ] && [ -n "$METRICS_DATA" ]; then
+            # Calculate summary statistics
+            TOTAL_RUNS=$(echo "$METRICS_DATA" | jq -s 'length')
+            SUCCESS_RUNS=$(echo "$METRICS_DATA" | jq -s 'map(select(.conclusion == "success")) | length')
+            FAILED_RUNS=$(echo "$METRICS_DATA" | jq -s 'map(select(.conclusion == "failure")) | length')
+            CANCELLED_RUNS=$(echo "$METRICS_DATA" | jq -s 'map(select(.conclusion == "cancelled")) | length')
+            
+            SUCCESS_RATE=0
+            if [ "$TOTAL_RUNS" -gt 0 ]; then
+              SUCCESS_RATE=$(echo "scale=1; $SUCCESS_RUNS * 100 / $TOTAL_RUNS" | bc -l 2>/dev/null || echo "N/A")
+            fi
+            
+            echo "**Execution Summary:**"
+            echo "• Total Runs: $TOTAL_RUNS"
+            echo "• Successful: $SUCCESS_RUNS"
+            echo "• Failed: $FAILED_RUNS"
+            echo "• Cancelled: $CANCELLED_RUNS"
+            echo "• Success Rate: ${SUCCESS_RATE}%"
+            echo ""
+            
+            # Workflow breakdown
+            RELEASE_RUNS=$(echo "$METRICS_DATA" | jq -s 'map(select(.name == "Production Release")) | length')
+            PRERELEASE_RUNS=$(echo "$METRICS_DATA" | jq -s 'map(select(.name == "Pre-Release Validation")) | length')
+            
+            echo "**Workflow Breakdown:**"
+            echo "• Production Releases: $RELEASE_RUNS"
+            echo "• Pre-Release Validations: $PRERELEASE_RUNS"
+            echo ""
+            
+            # Recent failures
+            RECENT_FAILURES=$(echo "$METRICS_DATA" | jq -s 'map(select(.conclusion == "failure")) | sort_by(.created_at) | reverse | .[0:5]')
+            if [ "$RECENT_FAILURES" != "[]" ] && [ -n "$RECENT_FAILURES" ]; then
+              echo "**Recent Failures:**"
+              echo "$RECENT_FAILURES" | jq -r '.[] | 
+                "• \(.name) - \(.created_at)",
+                "  Branch: \(.head_branch), Commit: \(.head_sha[0:8])",
+                "  [View](\(.html_url))",
+                ""
+              '
+            else
+              echo "**Recent Failures:** None"
+            fi
+          else
+            echo "No workflow data available for metrics calculation."
+          fi
+          echo "::endgroup::"
+
+      - name: 🏥 Perform Health Check
+        if: github.event.inputs.monitoring_mode == 'health-check'
+        run: |
+          echo "::group::Release Workflow Health Check"
+          echo "::notice title=Health Check::Performing comprehensive release workflow health assessment"
+          
+          echo "🏥 **Release Workflow Health Check**"
+          echo ""
+          echo "**Health Assessment Results:**"
+          echo ""
+          
+          # Check workflow files exist
+          echo "📋 **Workflow Configuration Check:**"
+          if [ -f ".github/workflows/release.yml" ]; then
+            echo "✅ Production Release workflow: Present"
+          else
+            echo "❌ Production Release workflow: Missing"
+          fi
+          
+          if [ -f ".github/workflows/pre-release.yml" ]; then
+            echo "✅ Pre-Release Validation workflow: Present"
+          else
+            echo "❌ Pre-Release Validation workflow: Missing"
+          fi
+          
+          if [ -f ".github/workflows/release-monitoring.yml" ]; then
+            echo "✅ Release Monitoring workflow: Present"
+          else
+            echo "❌ Release Monitoring workflow: Missing"
+          fi
+          echo ""
+          
+          # Check recent workflow execution
+          echo "📊 **Recent Execution Health:**"
+          RECENT_RUNS=$(gh api "/repos/${{ github.repository }}/actions/runs" \
+            --jq '.workflow_runs[] | select(.name == "Production Release" or .name == "Pre-Release Validation") | . as $run | if ($run | length) > 0 then $run else empty end' 2>/dev/null | head -5 || echo "")
+          
+          if [ -n "$RECENT_RUNS" ]; then
+            SUCCESS_COUNT=$(echo "$RECENT_RUNS" | jq -s 'map(select(.conclusion == "success")) | length')
+            TOTAL_COUNT=$(echo "$RECENT_RUNS" | jq -s 'length')
+            
+            if [ "$TOTAL_COUNT" -gt 0 ]; then
+              if [ "$SUCCESS_COUNT" -eq "$TOTAL_COUNT" ]; then
+                echo "✅ Recent executions: All successful ($SUCCESS_COUNT/$TOTAL_COUNT)"
+              elif [ "$SUCCESS_COUNT" -gt 0 ]; then
+                echo "⚠️ Recent executions: Partial success ($SUCCESS_COUNT/$TOTAL_COUNT)"
+              else
+                echo "❌ Recent executions: All failed (0/$TOTAL_COUNT)"
+              fi
+            else
+              echo "❓ Recent executions: No data available"
+            fi
+          else
+            echo "❓ Recent executions: No recent runs found"
+          fi
+          echo ""
+          
+          # Check repository status
+          echo "🔧 **Repository Health:**"
+          
+          # Check if main branch is protected
+          BRANCH_PROTECTION=$(gh api "/repos/${{ github.repository }}/branches/main/protection" 2>/dev/null || echo "null")
+          if [ "$BRANCH_PROTECTION" != "null" ]; then
+            echo "✅ Branch protection: Enabled on main"
+          else
+            echo "⚠️ Branch protection: Not detected on main"
+          fi
+          
+          # Check for required secrets (basic validation)
+          echo "🔐 **Security Configuration:**"
+          echo "⚠️ Secret validation requires manual verification:"
+          echo "   • GITHUB_TOKEN (automatic)"
+          echo "   • DEVELOPER_ID_CERTIFICATE (manual check required)"
+          echo "   • DEVELOPER_ID_CERTIFICATE_PASSWORD (manual check required)"
+          echo "   • NOTARIZATION_USERNAME (manual check required)"
+          echo "   • NOTARIZATION_PASSWORD (manual check required)"
+          echo ""
+          
+          echo "**Health Check Summary:**"
+          echo "Release workflow health check completed. Review results above for any issues requiring attention."
+          echo "::endgroup::"
+
+      - name: 🔍 Perform Failure Analysis
+        if: github.event.inputs.monitoring_mode == 'failure-analysis'
+        run: |
+          echo "::group::Failure Analysis"
+          echo "::notice title=Failure Analysis::Analyzing recent release workflow failures"
+          
+          TIME_WINDOW="${{ github.event.inputs.time_window }}"
+          
+          echo "🔍 **Release Workflow Failure Analysis**"
+          echo ""
+          echo "**Analysis Period:** Last $TIME_WINDOW hours"
+          echo ""
+          
+          # Calculate time threshold
+          if command -v date >/dev/null 2>&1; then
+            SINCE_TIME=$(date -u -d "$TIME_WINDOW hours ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-${TIME_WINDOW}H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+          else
+            SINCE_TIME=""
+          fi
+          
+          echo "🔍 Analyzing workflow failures..."
+          
+          # Get failed workflow runs
+          if [ -n "$SINCE_TIME" ]; then
+            FAILED_RUNS=$(gh api "/repos/${{ github.repository }}/actions/runs" --paginate \
+              --jq ".workflow_runs[] | select((.name == \"Production Release\" or .name == \"Pre-Release Validation\") and .created_at >= \"$SINCE_TIME\" and .conclusion == \"failure\")" 2>/dev/null || echo "")
+          else
+            FAILED_RUNS=$(gh api "/repos/${{ github.repository }}/actions/runs" \
+              --jq ".workflow_runs[] | select((.name == \"Production Release\" or .name == \"Pre-Release Validation\") and .conclusion == \"failure\")" 2>/dev/null | head -10 || echo "")
+          fi
+          
+          if [ -n "$FAILED_RUNS" ] && [ "$FAILED_RUNS" != "[]" ]; then
+            FAILURE_COUNT=$(echo "$FAILED_RUNS" | jq -s 'length')
+            echo "**Failure Summary:**"
+            echo "• Total Failures: $FAILURE_COUNT"
+            echo ""
+            
+            echo "**Failed Workflow Runs:**"
+            echo ""
+            echo "$FAILED_RUNS" | jq -s 'sort_by(.created_at) | reverse | .[]' | jq -r '
+              "**\(.name)** - \(.created_at)",
+              "• **Branch:** \(.head_branch)",
+              "• **Commit:** \(.head_sha[0:8])",
+              "• **Attempt:** \(.run_attempt)",
+              "• **Duration:** \(if .updated_at and .created_at then (((.updated_at | fromdateiso8601) - (.created_at | fromdateiso8601)) / 60 | floor | tostring) + " minutes" else "N/A" end)",
+              "• **URL:** \(.html_url)",
+              ""
+            ' | head -50
+            
+            echo "**Analysis Recommendations:**"
+            echo "1. Review each failed run's logs for specific error messages"
+            echo "2. Check for common patterns in failure causes"
+            echo "3. Verify environment and dependency configurations"
+            echo "4. Consider implementing additional error handling or retries"
+            echo "5. Update workflow monitoring alerts if needed"
+            
+          else
+            echo "✅ **No Failures Found**"
+            echo ""
+            echo "No workflow failures detected in the specified time window."
+            echo "Release workflows appear to be executing successfully."
+          fi
+          echo "::endgroup::"
+
+  monitoring-summary:
+    name: Monitoring Summary
+    runs-on: ubuntu-latest
+    needs: [monitor-workflow-status, manual-monitoring]
+    if: always()
+    steps:
+      - name: 📊 Generate Monitoring Summary
+        run: |
+          echo "::group::Monitoring Summary"
+          echo "::notice title=Monitoring Summary::Generating comprehensive monitoring summary"
+          
+          echo "📊 **Release Workflow Monitoring Summary**"
+          echo ""
+          echo "**Monitoring Session Details:**"
+          echo "• Trigger: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "• Monitored Workflow: ${{ needs.monitor-workflow-status.outputs.workflow-name || 'N/A' }}"
+            echo "• Workflow Status: ${{ needs.monitor-workflow-status.outputs.workflow-status || 'N/A' }}"
+            echo "• Workflow Conclusion: ${{ needs.monitor-workflow-status.outputs.workflow-conclusion || 'N/A' }}"
+            echo "• Failure Detected: ${{ needs.monitor-workflow-status.outputs.failure-detected || 'N/A' }}"
+          else
+            echo "• Monitoring Mode: ${{ github.event.inputs.monitoring_mode || 'N/A' }}"
+            echo "• Time Window: ${{ github.event.inputs.time_window || 'N/A' }} hours"
+          fi
+          echo ""
+          
+          echo "**Job Results:**"
+          if [ "${{ needs.monitor-workflow-status.result }}" != "" ]; then
+            echo "• Workflow Status Monitoring: ${{ needs.monitor-workflow-status.result }}"
+          fi
+          if [ "${{ needs.manual-monitoring.result }}" != "" ]; then
+            echo "• Manual Monitoring: ${{ needs.manual-monitoring.result }}"
+          fi
+          echo ""
+          
+          echo "**Next Steps:**"
+          if [ "${{ needs.monitor-workflow-status.outputs.failure-detected }}" = "true" ]; then
+            echo "⚠️ **Action Required:** Workflow failures detected"
+            echo "1. Review failure alerts and logs"
+            echo "2. Investigate root causes"
+            echo "3. Apply necessary fixes"
+            echo "4. Monitor subsequent runs"
+          else
+            echo "✅ **Status:** Monitoring completed successfully"
+            echo "1. Continue monitoring for new workflow executions"
+            echo "2. Review metrics and trends periodically"
+            echo "3. Update monitoring configuration if needed"
+          fi
+          echo ""
+          
+          echo "**Monitoring Status:** COMPLETED"
+          echo "::endgroup::"
