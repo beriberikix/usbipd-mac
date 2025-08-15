@@ -148,8 +148,9 @@ extension IOKitDeviceDiscovery {
             processedCount += 1
             
             // Process the device in the background to avoid blocking
+            let currentDevice = device
             queue.async { [weak self] in
-                self?.handleDeviceAdded(device)
+                self?.handleDeviceAdded(currentDevice)
             }
         }
         
@@ -287,15 +288,15 @@ private func deviceAddedCallback(
     // Process all devices in the iterator
     var service = IOIteratorNext(iterator)
     while service != 0 {
-        defer {
-            IOObjectRelease(service)
-            service = IOIteratorNext(iterator)
-        }
+        let currentService = service
         
         // Handle the device addition on the discovery's queue
         discovery.queue.async {
-            discovery.handleDeviceAdded(service)
+            discovery.handleDeviceAdded(currentService)
         }
+        
+        IOObjectRelease(service)
+        service = IOIteratorNext(iterator)
     }
 }
 
@@ -315,14 +316,14 @@ private func deviceRemovedCallback(
     // Process all devices in the iterator
     var service = IOIteratorNext(iterator)
     while service != 0 {
-        defer {
-            IOObjectRelease(service)
-            service = IOIteratorNext(iterator)
-        }
+        let currentService = service
         
         // Handle the device removal on the discovery's queue
         discovery.queue.async {
-            discovery.handleDeviceRemoved(service)
+            discovery.handleDeviceRemoved(currentService)
         }
+        
+        IOObjectRelease(service)
+        service = IOIteratorNext(iterator)
     }
 }

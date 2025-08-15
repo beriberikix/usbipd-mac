@@ -1,0 +1,595 @@
+name: Pre-Release Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      validation_level:
+        description: 'Validation level to run'
+        required: true
+        default: 'comprehensive'
+        type: choice
+        options:
+          - 'quick'
+          - 'comprehensive'
+          - 'release-candidate'
+      target_branch:
+        description: 'Target branch for validation (default: main)'
+        required: false
+        default: 'main'
+        type: string
+      skip_tests:
+        description: 'Skip test execution (development use only)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  determine-validation:
+    name: Determine Validation Level
+    runs-on: ubuntu-latest
+    outputs:
+      level: ${{ steps.determine-level.outputs.level }}
+      run-quick: ${{ steps.determine-level.outputs.run-quick }}
+      run-comprehensive: ${{ steps.determine-level.outputs.run-comprehensive }}
+      run-release-candidate: ${{ steps.determine-level.outputs.run-release-candidate }}
+    steps:
+      - name: 🎯 Determine Validation Level
+        id: determine-level
+        run: |
+          echo "::group::Validation Level Determination"
+          
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            LEVEL="quick"
+            echo "📋 Pull request triggered - using quick validation"
+          else
+            LEVEL="${{ github.event.inputs.validation_level }}"
+            echo "🔧 Manual dispatch - using $LEVEL validation"
+          fi
+          
+          # Set outputs based on validation level
+          case "$LEVEL" in
+            "quick")
+              RUN_QUICK="true"
+              RUN_COMPREHENSIVE="false"
+              RUN_RELEASE_CANDIDATE="false"
+              echo "⚡ Quick validation: Code quality + build + development tests"
+              ;;
+            "comprehensive")
+              RUN_QUICK="true"
+              RUN_COMPREHENSIVE="true"
+              RUN_RELEASE_CANDIDATE="false"
+              echo "🔍 Comprehensive validation: All tests + full validation"
+              ;;
+            "release-candidate")
+              RUN_QUICK="true"
+              RUN_COMPREHENSIVE="true"
+              RUN_RELEASE_CANDIDATE="true"
+              echo "🚀 Release candidate validation: Complete release preparation"
+              ;;
+            *)
+              echo "::error::Invalid validation level: $LEVEL"
+              exit 1
+              ;;
+          esac
+          
+          echo "level=$LEVEL" >> $GITHUB_OUTPUT
+          echo "run-quick=$RUN_QUICK" >> $GITHUB_OUTPUT
+          echo "run-comprehensive=$RUN_COMPREHENSIVE" >> $GITHUB_OUTPUT
+          echo "run-release-candidate=$RUN_RELEASE_CANDIDATE" >> $GITHUB_OUTPUT
+          
+          echo "::notice title=Validation Level::Running $LEVEL validation"
+          echo "✅ Validation level determined: $LEVEL"
+          echo "::endgroup::"
+
+  quick-validation:
+    name: Quick Validation
+    runs-on: macos-latest
+    needs: determine-validation
+    if: needs.determine-validation.outputs.run-quick == 'true'
+    steps:
+      - name: ⚡ Starting Quick Validation
+        run: |
+          echo "::notice title=Quick Validation::Starting fast validation for immediate feedback"
+          echo "⚡ This stage provides rapid feedback on code quality and basic functionality"
+          echo "📊 Status: STARTING"
+          echo "🎯 Components: Code quality, build verification, development tests"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache SwiftLint
+        uses: actions/cache@v3
+        with:
+          path: |
+            /usr/local/bin/swiftlint
+            /opt/homebrew/bin/swiftlint
+          key: ${{ runner.os }}-swiftlint-${{ hashFiles('.swiftlint.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftlint-
+
+      - name: 🔧 Install SwiftLint
+        run: |
+          echo "::group::SwiftLint Installation"
+          if ! command -v swiftlint &> /dev/null; then
+            echo "::notice title=SwiftLint Installation::Installing SwiftLint for code quality validation"
+            brew install swiftlint
+            echo "✅ SwiftLint installation completed"
+          else
+            echo "::notice title=SwiftLint Found::Using cached SwiftLint installation"
+            echo "✅ SwiftLint version: $(swiftlint version)"
+          fi
+          echo "::endgroup::"
+
+      - name: 🔍 Code Quality Check
+        run: |
+          echo "::group::Quick Code Quality Validation"
+          echo "::notice title=Code Quality::Running SwiftLint for immediate feedback"
+          echo "🔍 Checking code quality for PR readiness..."
+          
+          if swiftlint lint --strict --reporter xcode; then
+            echo "::notice title=Code Quality Success::Code passes quality standards"
+            echo "✅ Code quality check PASSED"
+          else
+            echo "::error title=Code Quality Failed::Code quality issues found"
+            echo "❌ PR blocked by code quality violations"
+            echo "🔧 Fix SwiftLint violations before merging"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+
+      - name: 🔨 Build Verification
+        run: |
+          echo "::group::Quick Build Verification"
+          echo "::notice title=Build Verification::Verifying all targets compile successfully"
+          echo "🔨 Building all targets for compilation verification..."
+          
+          if swift build --verbose; then
+            echo "::notice title=Build Success::All targets compile successfully"
+            echo "✅ Build verification PASSED"
+            echo "📦 All Swift modules compiled correctly"
+          else
+            echo "::error title=Build Failed::Compilation errors prevent PR merge"
+            echo "❌ PR blocked by build failures"
+            echo "🔧 Fix compilation errors before merging"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 🧪 Development Tests
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          echo "::group::Development Test Execution"
+          echo "::notice title=Development Tests::Running fast development test suite"
+          echo "🧪 Running development tests for immediate feedback..."
+          
+          # Make test scripts executable
+          chmod +x Scripts/run-development-tests.sh
+          chmod +x Scripts/test-environment-setup.sh
+          
+          # Setup test environment
+          if ./Scripts/test-environment-setup.sh validate; then
+            echo "✅ Development test environment ready"
+          else
+            echo "::warning::Development test environment validation failed - proceeding with basic tests"
+          fi
+          
+          # Run development tests
+          if ./Scripts/run-development-tests.sh; then
+            echo "::notice title=Development Tests Success::Development tests passed"
+            echo "✅ Development tests PASSED"
+            echo "📋 Core functionality validated"
+          else
+            echo "::error title=Development Tests Failed::Development test failures block PR"
+            echo "❌ PR blocked by development test failures"
+            echo "🔧 Fix failing tests before merging"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 📊 Quick Validation Summary
+        if: always()
+        run: |
+          echo "::group::Quick Validation Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Quick Validation Complete::All quick validation checks passed"
+            echo "✅ **Quick Validation Results:**"
+            echo "   • Code Quality (SwiftLint): PASSED"
+            echo "   • Build Verification: PASSED"
+            echo "   • Development Tests: PASSED"
+            echo ""
+            echo "🎯 **PR Status:** Ready for review and merge"
+            echo "📋 **Next Steps:** PR can proceed through review process"
+            
+            # Add different messaging based on validation level
+            if [ "${{ needs.determine-validation.outputs.level }}" = "quick" ]; then
+              echo "💡 **Tip:** Use workflow_dispatch with 'comprehensive' for full validation"
+            fi
+          else
+            echo "::error title=Quick Validation Failed::Quick validation found issues"
+            echo "❌ **Quick Validation Issues Found**"
+            echo "🔧 **Required Actions:**"
+            echo "   • Fix any SwiftLint violations"
+            echo "   • Resolve compilation errors"
+            echo "   • Address failing development tests"
+            echo "   • Push fixes and validation will re-run automatically"
+          fi
+          echo "::endgroup::"
+
+  comprehensive-validation:
+    name: Comprehensive Validation
+    runs-on: macos-latest
+    needs: [determine-validation, quick-validation]
+    if: needs.determine-validation.outputs.run-comprehensive == 'true' && needs.quick-validation.result == 'success'
+    steps:
+      - name: 🔍 Starting Comprehensive Validation
+        run: |
+          echo "::notice title=Comprehensive Validation::Starting full validation with complete test suite"
+          echo "🔍 This stage runs the complete test suite matching production release validation"
+          echo "📊 Status: STARTING"
+          echo "🎯 Components: CI tests, production tests, security scanning"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+
+      - name: 🔧 Setup Comprehensive Test Environment
+        run: |
+          echo "::group::Comprehensive Test Environment Setup"
+          echo "::notice title=Test Environment::Setting up comprehensive test environment"
+          
+          # Make all test scripts executable
+          chmod +x Scripts/run-ci-tests.sh
+          chmod +x Scripts/run-production-tests.sh
+          chmod +x Scripts/test-environment-setup.sh
+          
+          # Validate comprehensive test environment
+          if ./Scripts/test-environment-setup.sh validate; then
+            echo "::notice title=Environment Ready::Comprehensive test environment validated"
+            echo "✅ Test environment ready for comprehensive validation"
+          else
+            echo "::error title=Environment Failed::Comprehensive test environment setup failed"
+            echo "❌ Cannot proceed with comprehensive validation"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 🧪 CI Test Suite
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          echo "::group::CI Test Suite Execution"
+          echo "::notice title=CI Tests::Running complete CI test suite"
+          echo "🧪 Executing CI tests for comprehensive validation..."
+          
+          if ./Scripts/run-ci-tests.sh; then
+            echo "::notice title=CI Tests Success::All CI tests passed"
+            echo "✅ CI test suite PASSED"
+            echo "📋 Protocol and network functionality validated"
+          else
+            echo "::error title=CI Tests Failed::CI test failures found"
+            echo "❌ Comprehensive validation blocked by CI test failures"
+            echo "🔧 Review CI test logs and fix issues"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 🔗 Production Test Suite
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          echo "::group::Production Test Suite Execution"
+          echo "::notice title=Production Tests::Running production test validation"
+          echo "🔗 Executing production tests with CI constraints..."
+          
+          # Run production tests with appropriate CI limitations
+          if ./Scripts/run-production-tests.sh --no-qemu --no-system-extension --no-hardware --timeout 300; then
+            echo "::notice title=Production Tests Success::Production tests validated"
+            echo "✅ Production test suite PASSED"
+            echo "📋 End-to-end functionality validated"
+          else
+            echo "::error title=Production Tests Failed::Production test failures found"
+            echo "❌ Comprehensive validation blocked by production test failures"
+            echo "🔧 Review production test logs and fix issues"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 🔒 Security Scanning
+        run: |
+          echo "::group::Security Validation"
+          echo "::notice title=Security Scanning::Running security validation checks"
+          echo "🔒 Performing security analysis..."
+          
+          # Check for hardcoded secrets or sensitive data
+          echo "🔍 Scanning for hardcoded secrets..."
+          if git log --all --full-history --grep="password\|secret\|key\|token" --grep="API" -i | head -5; then
+            echo "::warning::Found potential sensitive data in commit messages - please review"
+          fi
+          
+          # Basic dependency security check using Swift Package Manager
+          echo "🔍 Checking dependency security..."
+          swift package show-dependencies --format json > dependencies.json || echo "::warning::Could not analyze dependencies"
+          
+          echo "::notice title=Security Scan Complete::Security validation completed"
+          echo "✅ Security scanning completed"
+          echo "::endgroup::"
+
+      - name: 📊 Comprehensive Validation Summary
+        if: always()
+        run: |
+          echo "::group::Comprehensive Validation Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Comprehensive Validation Complete::All comprehensive validation checks passed"
+            echo "✅ **Comprehensive Validation Results:**"
+            echo "   • Quick Validation: PASSED (inherited)"
+            echo "   • CI Test Suite: PASSED"
+            echo "   • Production Tests: PASSED"
+            echo "   • Security Scanning: COMPLETED"
+            echo ""
+            echo "🎯 **Status:** Ready for production release"
+            echo "📋 **Quality Assurance:** Code meets all release standards"
+            
+            # Add messaging based on validation level
+            if [ "${{ needs.determine-validation.outputs.level }}" = "comprehensive" ]; then
+              echo "🚀 **Tip:** Use 'release-candidate' validation for complete release preparation"
+            fi
+          else
+            echo "::error title=Comprehensive Validation Failed::Comprehensive validation found issues"
+            echo "❌ **Comprehensive Validation Issues:**"
+            echo "🔧 **Required Actions:**"
+            echo "   • Review and fix CI test failures"
+            echo "   • Address production test issues"
+            echo "   • Resolve any security concerns"
+            echo "   • Re-run validation after fixes"
+          fi
+          echo "::endgroup::"
+
+  release-candidate-validation:
+    name: Release Candidate Validation
+    runs-on: macos-latest
+    needs: [determine-validation, comprehensive-validation]
+    if: needs.determine-validation.outputs.run-release-candidate == 'true' && needs.comprehensive-validation.result == 'success'
+    steps:
+      - name: 🚀 Starting Release Candidate Validation
+        run: |
+          echo "::notice title=Release Candidate::Starting complete release candidate validation"
+          echo "🚀 This stage performs full release preparation validation"
+          echo "📊 Status: STARTING"
+          echo "🎯 Components: Release build, artifact validation, release readiness"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+
+      - name: 🏗️ Release Build Validation
+        run: |
+          echo "::group::Release Build Validation"
+          echo "::notice title=Release Build::Validating release configuration build"
+          echo "🏗️ Building with release configuration for artifact validation..."
+          
+          # Build in release mode to validate release configuration
+          if swift build --configuration release --verbose; then
+            echo "::notice title=Release Build Success::Release configuration builds successfully"
+            echo "✅ Release build PASSED"
+            echo "📦 Release binaries ready for distribution"
+          else
+            echo "::error title=Release Build Failed::Release configuration build failed"
+            echo "❌ Release candidate validation blocked by build failures"
+            echo "🔧 Fix release build issues before proceeding"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 📦 Artifact Validation
+        run: |
+          echo "::group::Release Artifact Validation"
+          echo "::notice title=Artifact Validation::Validating release artifact creation"
+          echo "📦 Validating release artifact generation..."
+          
+          # Validate that all expected binaries are created
+          EXPECTED_BINARIES=("usbipd")
+          MISSING_BINARIES=()
+          
+          for binary in "${EXPECTED_BINARIES[@]}"; do
+            if [ -f ".build/release/$binary" ]; then
+              echo "✅ Found $binary binary"
+              # Get basic info about the binary
+              ls -la ".build/release/$binary"
+              file ".build/release/$binary"
+            else
+              echo "❌ Missing $binary binary"
+              MISSING_BINARIES+=("$binary")
+            fi
+          done
+          
+          # Check for optional binaries
+          if [ -f ".build/release/QEMUTestServer" ]; then
+            echo "✅ Found QEMUTestServer binary (optional)"
+            ls -la ".build/release/QEMUTestServer"
+          else
+            echo "ℹ️ QEMUTestServer binary not found (optional)"
+          fi
+          
+          if [ ${#MISSING_BINARIES[@]} -eq 0 ]; then
+            echo "::notice title=Artifact Validation Success::All required artifacts generated"
+            echo "✅ Artifact validation PASSED"
+          else
+            echo "::error title=Artifact Validation Failed::Missing required binaries: ${MISSING_BINARIES[*]}"
+            echo "❌ Release candidate validation blocked by missing artifacts"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: 🔍 Release Readiness Check
+        run: |
+          echo "::group::Release Readiness Assessment"
+          echo "::notice title=Release Readiness::Assessing overall release readiness"
+          echo "🔍 Performing final release readiness assessment..."
+          
+          # Check Git status for clean state
+          echo "📋 Git Status Check:"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "✅ Working directory is clean"
+          else
+            echo "::warning::Working directory has uncommitted changes"
+            git status --short
+          fi
+          
+          # Check for version-related files
+          echo "📋 Version File Check:"
+          if [ -f "VERSION" ]; then
+            echo "✅ Found VERSION file: $(cat VERSION)"
+          else
+            echo "ℹ️ No VERSION file found (using Git tags)"
+          fi
+          
+          # Check recent commits for release-worthy changes
+          echo "📋 Recent Changes:"
+          echo "Recent commits since last tag (if any):"
+          git log --oneline -10 || echo "No previous tags found"
+          
+          echo "::notice title=Release Assessment Complete::Release readiness assessment completed"
+          echo "✅ Release readiness check PASSED"
+          echo "🎯 Branch appears ready for production release"
+          echo "::endgroup::"
+
+      - name: 🎉 Release Candidate Summary
+        if: always()
+        run: |
+          echo "::group::Release Candidate Validation Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Release Candidate Ready::Complete release candidate validation passed"
+            echo "🎉 **Release Candidate Validation Results:**"
+            echo "   • Quick Validation: PASSED (inherited)"
+            echo "   • Comprehensive Validation: PASSED (inherited)"
+            echo "   • Release Build: PASSED"
+            echo "   • Artifact Generation: PASSED"
+            echo "   • Release Readiness: PASSED"
+            echo ""
+            echo "🚀 **Status:** READY FOR PRODUCTION RELEASE"
+            echo "📋 **Next Steps:**"
+            echo "   • Create and push a semantic version tag (e.g., v1.2.3)"
+            echo "   • The release workflow will automatically trigger"
+            echo "   • Monitor the release workflow for completion"
+            echo ""
+            echo "💡 **Release Commands:**"
+            echo "   git tag v1.2.3"
+            echo "   git push origin v1.2.3"
+          else
+            echo "::error title=Release Candidate Failed::Release candidate validation found critical issues"
+            echo "❌ **Release Candidate Issues:**"
+            echo "🔧 **Required Actions Before Release:**"
+            echo "   • Fix release build configuration issues"
+            echo "   • Resolve artifact generation problems"
+            echo "   • Address any release readiness concerns"
+            echo "   • Re-run release candidate validation"
+            echo ""
+            echo "⚠️  **Do not proceed with release until all issues are resolved**"
+          fi
+          echo "::endgroup::"
+
+  validation-complete:
+    name: Validation Complete
+    runs-on: ubuntu-latest
+    needs: [determine-validation, quick-validation, comprehensive-validation, release-candidate-validation]
+    if: always()
+    steps:
+      - name: 📊 Final Validation Status
+        run: |
+          echo "::group::Pre-Release Validation Complete"
+          
+          LEVEL="${{ needs.determine-validation.outputs.level }}"
+          QUICK_STATUS="${{ needs.quick-validation.result }}"
+          COMPREHENSIVE_STATUS="${{ needs.comprehensive-validation.result }}"
+          RELEASE_CANDIDATE_STATUS="${{ needs.release-candidate-validation.result }}"
+          
+          echo "🎯 **Validation Level:** $LEVEL"
+          echo ""
+          echo "📊 **Results Summary:**"
+          echo "   • Quick Validation: $QUICK_STATUS"
+          
+          if [ "$COMPREHENSIVE_STATUS" != "" ]; then
+            echo "   • Comprehensive Validation: $COMPREHENSIVE_STATUS"
+          fi
+          
+          if [ "$RELEASE_CANDIDATE_STATUS" != "" ]; then
+            echo "   • Release Candidate Validation: $RELEASE_CANDIDATE_STATUS"
+          fi
+          
+          # Determine overall status
+          case "$LEVEL" in
+            "quick")
+              if [ "$QUICK_STATUS" = "success" ]; then
+                OVERALL_STATUS="SUCCESS"
+                echo "::notice title=Validation Success::Quick validation completed successfully"
+              else
+                OVERALL_STATUS="FAILED"
+                echo "::error title=Validation Failed::Quick validation failed"
+              fi
+              ;;
+            "comprehensive")
+              if [ "$QUICK_STATUS" = "success" ] && [ "$COMPREHENSIVE_STATUS" = "success" ]; then
+                OVERALL_STATUS="SUCCESS"
+                echo "::notice title=Validation Success::Comprehensive validation completed successfully"
+              else
+                OVERALL_STATUS="FAILED"
+                echo "::error title=Validation Failed::Comprehensive validation failed"
+              fi
+              ;;
+            "release-candidate")
+              if [ "$QUICK_STATUS" = "success" ] && [ "$COMPREHENSIVE_STATUS" = "success" ] && [ "$RELEASE_CANDIDATE_STATUS" = "success" ]; then
+                OVERALL_STATUS="SUCCESS"
+                echo "::notice title=Validation Success::Release candidate validation completed successfully"
+              else
+                OVERALL_STATUS="FAILED"
+                echo "::error title=Validation Failed::Release candidate validation failed"
+              fi
+              ;;
+          esac
+          
+          echo ""
+          echo "🏆 **Overall Status:** $OVERALL_STATUS"
+          
+          if [ "$OVERALL_STATUS" = "SUCCESS" ]; then
+            echo "✅ All validation checks passed for $LEVEL level"
+          else
+            echo "❌ Validation failed - review job logs for details"
+            exit 1
+          fi
+          
+          echo "::endgroup::"

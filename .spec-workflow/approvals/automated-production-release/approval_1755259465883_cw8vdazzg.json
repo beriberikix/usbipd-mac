@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755259465883_cw8vdazzg",
+  "title": "Tasks Phase: automated-production-release - Ready for Review",
+  "filePath": ".spec-workflow/specs/automated-production-release/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-15T12:04:25.883Z",
+  "category": "spec",
+  "categoryName": "automated-production-release",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow git workflow. Each task should include a step to commit to git with helpful message. First task should create a feature branch and commit spec files. Last task should create PR and fix any CI build issues.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Each task should include a step to commit to git with helpful message. First task should create a feature branch and commit spec files. Last task should create PR and fix any CI build issues.\",\n      \"timestamp\": \"2025-08-15T12:07:41.993Z\",\n      \"id\": \"comment_1755259661994_hwi8fzvz8\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Each task should include a step to commit to git with helpful message. First task should create a feature branch and commit spec files. Last task should create PR and fix any CI build issues.\\n\\n\",\n  \"timestamp\": \"2025-08-15T12:07:43.693Z\"\n}",
+  "respondedAt": "2025-08-15T12:07:43.705Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Each task should include a step to commit to git with helpful message. First task should create a feature branch and commit spec files. Last task should create PR and fix any CI build issues.",
+      "timestamp": "2025-08-15T12:07:41.993Z",
+      "id": "comment_1755259661994_hwi8fzvz8"
+    }
+  ]
+}

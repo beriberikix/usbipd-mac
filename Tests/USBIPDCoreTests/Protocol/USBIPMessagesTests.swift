@@ -301,10 +301,10 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkRequestEncodingDecoding() throws {
         let request = USBIPUnlinkRequest(
             seqnum: 999,
+            unlinkSeqnum: 888, // Sequence number of request to cancel
             devid: 123,
             direction: 1, // IN
-            ep: 0x81,
-            unlinkSeqnum: 888 // Sequence number of request to cancel
+            ep: 0x81
         )
         
         let encodedData = try request.encode()
@@ -324,10 +324,10 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkRequestValidation() throws {
         let request = USBIPUnlinkRequest(
             seqnum: 1000,
+            unlinkSeqnum: 500,
             devid: 456,
             direction: 0, // OUT
-            ep: 0x02,
-            unlinkSeqnum: 500
+            ep: 0x02
         )
         
         let encodedData = try request.encode()
@@ -346,6 +346,7 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkResponseEncodingDecoding() throws {
         let response = USBIPUnlinkResponse(
             seqnum: 999,
+            unlinkSeqnum: 888,
             devid: 123,
             direction: 1, // IN
             ep: 0x81,
@@ -369,6 +370,7 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkResponseWithError() throws {
         let response = USBIPUnlinkResponse(
             seqnum: 1001,
+            unlinkSeqnum: 888,
             devid: 789,
             direction: 0, // OUT
             ep: 0x02,
@@ -541,6 +543,7 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkResponseNegativeStatus() throws {
         let response = USBIPUnlinkResponse(
             seqnum: 123,
+            unlinkSeqnum: 100,
             devid: 456,
             direction: 0,
             ep: 0x02,
@@ -622,6 +625,7 @@ final class USBIPMessagesTests: XCTestCase {
         for statusValue in testValues {
             let response = USBIPUnlinkResponse(
                 seqnum: 789,
+                unlinkSeqnum: 500,
                 devid: 101,
                 direction: 1,
                 ep: 0x81,
@@ -689,8 +693,8 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPMessageHeaderConsistency() throws {
         let submitRequest = USBIPSubmitRequest(seqnum: 1, devid: 1, direction: 0, ep: 1, transferFlags: 0, transferBufferLength: 0)
         let submitResponse = USBIPSubmitResponse(seqnum: 1, devid: 1, direction: 0, ep: 1, status: 0, actualLength: 0)
-        let unlinkRequest = USBIPUnlinkRequest(seqnum: 2, devid: 1, direction: 0, ep: 1, unlinkSeqnum: 1)
-        let unlinkResponse = USBIPUnlinkResponse(seqnum: 2, devid: 1, direction: 0, ep: 1, status: 0)
+        let unlinkRequest = USBIPUnlinkRequest(seqnum: 2, unlinkSeqnum: 1, devid: 1, direction: 0, ep: 1)
+        let unlinkResponse = USBIPUnlinkResponse(seqnum: 2, unlinkSeqnum: 1, devid: 1, direction: 0, ep: 1, status: 0)
         
         // Verify all headers have correct version and commands
         XCTAssertEqual(submitRequest.header.version, USBIPProtocol.version)

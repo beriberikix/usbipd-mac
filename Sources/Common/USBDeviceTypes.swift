@@ -4,7 +4,7 @@
 import Foundation
 
 /// USB device speed enumeration
-public enum USBSpeed: UInt8 {
+public enum USBSpeed: UInt8, Sendable {
     case unknown = 0
     case low = 1
     case full = 2
@@ -28,7 +28,7 @@ public protocol USBDeviceInfo {
 }
 
 /// Represents a USB device
-public struct USBDevice: USBDeviceInfo {
+public struct USBDevice: USBDeviceInfo, Sendable {
     public let busID: String
     public let deviceID: String
     public let vendorID: UInt16

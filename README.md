@@ -85,6 +85,59 @@ For detailed information about development, architecture, and troubleshooting, s
 - [**System Extension Troubleshooting**](Documentation/troubleshooting/system-extension-troubleshooting.md) - System Extension specific problems
 - [**QEMU Troubleshooting**](Documentation/troubleshooting/qemu-troubleshooting.md) - QEMU test server issues
 
+## Release Automation
+
+usbipd-mac uses automated GitHub Actions workflows for consistent and reliable releases.
+
+### For Maintainers
+
+#### Release Process
+
+1. **Prepare Release**:
+   ```bash
+   # Run local release preparation
+   ./Scripts/prepare-release.sh <version>
+   
+   # This will:
+   # - Validate environment and dependencies
+   # - Run comprehensive test suite
+   # - Generate changelog entries
+   # - Create and push version tag
+   ```
+
+2. **Automated Pipeline**: Once a version tag is pushed, GitHub Actions automatically:
+   - Validates the release candidate
+   - Builds production artifacts with code signing
+   - Runs comprehensive test validation
+   - Publishes release with checksums and signatures
+   - Updates documentation and notifications
+
+3. **Emergency Releases**: For critical fixes, use the manual workflow dispatch in GitHub Actions with validation bypasses as documented in [Emergency Release Procedures](Documentation/Emergency-Release-Procedures.md).
+
+#### Versioning Strategy
+
+- **Semantic Versioning**: Follow semver (MAJOR.MINOR.PATCH) for all releases
+- **Release Schedule**: Monthly minor releases with patch releases as needed
+- **Pre-releases**: Use `-alpha`, `-beta`, `-rc` suffixes for testing releases
+- **Changelog**: Automatically generated from conventional commits
+
+#### Required Setup
+
+For release automation to work properly:
+
+1. **Code Signing**: Configure Apple Developer certificates in GitHub repository secrets
+2. **Permissions**: Ensure maintainer access to repository settings and secrets
+3. **Environment**: Validate local environment with `./Scripts/prepare-release.sh --check`
+
+See [Release Automation Documentation](Documentation/Release-Automation.md) for complete setup instructions and troubleshooting.
+
+### For Contributors
+
+Release automation is handled by maintainers. Contributors should:
+- Follow conventional commit format for automatic changelog generation
+- Ensure all PRs pass CI validation before merge
+- Report issues with release automation to repository maintainers
+
 ## License
 
 [MIT License](LICENSE)

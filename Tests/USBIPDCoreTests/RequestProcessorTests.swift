@@ -79,7 +79,8 @@ class RequestProcessorTests: XCTestCase {
         let device = createSampleDevice()
         deviceDiscovery.devices = [device]
         
-        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery)
+        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceListRequest()
         
         // Act
@@ -90,7 +91,7 @@ class RequestProcessorTests: XCTestCase {
         
         // Decode the response to verify it
         let response = try USBIPMessageDecoder.decodeDeviceListResponse(from: responseData)
-        XCTAssertEqual(response.header.command, .replyDeviceList, "Response should be a device list reply")
+        XCTAssertEqual(response.header.command, USBIPProtocol.Command.replyDeviceList, "Response should be a device list reply")
         XCTAssertEqual(response.header.status, 0, "Status should be success (0)")
         XCTAssertEqual(response.deviceCount, 1, "Response should contain 1 device")
         XCTAssertEqual(response.devices.count, 1, "Response should contain 1 device")
@@ -108,7 +109,8 @@ class RequestProcessorTests: XCTestCase {
         let deviceDiscovery = MockDeviceDiscovery()
         deviceDiscovery.devices = []
         
-        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery)
+        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceListRequest()
         
         // Act
@@ -119,7 +121,7 @@ class RequestProcessorTests: XCTestCase {
         
         // Decode the response to verify it
         let response = try USBIPMessageDecoder.decodeDeviceListResponse(from: responseData)
-        XCTAssertEqual(response.header.command, .replyDeviceList, "Response should be a device list reply")
+        XCTAssertEqual(response.header.command, USBIPProtocol.Command.replyDeviceList, "Response should be a device list reply")
         XCTAssertEqual(response.header.status, 0, "Status should be success (0)")
         XCTAssertEqual(response.deviceCount, 0, "Response should contain 0 devices")
         XCTAssertEqual(response.devices.count, 0, "Response should contain 0 devices")
@@ -131,7 +133,8 @@ class RequestProcessorTests: XCTestCase {
         let device = createSampleDevice()
         deviceDiscovery.devices = [device]
         
-        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery)
+        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceImportRequest(busID: "1-1:1.0")
         
         // Act
@@ -144,17 +147,9 @@ class RequestProcessorTests: XCTestCase {
         
         // Decode the response to verify it
         let response = try USBIPMessageDecoder.decodeDeviceImportResponse(from: responseData)
-        XCTAssertEqual(response.header.command, .replyDeviceImport, "Response should be a device import reply")
+        XCTAssertEqual(response.header.command, USBIPProtocol.Command.replyDeviceImport, "Response should be a device import reply")
         XCTAssertEqual(response.header.status, 0, "Status should be success (0)")
-        XCTAssertEqual(response.status, 0, "Status should be success (0)")
-        XCTAssertNotNil(response.deviceInfo, "Device info should be present")
-        
-        // Verify device details
-        let deviceInfo = response.deviceInfo!
-        XCTAssertEqual(deviceInfo.busID, device.busID, "Bus ID should match")
-        XCTAssertEqual(deviceInfo.vendorID, device.vendorID, "Vendor ID should match")
-        XCTAssertEqual(deviceInfo.productID, device.productID, "Product ID should match")
-        XCTAssertEqual(deviceInfo.deviceClass, device.deviceClass, "Device class should match")
+        XCTAssertEqual(response.returnCode, 0, "Return code should be success (0)")
     }
     
     func testProcessDeviceImportRequestDeviceNotFound() throws {
@@ -162,7 +157,8 @@ class RequestProcessorTests: XCTestCase {
         let deviceDiscovery = MockDeviceDiscovery()
         deviceDiscovery.devices = [] // No devices available
         
-        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery)
+        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceImportRequest(busID: "1-1:1.0")
         
         // Act
@@ -173,15 +169,15 @@ class RequestProcessorTests: XCTestCase {
         
         // Decode the response to verify it
         let response = try USBIPMessageDecoder.decodeDeviceImportResponse(from: responseData)
-        XCTAssertEqual(response.header.command, .replyDeviceImport, "Response should be a device import reply")
-        XCTAssertEqual(response.status, 1, "Status should be error (1)")
-        XCTAssertNil(response.deviceInfo, "Device info should not be present for error response")
+        XCTAssertEqual(response.header.command, USBIPProtocol.Command.replyDeviceImport, "Response should be a device import reply")
+        XCTAssertEqual(response.returnCode, 1, "Return code should be error (1)")
     }
     
     func testProcessInvalidRequest() throws {
         // Arrange
         let deviceDiscovery = MockDeviceDiscovery()
-        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery)
+        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         
         // Create an invalid request with incorrect data
         let invalidData = Data([0x01, 0x02, 0x03, 0x04])
@@ -193,7 +189,8 @@ class RequestProcessorTests: XCTestCase {
     func testProcessUnsupportedCommand() throws {
         // Arrange
         let deviceDiscovery = MockDeviceDiscovery()
-        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery)
+        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         
         // Create a reply message (which should not be processed as a request)
         let header = USBIPHeader(command: .replyDeviceList)

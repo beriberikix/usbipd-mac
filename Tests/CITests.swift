@@ -243,8 +243,8 @@ final class CITests: XCTestCase, TestSuite {
     func testUSBIPMessageHeaderConsistency() throws {
         let submitRequest = USBIPSubmitRequest(seqnum: 1, devid: 1, direction: 0, ep: 1, transferFlags: 0, transferBufferLength: 0)
         let submitResponse = USBIPSubmitResponse(seqnum: 1, devid: 1, direction: 0, ep: 1, status: 0, actualLength: 0)
-        let unlinkRequest = USBIPUnlinkRequest(seqnum: 2, devid: 1, direction: 0, ep: 1, unlinkSeqnum: 1)
-        let unlinkResponse = USBIPUnlinkResponse(seqnum: 2, devid: 1, direction: 0, ep: 1, status: 0)
+        let unlinkRequest = USBIPUnlinkRequest(seqnum: 2, unlinkSeqnum: 1, devid: 1, direction: 0, ep: 1)
+        let unlinkResponse = USBIPUnlinkResponse(seqnum: 2, unlinkSeqnum: 1, devid: 1, direction: 0, ep: 1, status: 0)
         
         // Verify all headers have correct version and commands
         XCTAssertEqual(submitRequest.header.version, USBIPProtocol.version)

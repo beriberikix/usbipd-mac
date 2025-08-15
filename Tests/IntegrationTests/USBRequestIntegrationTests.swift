@@ -97,7 +97,7 @@ final class USBRequestIntegrationTests: XCTestCase {
         
         // Bind the test device
         let busid = "\(testDevice.busID)-\(testDevice.deviceID)"
-        serverConfig.allowedDevices.insert(busid)
+        serverConfig.allowedDevices.append(busid)
         
         return testDevice
     }
@@ -210,10 +210,10 @@ final class USBRequestIntegrationTests: XCTestCase {
         // Test 4: Request Cancellation (UNLINK)
         let unlinkRequest = USBIPUnlinkRequest(
             seqnum: 3,
+            unlinkSeqnum: 1,
             devid: UInt32(testDevice.deviceID) ?? 0,
             direction: 1,
-            ep: 0x00,
-            unlinkSeqnum: 1
+            ep: 0x00
         )
         
         try await sendUSBIPMessage(unlinkRequest, to: client)
@@ -238,7 +238,7 @@ final class USBRequestIntegrationTests: XCTestCase {
         // Bind multiple devices
         for device in devices.prefix(2) {
             let busid = "\(device.busID)-\(device.deviceID)"
-            serverConfig.allowedDevices.insert(busid)
+            serverConfig.allowedDevices.append(busid)
         }
         
         let client = try await createTestClient()
@@ -461,7 +461,9 @@ final class USBRequestIntegrationTests: XCTestCase {
         XCTAssertEqual(initialResponse.status, 0)
         
         // Remove device binding (simulate disconnection)
-        serverConfig.allowedDevices.remove(busid)
+        if let index = serverConfig.allowedDevices.firstIndex(of: busid) {
+            serverConfig.allowedDevices.remove(at: index)
+        }
         
         // Second request should fail
         let disconnectedRequest = USBIPSubmitRequest(

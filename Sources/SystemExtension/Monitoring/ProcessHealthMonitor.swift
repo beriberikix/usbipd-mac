@@ -126,20 +126,15 @@ public class ProcessHealthMonitor {
         // Simulate a quick internal operation to test responsiveness
         // This could be a ping to internal services, memory allocation test, etc.
         
-        do {
-            // Test basic system calls
-            _ = getpid()
-            _ = Date()
-            
-            // Test memory allocation
-            let testData = Data(count: 1024)
-            _ = testData.count
-            
-            return true
-        } catch {
-            logger.debug("Test operation failed", context: ["error": error.localizedDescription])
-            return false
-        }
+        // Test basic system calls
+        _ = getpid()
+        _ = Date()
+        
+        // Test memory allocation
+        let testData = Data(count: 1024)
+        _ = testData.count
+        
+        return true
     }
     
     private func calculateProcessHealth() -> ProcessHealthStatus {
