@@ -95,7 +95,7 @@ jobs:
     name: CI Validation
     needs: release-validation
     if: ${{ !inputs.skip_tests }}
-    uses: ./.github/workflows/ci-new.yml
+    uses: ./.github/workflows/ci.yml
     with:
       release_validation: true
       skip_optional_tests: false
