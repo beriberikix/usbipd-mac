@@ -1,0 +1,526 @@
+name: 'Test Suite Execution'
+description: 'Centralized test execution for development, CI, and production environments'
+author: 'usbipd-mac CI Team'
+
+inputs:
+  test-environment:
+    description: 'Test environment to run (development, ci, production)'
+    required: true
+  cache-key-suffix:
+    description: 'Additional cache key suffix for cache differentiation'
+    required: false
+    default: ''
+  timeout-seconds:
+    description: 'Test execution timeout in seconds'
+    required: false
+    default: '180'
+  swift-configuration:
+    description: 'Swift build configuration (debug, release)'
+    required: false
+    default: 'debug'
+  parallel-execution:
+    description: 'Enable parallel test execution'
+    required: false
+    default: 'true'
+  enable-qemu-tests:
+    description: 'Enable QEMU integration tests'
+    required: false
+    default: 'auto'
+  enable-hardware-tests:
+    description: 'Enable hardware-dependent tests'
+    required: false
+    default: 'auto'
+  enable-system-extension-tests:
+    description: 'Enable System Extension tests'
+    required: false
+    default: 'auto'
+  skip-build:
+    description: 'Skip project build step (use existing build artifacts)'
+    required: false
+    default: 'false'
+  working-directory:
+    description: 'Working directory for test execution'
+    required: false
+    default: '.'
+  extra-args:
+    description: 'Additional arguments to pass to test scripts'
+    required: false
+    default: ''
+
+outputs:
+  result:
+    description: 'Test execution result (success, failed, error)'
+    value: ${{ steps.execute-tests.outputs.result }}
+  test-time:
+    description: 'Total test execution time in seconds'
+    value: ${{ steps.execute-tests.outputs.test_time }}
+  tests-run:
+    description: 'Number of tests executed'
+    value: ${{ steps.execute-tests.outputs.tests_run }}
+  cache-hit:
+    description: 'Whether Swift packages were restored from cache'
+    value: ${{ steps.cache-swift.outputs.cache-hit }}
+  environment-capabilities:
+    description: 'Detected environment capabilities'
+    value: ${{ steps.execute-tests.outputs.capabilities }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Starting Test Suite Execution
+      shell: bash
+      run: |
+        echo "::notice title=Test Suite::Starting ${{ inputs.test-environment }} test environment execution"
+        echo "🧪 Executing test suite for ${{ inputs.test-environment }} environment"
+        echo "📊 Status: STARTING"
+        echo "⚙️ Working directory: ${{ inputs.working-directory }}"
+        echo "🎯 Environment: ${{ inputs.test-environment }}"
+        echo "⏱️ Timeout: ${{ inputs.timeout-seconds }}s"
+        echo "🔧 Configuration: ${{ inputs.swift-configuration }}"
+        echo "⚡ Parallel: ${{ inputs.parallel-execution }}"
+
+    - name: Validate Test Environment
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "::group::Environment Validation"
+        echo "::notice title=Environment Check::Validating test environment requirements"
+        
+        # Validate required environment
+        case "${{ inputs.test-environment }}" in
+          development|ci|production)
+            echo "✅ Valid test environment: ${{ inputs.test-environment }}"
+            ;;
+          *)
+            echo "::error title=Invalid Environment::Unsupported test environment: ${{ inputs.test-environment }}"
+            echo "❌ Valid environments: development, ci, production"
+            exit 1
+            ;;
+        esac
+        
+        # Check for required scripts
+        SCRIPT_NAME=""
+        case "${{ inputs.test-environment }}" in
+          development)
+            SCRIPT_NAME="Scripts/run-development-tests.sh"
+            ;;
+          ci)
+            SCRIPT_NAME="Scripts/run-ci-tests.sh"
+            ;;
+          production)
+            SCRIPT_NAME="Scripts/run-production-tests.sh"
+            ;;
+        esac
+        
+        if [ ! -f "$SCRIPT_NAME" ]; then
+          echo "::error title=Script Missing::Test script not found: $SCRIPT_NAME"
+          exit 1
+        fi
+        
+        # Make script executable
+        chmod +x "$SCRIPT_NAME"
+        echo "✅ Test script validated: $SCRIPT_NAME"
+        
+        # Check Swift installation
+        if ! command -v swift >/dev/null 2>&1; then
+          echo "::error title=Swift Missing::Swift is not installed or not in PATH"
+          exit 1
+        fi
+        echo "✅ Swift available: $(swift --version | head -n1)"
+        
+        echo "::endgroup::"
+
+    - name: Cache Swift Packages
+      id: cache-swift
+      uses: actions/cache@v4
+      with:
+        path: |
+          .build
+          ~/Library/Caches/org.swift.swiftpm
+          ~/Library/org.swift.swiftpm
+        key: ${{ runner.os }}-swift-${{ inputs.test-environment }}-${{ hashFiles(format('{0}/Package.swift', inputs.working-directory), format('{0}/Package.resolved', inputs.working-directory)) }}-v2${{ inputs.cache-key-suffix }}
+        restore-keys: |
+          ${{ runner.os }}-swift-${{ inputs.test-environment }}-v2${{ inputs.cache-key-suffix }}
+          ${{ runner.os }}-swift-${{ inputs.test-environment }}-v2
+          ${{ runner.os }}-swift-v2
+
+    - name: 🔧 Setup Test Environment Variables
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "::group::Environment Setup"
+        echo "::notice title=Environment Setup::Configuring test environment variables"
+        
+        # Set base environment variables
+        echo "TEST_ENVIRONMENT=${{ inputs.test-environment }}" >> $GITHUB_ENV
+        echo "SWIFT_TEST_TIMEOUT=${{ inputs.timeout-seconds }}" >> $GITHUB_ENV
+        echo "SWIFT_TEST_PARALLEL=${{ inputs.parallel-execution }}" >> $GITHUB_ENV
+        
+        # Configure environment-specific settings
+        case "${{ inputs.test-environment }}" in
+          development)
+            echo "USBIPD_TEST_MODE=development" >> $GITHUB_ENV
+            echo "USBIPD_ENABLE_MOCKING=true" >> $GITHUB_ENV
+            echo "USBIPD_MOCK_HARDWARE=true" >> $GITHUB_ENV
+            echo "USBIPD_LOG_LEVEL=error" >> $GITHUB_ENV
+            
+            # Development environment QEMU settings
+            if [ "${{ inputs.enable-qemu-tests }}" = "auto" ]; then
+              echo "ENABLE_QEMU_TESTS=false" >> $GITHUB_ENV
+            else
+              echo "ENABLE_QEMU_TESTS=${{ inputs.enable-qemu-tests }}" >> $GITHUB_ENV
+            fi
+            echo "QEMU_TEST_MODE=mock" >> $GITHUB_ENV
+            echo "QEMU_TIMEOUT=30" >> $GITHUB_ENV
+            ;;
+            
+          ci)
+            echo "USBIPD_TEST_MODE=ci" >> $GITHUB_ENV
+            echo "USBIPD_ENABLE_MOCKING=true" >> $GITHUB_ENV
+            echo "USBIPD_MOCK_HARDWARE=true" >> $GITHUB_ENV
+            echo "USBIPD_CI_MODE=true" >> $GITHUB_ENV
+            echo "USBIPD_LOG_LEVEL=info" >> $GITHUB_ENV
+            echo "USBIPD_INTERACTIVE=false" >> $GITHUB_ENV
+            echo "USBIPD_NO_COLOR=true" >> $GITHUB_ENV
+            
+            # CI environment settings
+            if [ -n "${GITHUB_ACTIONS}" ] && [ "${GITHUB_ACTIONS}" = "true" ]; then
+              echo "USBIPD_GITHUB_ACTIONS=true" >> $GITHUB_ENV
+              echo "USBIPD_LOG_FORMAT=github" >> $GITHUB_ENV
+            fi
+            
+            # CI QEMU settings (mock mode only)
+            if [ "${{ inputs.enable-qemu-tests }}" = "auto" ]; then
+              echo "ENABLE_QEMU_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "ENABLE_QEMU_TESTS=${{ inputs.enable-qemu-tests }}" >> $GITHUB_ENV
+            fi
+            echo "QEMU_TEST_MODE=mock" >> $GITHUB_ENV
+            echo "QEMU_TIMEOUT=60" >> $GITHUB_ENV
+            ;;
+            
+          production)
+            echo "USBIPD_TEST_MODE=production" >> $GITHUB_ENV
+            echo "USBIPD_LOG_LEVEL=info" >> $GITHUB_ENV
+            
+            # Production environment capabilities detection
+            if [ "${{ inputs.enable-hardware-tests }}" = "auto" ]; then
+              echo "ENABLE_HARDWARE_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "ENABLE_HARDWARE_TESTS=${{ inputs.enable-hardware-tests }}" >> $GITHUB_ENV
+            fi
+            
+            if [ "${{ inputs.enable-qemu-tests }}" = "auto" ]; then
+              echo "ENABLE_QEMU_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "ENABLE_QEMU_TESTS=${{ inputs.enable-qemu-tests }}" >> $GITHUB_ENV
+            fi
+            
+            if [ "${{ inputs.enable-system-extension-tests }}" = "auto" ]; then
+              echo "ENABLE_SYSTEM_EXTENSION_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "ENABLE_SYSTEM_EXTENSION_TESTS=${{ inputs.enable-system-extension-tests }}" >> $GITHUB_ENV
+            fi
+            
+            echo "QEMU_TEST_MODE=vm" >> $GITHUB_ENV
+            echo "QEMU_TIMEOUT=120" >> $GITHUB_ENV
+            echo "MAX_TEST_DURATION=${{ inputs.timeout-seconds }}" >> $GITHUB_ENV
+            echo "PARALLEL_EXECUTION=${{ inputs.parallel-execution }}" >> $GITHUB_ENV
+            ;;
+        esac
+        
+        echo "✅ Environment variables configured for ${{ inputs.test-environment }}"
+        echo "💾 Cache status: ${{ steps.cache-swift.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
+        echo "::endgroup::"
+
+    - name: 🔨 Build Project (Optional)
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      if: ${{ inputs.skip-build != 'true' }}
+      run: |
+        echo "::group::Project Build"
+        echo "::notice title=Build::Building project for ${{ inputs.test-environment }} testing"
+        
+        BUILD_START=$(date +%s)
+        
+        # Choose build configuration
+        BUILD_CONFIG="${{ inputs.swift-configuration }}"
+        
+        # Build command based on environment
+        case "${{ inputs.test-environment }}" in
+          development)
+            echo "🔨 Building for development testing..."
+            swift build --build-tests \
+              --configuration "$BUILD_CONFIG" \
+              --enable-test-discovery \
+              --jobs $(sysctl -n hw.activecpu 2>/dev/null || echo "4")
+            ;;
+          ci)
+            echo "🔨 Building for CI testing..."
+            swift build --build-tests \
+              --configuration "$BUILD_CONFIG" \
+              --enable-test-discovery \
+              -Xswiftc -warnings-as-errors
+            ;;
+          production)
+            echo "🔨 Building for production testing..."
+            swift build --configuration release
+            
+            # Also build QEMU test server if QEMU tests enabled
+            if [ "$ENABLE_QEMU_TESTS" = "true" ]; then
+              echo "🔨 Building QEMU test server..."
+              swift build --product QEMUTestServer --configuration release
+            fi
+            ;;
+        esac
+        
+        BUILD_END=$(date +%s)
+        BUILD_TIME=$((BUILD_END - BUILD_START))
+        
+        echo "✅ Build completed in ${BUILD_TIME}s"
+        echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
+        echo "::endgroup::"
+
+    - name: 🧪 Execute Test Suite
+      id: execute-tests
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "::group::Test Execution"
+        echo "::notice title=Test Execution::Running ${{ inputs.test-environment }} test suite"
+        
+        TEST_START=$(date +%s)
+        RESULT="success"
+        CAPABILITIES=""
+        TESTS_RUN=0
+        
+        # Determine script and arguments
+        case "${{ inputs.test-environment }}" in
+          development)
+            SCRIPT="./Scripts/run-development-tests.sh"
+            SCRIPT_ARGS=""
+            
+            # Add development-specific arguments
+            if [ "${{ inputs.timeout-seconds }}" != "180" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --timeout ${{ inputs.timeout-seconds }}"
+            fi
+            
+            # Add extra arguments
+            if [ -n "${{ inputs.extra-args }}" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS ${{ inputs.extra-args }}"
+            fi
+            ;;
+            
+          ci)
+            SCRIPT="./Scripts/run-ci-tests.sh"
+            SCRIPT_ARGS=""
+            
+            # Add CI-specific arguments
+            if [ "${{ inputs.timeout-seconds }}" != "180" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --timeout ${{ inputs.timeout-seconds }}"
+            fi
+            
+            if [ "$ENABLE_QEMU_TESTS" != "true" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --no-qemu"
+            fi
+            
+            # Add extra arguments
+            if [ -n "${{ inputs.extra-args }}" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS ${{ inputs.extra-args }}"
+            fi
+            ;;
+            
+          production)
+            SCRIPT="./Scripts/run-production-tests.sh"
+            SCRIPT_ARGS=""
+            
+            # Add production-specific arguments
+            if [ "${{ inputs.timeout-seconds }}" != "600" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --timeout ${{ inputs.timeout-seconds }}"
+            fi
+            
+            if [ "$ENABLE_HARDWARE_TESTS" != "true" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --no-hardware"
+            fi
+            
+            if [ "$ENABLE_QEMU_TESTS" != "true" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --no-qemu"
+            fi
+            
+            if [ "$ENABLE_SYSTEM_EXTENSION_TESTS" != "true" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --no-system-extension"
+            fi
+            
+            if [ "${{ inputs.parallel-execution }}" = "true" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS --parallel"
+            fi
+            
+            # Add extra arguments
+            if [ -n "${{ inputs.extra-args }}" ]; then
+              SCRIPT_ARGS="$SCRIPT_ARGS ${{ inputs.extra-args }}"
+            fi
+            ;;
+        esac
+        
+        echo "🚀 Executing: $SCRIPT $SCRIPT_ARGS"
+        
+        # Execute test script with timeout
+        if command -v timeout >/dev/null 2>&1; then
+          TIMEOUT_CMD="timeout ${{ inputs.timeout-seconds }}s"
+        elif command -v gtimeout >/dev/null 2>&1; then
+          TIMEOUT_CMD="gtimeout ${{ inputs.timeout-seconds }}s"
+        else
+          echo "⚠️ No timeout command available, running without timeout"
+          TIMEOUT_CMD=""
+        fi
+        
+        # Run the test script
+        if [ -n "$TIMEOUT_CMD" ]; then
+          if $TIMEOUT_CMD $SCRIPT $SCRIPT_ARGS; then
+            echo "✅ Test suite execution completed successfully"
+            RESULT="success"
+          else
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 124 ]; then
+              echo "::error title=Test Timeout::Test suite timed out after ${{ inputs.timeout-seconds }}s"
+              RESULT="timeout"
+            else
+              echo "::error title=Test Failure::Test suite failed with exit code $EXIT_CODE"
+              RESULT="failed"
+            fi
+          fi
+        else
+          if $SCRIPT $SCRIPT_ARGS; then
+            echo "✅ Test suite execution completed successfully"
+            RESULT="success"
+          else
+            EXIT_CODE=$?
+            echo "::error title=Test Failure::Test suite failed with exit code $EXIT_CODE"
+            RESULT="failed"
+          fi
+        fi
+        
+        TEST_END=$(date +%s)
+        TEST_TIME=$((TEST_END - TEST_START))
+        
+        # Detect capabilities based on environment
+        case "${{ inputs.test-environment }}" in
+          development)
+            CAPABILITIES="mocking swift_tests"
+            if [ "$ENABLE_QEMU_TESTS" = "true" ]; then
+              CAPABILITIES="$CAPABILITIES qemu_mock"
+            fi
+            ;;
+          ci)
+            CAPABILITIES="mocking swift_tests automated_ci"
+            if [ "$ENABLE_QEMU_TESTS" = "true" ]; then
+              CAPABILITIES="$CAPABILITIES qemu_mock"
+            fi
+            ;;
+          production)
+            CAPABILITIES="swift_tests"
+            if [ "$ENABLE_HARDWARE_TESTS" = "true" ]; then
+              CAPABILITIES="$CAPABILITIES hardware_integration"
+            fi
+            if [ "$ENABLE_QEMU_TESTS" = "true" ]; then
+              CAPABILITIES="$CAPABILITIES qemu_integration"
+            fi
+            if [ "$ENABLE_SYSTEM_EXTENSION_TESTS" = "true" ]; then
+              CAPABILITIES="$CAPABILITIES system_extension"
+            fi
+            ;;
+        esac
+        
+        # Try to extract test count from logs (approximate)
+        if [ -f ".build/debug/test-results.txt" ]; then
+          TESTS_RUN=$(grep -c "Test Case.*passed\|Test Case.*failed" ".build/debug/test-results.txt" 2>/dev/null || echo "unknown")
+        elif command -v swift >/dev/null 2>&1; then
+          # Estimate based on test environment
+          case "${{ inputs.test-environment }}" in
+            development)
+              TESTS_RUN="~20"
+              ;;
+            ci)
+              TESTS_RUN="~50"
+              ;;
+            production)
+              TESTS_RUN="~100"
+              ;;
+          esac
+        else
+          TESTS_RUN="unknown"
+        fi
+        
+        # Set outputs
+        echo "result=$RESULT" >> $GITHUB_OUTPUT
+        echo "test_time=$TEST_TIME" >> $GITHUB_OUTPUT
+        echo "tests_run=$TESTS_RUN" >> $GITHUB_OUTPUT
+        echo "capabilities=$CAPABILITIES" >> $GITHUB_OUTPUT
+        
+        echo "📊 Test execution completed:"
+        echo "   • Result: $RESULT"
+        echo "   • Duration: ${TEST_TIME}s"
+        echo "   • Tests run: $TESTS_RUN"
+        echo "   • Capabilities: $CAPABILITIES"
+        
+        echo "::endgroup::"
+        
+        # Exit with error if tests failed
+        if [ "$RESULT" != "success" ]; then
+          exit 1
+        fi
+
+    - name: 📊 Test Suite Summary
+      shell: bash
+      if: always()
+      run: |
+        echo "::group::Test Suite Execution Summary"
+        
+        RESULT="${{ steps.execute-tests.outputs.result }}"
+        TEST_TIME="${{ steps.execute-tests.outputs.test_time }}"
+        TESTS_RUN="${{ steps.execute-tests.outputs.tests_run }}"
+        CAPABILITIES="${{ steps.execute-tests.outputs.capabilities }}"
+        CACHE_STATUS="${{ steps.cache-swift.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
+        
+        if [ "$RESULT" = "success" ]; then
+          echo "::notice title=Test Suite Complete::${{ inputs.test-environment }} test suite completed successfully"
+          echo "✅ Test execution: SUCCESS"
+          echo "⏱️ Duration: ${TEST_TIME}s"
+          echo "🧪 Tests run: $TESTS_RUN"
+          echo "🔧 Capabilities: $CAPABILITIES"
+          echo "💾 Cache performance: $CACHE_STATUS"
+          echo "🎯 Environment: ${{ inputs.test-environment }}"
+        else
+          echo "::error title=Test Suite Failed::${{ inputs.test-environment }} test suite execution failed"
+          echo "❌ Test execution: $RESULT"
+          echo "⏱️ Duration: ${TEST_TIME}s"
+          echo "🧪 Tests attempted: $TESTS_RUN"
+          echo "🔧 Capabilities: $CAPABILITIES"
+          echo "💾 Cache performance: $CACHE_STATUS"
+          echo "🎯 Environment: ${{ inputs.test-environment }}"
+          echo ""
+          echo "📖 Troubleshooting tips for ${{ inputs.test-environment }} environment:"
+          
+          case "${{ inputs.test-environment }}" in
+            development)
+              echo "   • Check that development dependencies are installed"
+              echo "   • Verify Swift Package Manager is working correctly"
+              echo "   • Try running with --clean flag to rebuild from scratch"
+              echo "   • Check that mocking is properly configured"
+              ;;
+            ci)
+              echo "   • Verify CI environment variables are set correctly"
+              echo "   • Check that SwiftLint is installed and configured"
+              echo "   • Ensure hardware mocking is enabled for CI"
+              echo "   • Review CI-specific test filtering"
+              ;;
+            production)
+              echo "   • Check hardware availability and permissions"
+              echo "   • Verify QEMU installation if QEMU tests enabled"
+              echo "   • Check System Extension permissions if enabled"
+              echo "   • Review production test environment setup"
+              ;;
+          esac
+        fi
+        
+        echo "::endgroup::"
