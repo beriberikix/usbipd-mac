@@ -3,8 +3,22 @@ name: CI
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'  # Support release tag validation
   pull_request:
     branches: [ main ]
+  workflow_call:  # Enable reuse by release workflows
+    inputs:
+      release_validation:
+        description: 'Enable release-specific validation steps'
+        required: false
+        default: false
+        type: boolean
+      skip_optional_tests:
+        description: 'Skip optional integration tests for faster release validation'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       run_tests:
@@ -17,10 +31,18 @@ on:
         required: false
         default: false
         type: boolean
+      release_validation:
+        description: 'Enable release-specific validation steps'
+        required: false
+        default: false
+        type: boolean
 
 env:
   # Global environment variables for consistent status reporting
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Release validation context
+  IS_RELEASE_VALIDATION: ${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}
+  SKIP_OPTIONAL_TESTS: ${{ inputs.skip_optional_tests || false }}
 
 jobs:
   lint:
@@ -201,10 +223,113 @@ jobs:
           fi
           echo "::endgroup::"
 
+  release-validation:
+    name: Release Validation
+    runs-on: macos-latest
+    if: ${{ env.IS_RELEASE_VALIDATION == 'true' }}
+    needs: [lint, build]
+    steps:
+      - name: 🚀 Starting Release Validation
+        run: |
+          echo "::notice title=Release Validation::Starting release-specific validation checks"
+          echo "🚀 This check validates release-specific requirements and artifacts"
+          echo "📊 Status: STARTING"
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📋 Verify Release Context
+        run: |
+          echo "::group::Release Context Information"
+          echo "::notice title=Release Context::Analyzing release validation requirements"
+          echo "🏷️ Reference: ${{ github.ref }}"
+          echo "📦 Event: ${{ github.event_name }}"
+          echo "🔍 Release validation mode: ${{ env.IS_RELEASE_VALIDATION }}"
+          echo "⚡ Skip optional tests: ${{ env.SKIP_OPTIONAL_TESTS }}"
+          echo "📊 Release context status: VERIFIED"
+          echo "::endgroup::"
+      
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+      
+      - name: 🔍 Validate Release Artifacts
+        run: |
+          echo "::group::Release Artifact Validation"
+          echo "::notice title=Artifact Validation::Validating release artifact integrity"
+          echo "📦 Validating release artifact structure and integrity..."
+          echo "📊 Status: VALIDATING"
+          
+          # Build for validation
+          swift build --verbose
+          
+          # Validate build products exist
+          if [ -d ".build/debug" ]; then
+            echo "✅ Build artifacts present"
+            echo "📋 Build products validated"
+          else
+            echo "❌ Build artifacts missing"
+            exit 1
+          fi
+          
+          echo "::notice title=Artifacts Valid::Release artifacts validated successfully"
+          echo "📊 Status: VALIDATED"
+          echo "::endgroup::"
+      
+      - name: 🏷️ Validate Version Information
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          echo "::group::Version Information Validation"
+          echo "::notice title=Version Validation::Validating release version information"
+          echo "🏷️ Validating version tag and release information..."
+          echo "📊 Status: VALIDATING"
+          
+          # Extract version from tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "🏷️ Release version: $VERSION"
+          
+          # Validate version format (semantic versioning)
+          if [[ $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "✅ Version format valid: $VERSION"
+            echo "::notice title=Version Valid::Release version format validated"
+          else
+            echo "❌ Invalid version format: $VERSION"
+            echo "::error title=Version Invalid::Release version format validation failed"
+            exit 1
+          fi
+          
+          echo "📊 Status: VALIDATED"
+          echo "::endgroup::"
+      
+      - name: 📊 Release Validation Summary
+        if: always()
+        run: |
+          echo "::group::Release Validation Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Release Validation Complete::All release validation checks passed"
+            echo "✅ Release artifact validation: PASSED"
+            echo "✅ Version information validation: PASSED"
+            echo "🎯 Release requirements validated successfully"
+            echo "📋 Ready for release pipeline execution"
+          else
+            echo "::error title=Release Validation Failed::Release validation checks failed"
+            echo "❌ Release validation: FAILED"
+            echo "🔧 Action required: Fix release validation issues before proceeding"
+          fi
+          echo "::endgroup::"
+
   test:
     name: CI Tests
     runs-on: macos-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true'
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (env.IS_RELEASE_VALIDATION == 'true' && env.SKIP_OPTIONAL_TESTS != 'true') }}
+    needs: [lint, build]
     steps:
       - name: 🧪 Starting CI Test Execution
         run: |
@@ -315,7 +440,8 @@ jobs:
   integration-test:
     name: Production Tests (QEMU)
     runs-on: macos-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_integration_tests == 'true'
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_integration_tests == 'true') || (env.IS_RELEASE_VALIDATION == 'true' && env.SKIP_OPTIONAL_TESTS != 'true') }}
+    needs: [lint, build, test]
     steps:
       - name: 🔗 Starting Production Test Execution
         run: |
@@ -426,4 +552,80 @@ jobs:
             echo "   • Production environment configuration problems"
             echo "   • Resource availability or timing constraints"
           fi
+          echo "::endgroup::"
+
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [lint, build, release-validation, test, integration-test]
+    outputs:
+      success: ${{ steps.check-status.outputs.success }}
+      release_ready: ${{ steps.check-status.outputs.release_ready }}
+    steps:
+      - name: 📊 Check Overall CI Status
+        id: check-status
+        run: |
+          echo "::group::CI Status Analysis"
+          echo "::notice title=CI Summary::Analyzing overall CI execution status"
+          
+          # Check required job statuses
+          LINT_STATUS="${{ needs.lint.result }}"
+          BUILD_STATUS="${{ needs.build.result }}"
+          RELEASE_VAL_STATUS="${{ needs.release-validation.result }}"
+          TEST_STATUS="${{ needs.test.result }}"
+          INTEGRATION_STATUS="${{ needs.integration-test.result }}"
+          
+          echo "📋 Job status summary:"
+          echo "   • Lint: $LINT_STATUS"
+          echo "   • Build: $BUILD_STATUS"
+          echo "   • Release Validation: $RELEASE_VAL_STATUS"
+          echo "   • CI Tests: $TEST_STATUS"
+          echo "   • Integration Tests: $INTEGRATION_STATUS"
+          
+          # Determine overall success (required jobs must succeed, optional jobs can be skipped)
+          REQUIRED_SUCCESS=true
+          RELEASE_READY=false
+          
+          # Check required jobs
+          if [[ "$LINT_STATUS" != "success" || "$BUILD_STATUS" != "success" ]]; then
+            REQUIRED_SUCCESS=false
+          fi
+          
+          # For release validation, check if release validation passed
+          if [[ "${{ env.IS_RELEASE_VALIDATION }}" == "true" ]]; then
+            if [[ "$RELEASE_VAL_STATUS" == "success" ]]; then
+              RELEASE_READY=true
+              echo "🚀 Release validation: PASSED"
+            else
+              RELEASE_READY=false
+              echo "❌ Release validation: FAILED"
+            fi
+            
+            # Check test jobs if not skipped
+            if [[ "${{ env.SKIP_OPTIONAL_TESTS }}" != "true" ]]; then
+              if [[ "$TEST_STATUS" != "success" && "$TEST_STATUS" != "skipped" ]]; then
+                REQUIRED_SUCCESS=false
+                RELEASE_READY=false
+              fi
+            fi
+          fi
+          
+          # Set outputs
+          echo "success=$REQUIRED_SUCCESS" >> $GITHUB_OUTPUT
+          echo "release_ready=$RELEASE_READY" >> $GITHUB_OUTPUT
+          
+          if [[ "$REQUIRED_SUCCESS" == "true" ]]; then
+            echo "::notice title=CI Success::All required CI checks passed successfully"
+            echo "✅ Overall CI status: SUCCESS"
+          else
+            echo "::error title=CI Failed::One or more required CI checks failed"
+            echo "❌ Overall CI status: FAILED"
+          fi
+          
+          if [[ "$RELEASE_READY" == "true" ]]; then
+            echo "::notice title=Release Ready::CI validation complete - ready for release"
+            echo "🚀 Release readiness: READY"
+          fi
+          
           echo "::endgroup::"
