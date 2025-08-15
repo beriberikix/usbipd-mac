@@ -24,7 +24,7 @@ final class USBRequestProcessorTests: XCTestCase {
         mockDeviceCommunicator = MockUSBDeviceCommunicator()
         urbTracker = URBTracker()
         
-        submitProcessor = USBSubmitProcessor(deviceCommunicator: mockDeviceCommunicator)
+        submitProcessor = USBSubmitProcessor(deviceCommunicator: mockDeviceCommunicator as USBDeviceCommunicator?)
         unlinkProcessor = USBUnlinkProcessor(submitProcessor: submitProcessor)
         
         testDevice = createTestDevice()

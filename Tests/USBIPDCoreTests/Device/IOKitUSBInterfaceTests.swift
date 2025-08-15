@@ -9,21 +9,20 @@ import Common
 @testable import USBIPDCore
 
 /// Comprehensive test suite for IOKitUSBInterface
-class IOKitUSBInterfaceTests: XCTestCase, TestSuite {
+class IOKitUSBInterfaceTests: XCTestCase {
     
-    // MARK: - TestSuite Protocol Implementation
-    
-    var environmentConfig: TestEnvironmentConfig {
-        return TestEnvironmentConfig.development
-    }
-    
-    var requiredCapabilities: TestEnvironmentCapabilities {
-        return [] // Unit tests only require basic capabilities
-    }
-    
-    var testCategory: String {
-        return "unit"
-    }
+    // MARK: - TestSuite Protocol Implementation - temporarily disabled
+    // var environmentConfig: TestEnvironmentConfig {
+    //     return TestEnvironmentConfig.development
+    // }
+    // 
+    // var requiredCapabilities: TestEnvironmentCapabilities {
+    //     return [] // Unit tests only require basic capabilities
+    // }
+    // 
+    // var testCategory: String {
+    //     return "unit"
+    // }
     
     // MARK: - Test Properties
     
