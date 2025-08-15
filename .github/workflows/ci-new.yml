@@ -3,10 +3,18 @@ name: CI (Consolidated)
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'  # Support release tag validation
+    paths-ignore:
+      - '**.md'
+      - 'Documentation/**'
+      - '.gitignore'
+      - 'LICENSE'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'Documentation/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_call:  # Enable reuse by release workflows
     inputs:
       release_validation:

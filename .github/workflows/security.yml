@@ -4,6 +4,18 @@ on:
   schedule:
     # Run security scans daily at 6 AM UTC
     - cron: '0 6 * * *'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Sources/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Package.swift'
+      - 'Package.resolved'
+      - 'Sources/**'
   workflow_dispatch:
     inputs:
       scan_type:
@@ -74,41 +86,41 @@ jobs:
             
             # Parse Package.resolved to extract dependency information
             python3 << 'EOF' > .security-scan-results/dependency-list.json
-import json
-import sys
-
-try:
-    with open('Package.resolved', 'r') as f:
-        data = json.load(f)
-    
-    dependencies = []
-    if 'pins' in data:
-        for pin in data['pins']:
-            dependencies.append({
-                'name': pin.get('identity', pin.get('package', 'unknown')),
-                'version': pin.get('state', {}).get('version', 'unknown'),
-                'url': pin.get('location', 'unknown')
-            })
-    elif 'object' in data and 'pins' in data['object']:
-        for pin in data['object']['pins']:
-            dependencies.append({
-                'name': pin.get('identity', pin.get('package', 'unknown')),
-                'version': pin.get('state', {}).get('version', 'unknown'),
-                'url': pin.get('location', 'unknown')
-            })
-    
-    result = {
-        'total_dependencies': len(dependencies),
-        'dependencies': dependencies,
-        'scan_timestamp': '$(date -u "+%Y-%m-%dT%H:%M:%S.%3NZ")'
-    }
-    
-    print(json.dumps(result, indent=2))
-    
-except Exception as e:
-    print(f'{{"error": "Failed to parse Package.resolved: {e}"}}', file=sys.stderr)
-    sys.exit(1)
-EOF
+            import json
+            import sys
+            
+            try:
+                with open('Package.resolved', 'r') as f:
+                    data = json.load(f)
+                
+                dependencies = []
+                if 'pins' in data:
+                    for pin in data['pins']:
+                        dependencies.append({
+                            'name': pin.get('identity', pin.get('package', 'unknown')),
+                            'version': pin.get('state', {}).get('version', 'unknown'),
+                            'url': pin.get('location', 'unknown')
+                        })
+                elif 'object' in data and 'pins' in data['object']:
+                    for pin in data['object']['pins']:
+                        dependencies.append({
+                            'name': pin.get('identity', pin.get('package', 'unknown')),
+                            'version': pin.get('state', {}).get('version', 'unknown'),
+                            'url': pin.get('location', 'unknown')
+                        })
+                
+                result = {
+                    'total_dependencies': len(dependencies),
+                    'dependencies': dependencies,
+                    'scan_timestamp': '$(date -u "+%Y-%m-%dT%H:%M:%S.%3NZ")'
+                }
+                
+                print(json.dumps(result, indent=2))
+                
+            except Exception as e:
+                print(f'{{"error": "Failed to parse Package.resolved: {e}"}}', file=sys.stderr)
+                sys.exit(1)
+            EOF
             
             # Count dependencies for reporting
             TOTAL_DEPS=$(python3 -c "import json; print(json.load(open('.security-scan-results/dependency-list.json'))['total_dependencies'])")
@@ -140,23 +152,18 @@ EOF
           SECURITY_PATTERN_COUNT=0
           
           # Create patterns for secret detection
-          cat << 'EOF' > .security-scan-results/secret-patterns.txt
-# API Keys and Tokens
-[Aa][Pp][Ii]_?[Kk][Ee][Yy].*['"]?[0-9a-zA-Z]{32,}['"]?
-[Aa][Cc][Cc][Ee][Ss][Ss]_?[Tt][Oo][Kk][Ee][Nn].*['"]?[0-9a-zA-Z]{32,}['"]?
-[Ss][Ee][Cc][Rr][Ee][Tt]_?[Kk][Ee][Yy].*['"]?[0-9a-zA-Z]{32,}['"]?
-
-# Private Keys
------BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----
------BEGIN\s+OPENSSH\s+PRIVATE\s+KEY-----
-
-# GitHub Tokens
-gh[ps]_[0-9a-zA-Z]{36}
-github_pat_[0-9a-zA-Z_]{82}
-
-# AWS Credentials
-AKIA[0-9A-Z]{16}
-EOF
+          echo "# API Keys and Tokens" > .security-scan-results/secret-patterns.txt
+          echo "[Aa][Pp][Ii]_?[Kk][Ee][Yy].*['\"]\?[0-9a-zA-Z]{32,}['\"]\?" >> .security-scan-results/secret-patterns.txt
+          echo "[Aa][Cc][Cc][Ee][Ss][Ss]_?[Tt][Oo][Kk][Ee][Nn].*['\"]\?[0-9a-zA-Z]{32,}['\"]\?" >> .security-scan-results/secret-patterns.txt
+          echo "[Ss][Ee][Cc][Rr][Ee][Tt]_?[Kk][Ee][Yy].*['\"]\?[0-9a-zA-Z]{32,}['\"]\?" >> .security-scan-results/secret-patterns.txt
+          echo "# Private Keys" >> .security-scan-results/secret-patterns.txt
+          echo "-----BEGIN\\s+(RSA\\s+)?PRIVATE\\s+KEY-----" >> .security-scan-results/secret-patterns.txt
+          echo "-----BEGIN\\s+OPENSSH\\s+PRIVATE\\s+KEY-----" >> .security-scan-results/secret-patterns.txt
+          echo "# GitHub Tokens" >> .security-scan-results/secret-patterns.txt
+          echo "gh[ps]_[0-9a-zA-Z]{36}" >> .security-scan-results/secret-patterns.txt
+          echo "github_pat_[0-9a-zA-Z_]{82}" >> .security-scan-results/secret-patterns.txt
+          echo "# AWS Credentials" >> .security-scan-results/secret-patterns.txt
+          echo "AKIA[0-9A-Z]{16}" >> .security-scan-results/secret-patterns.txt
           
           # Scan for secrets in source files
           echo "🔍 Scanning Swift source files for potential secrets..."
@@ -241,21 +248,25 @@ EOF
           esac
           
           # Generate security summary report
-          cat << EOF > .security-scan-results/security-summary.json
-{
-  "scan_timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%S.%3NZ')",
-  "scan_type": "${{ env.SCAN_TYPE }}",
-  "severity_threshold": "${{ env.SEVERITY_THRESHOLD }}",
-  "results": {
-    "vulnerability_count": $VULNERABILITY_COUNT,
-    "critical_vulnerabilities": $CRITICAL_COUNT,
-    "secret_findings": $SECRET_COUNT,
-    "security_pattern_count": $SECURITY_PATTERN_COUNT,
-    "total_issues": $TOTAL_ISSUES
-  },
-  "scan_status": "$SCAN_STATUS"
-}
-EOF
+          python3 -c "
+          import json
+          import os
+          summary = {
+              'scan_timestamp': '$(date -u \"+%Y-%m-%dT%H:%M:%S.%3NZ\")',
+              'scan_type': '${{ env.SCAN_TYPE }}',
+              'severity_threshold': '${{ env.SEVERITY_THRESHOLD }}',
+              'results': {
+                  'vulnerability_count': int('$VULNERABILITY_COUNT'),
+                  'critical_vulnerabilities': int('$CRITICAL_COUNT'),
+                  'secret_findings': int('$SECRET_COUNT'),
+                  'security_pattern_count': int('$SECURITY_PATTERN_COUNT'),
+                  'total_issues': int('$TOTAL_ISSUES')
+              },
+              'scan_status': '$SCAN_STATUS'
+          }
+          with open('.security-scan-results/security-summary.json', 'w') as f:
+              json.dump(summary, f, indent=2)
+          "
           
           # Set outputs
           echo "vulnerability-count=$VULNERABILITY_COUNT" >> $GITHUB_OUTPUT
