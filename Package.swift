@@ -63,16 +63,20 @@ let package = Package(
             ]),
         .testTarget(
             name: "USBIPDCoreTests",
-            dependencies: ["USBIPDCore"]),
+            dependencies: ["USBIPDCore"],
+            sources: [".", "../SharedUtilities"]),
         .testTarget(
             name: "USBIPDCLITests",
-            dependencies: ["USBIPDCLI"]),
+            dependencies: ["USBIPDCLI"],
+            sources: [".", "../SharedUtilities"]),
         .testTarget(
             name: "IntegrationTests",
-            dependencies: ["USBIPDCore", "QEMUTestServer", "USBIPDCLI", "SystemExtension", "Common"]),
+            dependencies: ["USBIPDCore", "QEMUTestServer", "USBIPDCLI", "SystemExtension", "Common"],
+            sources: [".", "../SharedUtilities"]),
         .testTarget(
             name: "SystemExtensionTests",
-            dependencies: ["SystemExtension", "Common"]),
+            dependencies: ["SystemExtension", "Common"],
+            sources: [".", "../SharedUtilities"]),
         .testTarget(
             name: "QEMUIntegrationTests",
             dependencies: ["QEMUTestServer", "USBIPDCore", "Common"],

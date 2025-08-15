@@ -686,7 +686,7 @@ extension QEMUUSBIPProtocolTests {
     }
     
     /// Helper to validate USB/IP header structure
-    private func validateUSBIPHeader(_ header: USBIPHeader, expectedCommand: USBIPCommand) {
+    private func validateUSBIPHeader(_ header: USBIPHeader, expectedCommand: USBIPProtocol.Command) {
         XCTAssertEqual(header.version, USBIPProtocol.version, "Header version should match protocol")
         XCTAssertEqual(header.command, expectedCommand, "Header command should match expected")
         XCTAssertEqual(header.status, 0, "Header status should be success for normal operations")

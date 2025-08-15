@@ -24,7 +24,7 @@ final class USBRequestProcessorTests: XCTestCase {
         mockDeviceCommunicator = MockUSBDeviceCommunicator()
         urbTracker = URBTracker()
         
-        submitProcessor = USBSubmitProcessor(deviceCommunicator: mockDeviceCommunicator)
+        submitProcessor = USBSubmitProcessor(deviceCommunicator: mockDeviceCommunicator as USBDeviceCommunicator)
         unlinkProcessor = USBUnlinkProcessor(submitProcessor: submitProcessor)
         
         testDevice = createTestDevice()
@@ -54,7 +54,7 @@ final class USBRequestProcessorTests: XCTestCase {
             deviceClass: 0x09,
             deviceSubClass: 0x00,
             deviceProtocol: 0x00,
-            speed: .highSpeed,
+            speed: .high,
             manufacturerString: "Test Manufacturer",
             productString: "Test Device",
             serialNumberString: "TEST001"
@@ -100,10 +100,10 @@ final class USBRequestProcessorTests: XCTestCase {
     ) throws -> Data {
         let request = USBIPUnlinkRequest(
             seqnum: seqnum,
+            unlinkSeqnum: unlinkSeqnum,
             devid: devid,
             direction: direction,
-            ep: endpoint,
-            unlinkSeqnum: unlinkSeqnum
+            ep: endpoint
         )
         
         return try request.encode()
@@ -113,8 +113,8 @@ final class USBRequestProcessorTests: XCTestCase {
     
     func testProcessSubmitRequestControlTransferSuccess() async throws {
         // Configure mock for control transfer success
-        let responseData = Data([0x12, 0x01, 0x00, 0x02, 0x09, 0x00, 0x00, 0x40]) // Device descriptor
-        mockDeviceCommunicator.setControlTransferResponse(responseData)
+        let mockResponseData = Data([0x12, 0x01, 0x00, 0x02, 0x09, 0x00, 0x00, 0x40]) // Device descriptor
+        mockDeviceCommunicator.setControlTransferResponse(mockResponseData)
         
         // Create control transfer request (GET_DESCRIPTOR)
         let setupPacket = Data([0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x12, 0x00])
