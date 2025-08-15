@@ -254,3 +254,249 @@ Environment variables for QEMU testing:
 # Integration with main test reporting
 ./Scripts/generate-test-report.sh --environment production  # Includes QEMU results
 ```
+
+## Release Automation
+
+The project includes comprehensive automated release workflows with GitHub Actions integration, artifact building, code signing, and distribution management.
+
+### Release Workflow Overview
+
+The release system uses a multi-stage automated pipeline:
+
+1. **Release Preparation** (`Scripts/prepare-release.sh`)
+2. **GitHub Actions Workflows** (`.github/workflows/`)
+3. **Artifact Validation** (`Scripts/validate-release-artifacts.sh`)
+4. **Rollback Utilities** (`Scripts/rollback-release.sh`)
+5. **Monitoring and Alerting** (Automated workflow monitoring)
+
+### Release Preparation
+
+Use the release preparation script to validate and prepare releases locally:
+
+```bash
+# Prepare a release (validates environment, runs tests, creates tags)
+./Scripts/prepare-release.sh v1.2.3
+
+# Dry run to preview release preparation
+./Scripts/prepare-release.sh --dry-run v1.2.3
+
+# Prepare release with custom options
+./Scripts/prepare-release.sh --skip-tests --force v1.2.3-beta
+
+# Emergency release preparation (skips validation)
+./Scripts/prepare-release.sh --force --skip-tests --skip-lint v1.2.4
+```
+
+### GitHub Actions Workflows
+
+The automated release system includes several GitHub Actions workflows:
+
+#### Production Release Workflow (`.github/workflows/release.yml`)
+- **Triggers**: Git tags (`v*`) or manual dispatch
+- **Stages**: Validation → Build → Test → Artifact Creation → Release Publication
+- **Features**: Code signing, notarization, artifact validation, multi-architecture builds
+- **Duration**: ~15-20 minutes for full release
+
+```bash
+# Manual release trigger (via GitHub web interface or gh CLI)
+gh workflow run release.yml -f version=v1.2.3 -f prerelease=false
+
+# Emergency release (skips some tests)
+gh workflow run release.yml -f version=v1.2.3 -f skip_tests=true
+```
+
+#### Pre-Release Validation Workflow (`.github/workflows/pre-release.yml`)
+- **Triggers**: Pull requests to main or manual dispatch
+- **Validation Levels**: Quick (PR) → Comprehensive (manual) → Release Candidate (pre-release)
+- **Features**: Multi-level testing, release readiness validation
+
+```bash
+# Run comprehensive pre-release validation
+gh workflow run pre-release.yml -f validation_level=comprehensive
+
+# Full release candidate validation
+gh workflow run pre-release.yml -f validation_level=release-candidate
+```
+
+#### Release Monitoring Workflow (`.github/workflows/release-monitoring.yml`)
+- **Purpose**: Monitor release workflow execution, failure alerts, metrics collection
+- **Triggers**: Automatic (on workflow completion) or manual dispatch
+- **Features**: Failure notifications, performance metrics, health checks
+
+```bash
+# Manual monitoring and status check
+gh workflow run release-monitoring.yml -f monitoring_mode=status
+
+# Generate release metrics report
+gh workflow run release-monitoring.yml -f monitoring_mode=metrics -f time_window=24
+
+# Perform health check on release infrastructure
+gh workflow run release-monitoring.yml -f monitoring_mode=health-check
+```
+
+### Release Artifact Management
+
+#### Artifact Validation
+Validate release artifacts for integrity, signatures, and compatibility:
+
+```bash
+# Validate all release artifacts
+./Scripts/validate-release-artifacts.sh --artifacts-path ./release-artifacts
+
+# Validate specific version artifacts
+./Scripts/validate-release-artifacts.sh --expected-version v1.2.3
+
+# Skip signature validation (development/testing)
+./Scripts/validate-release-artifacts.sh --skip-signature-check
+
+# Comprehensive validation with verbose output
+./Scripts/validate-release-artifacts.sh --verbose
+```
+
+#### Release Rollback and Recovery
+Handle failed releases and cleanup incomplete artifacts:
+
+```bash
+# Rollback failed release (removes tags, cleans artifacts)
+./Scripts/rollback-release.sh v1.2.3
+
+# Rollback with different strategies
+./Scripts/rollback-release.sh --type failed-release v1.2.3      # Full Git rollback
+./Scripts/rollback-release.sh --type incomplete-build          # Build artifacts only
+./Scripts/rollback-release.sh --type artifacts-only            # Preserve Git state
+
+# Cleanup old artifacts and temporary files
+./Scripts/rollback-release.sh --cleanup-only --max-age 30
+
+# Preview rollback actions without changes
+./Scripts/rollback-release.sh --dry-run v1.2.3
+```
+
+### Release Testing and Validation
+
+#### End-to-End Release Testing
+The project includes comprehensive end-to-end release testing (`Tests/Integration/ReleaseEndToEndTests.swift`):
+
+- **Phase 1**: Source code readiness validation
+- **Phase 2**: Build system validation  
+- **Phase 3**: Artifact generation testing
+- **Phase 4**: Code signing validation
+- **Phase 5**: Artifact integrity verification
+- **Phase 6**: Distribution simulation
+- **Phase 7**: QEMU integration testing
+- **Phase 8**: Rollback capability testing
+
+```bash
+# Run end-to-end release tests
+swift test --filter ReleaseEndToEndTests
+
+# Run with specific environment
+TEST_ENVIRONMENT=production swift test --filter ReleaseEndToEndTests
+```
+
+#### Release Workflow Testing
+Validate GitHub Actions workflows locally using act framework (`Tests/ReleaseWorkflowTests/`):
+
+```bash
+# Test release workflows (requires act installation)
+swift test --filter ReleaseWorkflowTests
+
+# Generate workflow validation report
+./Scripts/generate-workflow-test-report.sh
+```
+
+### Release Security and Code Signing
+
+The release system includes comprehensive code signing and security validation:
+
+#### Code Signing Setup
+Configure Apple Developer certificates and GitHub Secrets:
+
+- `DEVELOPER_ID_CERTIFICATE`: Base64-encoded Developer ID Application certificate
+- `DEVELOPER_ID_CERTIFICATE_PASSWORD`: Certificate password
+- `NOTARIZATION_USERNAME`: Apple ID for notarization
+- `NOTARIZATION_PASSWORD`: App-specific password for notarization
+
+#### Security Scanning
+Automated security scanning is integrated into release workflows:
+
+- Dependency vulnerability scanning
+- Code signature validation
+- Binary security analysis
+- Supply chain verification
+
+### Release Performance and Monitoring
+
+#### Performance Benchmarking
+Monitor release workflow performance and identify optimization opportunities:
+
+```bash
+# Benchmark release workflow performance
+./Scripts/benchmark-release-performance.sh
+
+# Generate performance optimization report
+./Scripts/benchmark-release-performance.sh --generate-report
+```
+
+#### Release Metrics and Monitoring
+Track release success rates, performance metrics, and infrastructure health:
+
+- **Success Rate Monitoring**: Track release success/failure rates over time
+- **Performance Metrics**: Build times, test execution duration, artifact sizes
+- **Infrastructure Health**: Workflow availability, dependency status, environment validation
+
+### Emergency Release Procedures
+
+For emergency releases or hotfixes:
+
+1. **Immediate Release**: Use force flags to bypass non-critical validation
+2. **Hotfix Process**: Create hotfix branches with accelerated testing
+3. **Rollback Strategy**: Automated rollback with preserved backup capabilities
+4. **Recovery Procedures**: Comprehensive cleanup and state restoration
+
+```bash
+# Emergency release preparation
+./Scripts/prepare-release.sh --force --skip-lint v1.2.4-hotfix
+
+# Emergency GitHub Actions trigger
+gh workflow run release.yml -f version=v1.2.4-hotfix -f skip_tests=true
+
+# Emergency rollback if needed
+./Scripts/rollback-release.sh --type failed-release v1.2.4-hotfix
+```
+
+### Release Troubleshooting
+
+#### Common Issues and Solutions
+
+1. **Build Failures**: Check SwiftLint compliance, dependency resolution, environment setup
+2. **Test Failures**: Validate test environment, check QEMU integration, review test logs
+3. **Code Signing Issues**: Verify certificate validity, check secret configuration, validate entitlements
+4. **Artifact Problems**: Run artifact validation, check checksums, verify file permissions
+5. **Workflow Failures**: Review GitHub Actions logs, check secret access, validate branch protection
+
+#### Diagnostic Commands
+
+```bash
+# Comprehensive release health check
+./Scripts/release-health-check.sh
+
+# Validate release environment
+./Scripts/validate-release-environment.sh
+
+# Generate release troubleshooting report
+./Scripts/generate-release-diagnostics.sh --verbose
+```
+
+### AI Assistant Context for Release Management
+
+When working with release automation:
+
+1. **Always validate environment** before making release-related changes
+2. **Run comprehensive tests** before triggering release workflows  
+3. **Use dry-run mode** to preview changes before execution
+4. **Monitor workflow execution** and be prepared to rollback if issues occur
+5. **Follow security best practices** for code signing and artifact handling
+6. **Document any manual interventions** and update automation accordingly
+
+The release automation system is designed for reliability, security, and minimal manual intervention while providing comprehensive monitoring and rollback capabilities for production deployments.
