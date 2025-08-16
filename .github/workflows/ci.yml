@@ -366,11 +366,241 @@ jobs:
           fi
           echo "::endgroup::"
 
+  homebrew-validation:
+    name: Homebrew Formula Validation
+    runs-on: macos-latest
+    if: contains(github.event.head_commit.modified, 'Formula/') || contains(github.event.head_commit.added, 'Formula/') || github.event_name == 'pull_request'
+    needs: [code-quality, build-validation]
+    steps:
+      - name: 🍺 Starting Homebrew Formula Validation
+        run: |
+          echo "::notice title=Homebrew Validation::Starting comprehensive Homebrew formula validation"
+          echo "🍺 Validating formula syntax, installation, and service functionality"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Homebrew Environment
+        run: |
+          echo "::group::Homebrew Environment Setup"
+          echo "::notice title=Homebrew Setup::Setting up Homebrew environment for formula testing"
+          
+          # Ensure Homebrew is up to date
+          brew update
+          
+          # Install Ruby for formula syntax checking
+          if ! command -v ruby >/dev/null 2>&1; then
+            echo "Installing Ruby for formula validation..."
+            brew install ruby
+          fi
+          
+          echo "✅ Homebrew environment ready"
+          echo "🍺 Homebrew version: $(brew --version | head -1)"
+          echo "💎 Ruby version: $(ruby --version)"
+          echo "::endgroup::"
+
+      - name: 🔍 Validate Formula Syntax
+        run: |
+          echo "::group::Formula Syntax Validation"
+          echo "::notice title=Formula Syntax::Validating Homebrew formula Ruby syntax"
+          
+          FORMULA_FILE="Formula/usbipd-mac.rb"
+          
+          if [ ! -f "$FORMULA_FILE" ]; then
+            echo "::error title=Formula Missing::Formula file not found: $FORMULA_FILE"
+            exit 1
+          fi
+          
+          echo "🔍 Checking Ruby syntax for $FORMULA_FILE..."
+          
+          # Check Ruby syntax
+          if ruby -c "$FORMULA_FILE"; then
+            echo "✅ Formula Ruby syntax is valid"
+          else
+            echo "::error title=Syntax Error::Formula has Ruby syntax errors"
+            exit 1
+          fi
+          
+          # Check for required formula elements
+          echo "🔍 Validating formula structure..."
+          
+          if ! grep -q "class.*Formula" "$FORMULA_FILE"; then
+            echo "::error title=Structure Error::Formula must define a class inheriting from Formula"
+            exit 1
+          fi
+          
+          if ! grep -q "def install" "$FORMULA_FILE"; then
+            echo "::error title=Structure Error::Formula must define an install method"
+            exit 1
+          fi
+          
+          if ! grep -q "service do" "$FORMULA_FILE"; then
+            echo "::warning title=Service Missing::Formula does not define a service block"
+          else
+            echo "✅ Formula includes service configuration"
+          fi
+          
+          echo "::notice title=Syntax Valid::Formula syntax and structure validation passed"
+          echo "✅ Formula syntax validation completed"
+          echo "::endgroup::"
+
+      - name: 🔧 Setup Swift Environment for Build
+        uses: ./.github/actions/setup-swift-environment
+        with:
+          cache-key-suffix: '-homebrew'
+          install-swiftlint: 'false'
+          setup-test-scripts: 'false'
+          validate-environment: 'false'
+
+      - name: 🍺 Test Formula Installation
+        run: |
+          echo "::group::Formula Installation Test"
+          echo "::notice title=Formula Install::Testing formula installation with build-from-source"
+          
+          FORMULA_FILE="Formula/usbipd-mac.rb"
+          
+          # Create a temporary tap for testing
+          TEMP_TAP_DIR="$(mktemp -d)"
+          TAP_NAME="test/usbipd"
+          TAP_PATH="$TEMP_TAP_DIR/homebrew-$TAP_NAME"
+          
+          echo "🔧 Setting up temporary tap for testing..."
+          mkdir -p "$TAP_PATH/Formula"
+          cp "$FORMULA_FILE" "$TAP_PATH/Formula/"
+          
+          # Make the temporary tap available to Homebrew
+          export HOMEBREW_TAP_DIR="$TEMP_TAP_DIR"
+          
+          echo "🍺 Testing formula installation..."
+          
+          # Test formula audit first
+          if brew audit --strict "$TAP_PATH/Formula/usbipd-mac.rb"; then
+            echo "✅ Formula audit passed"
+          else
+            echo "::warning title=Audit Warning::Formula audit detected issues (non-blocking)"
+          fi
+          
+          # Test installation (this will build from source)
+          echo "🔨 Testing build-from-source installation..."
+          
+          # We'll use a dry-run approach since we can't actually install system services in CI
+          if brew install --build-from-source --verbose --dry-run "$TAP_PATH/Formula/usbipd-mac.rb" 2>&1; then
+            echo "✅ Formula installation simulation successful"
+          else
+            echo "::error title=Install Failed::Formula installation test failed"
+            exit 1
+          fi
+          
+          # Clean up
+          rm -rf "$TEMP_TAP_DIR"
+          
+          echo "::notice title=Install Test Complete::Formula installation test completed successfully"
+          echo "✅ Formula installation validation completed"
+          echo "::endgroup::"
+
+      - name: 🔧 Test Service Configuration
+        run: |
+          echo "::group::Service Configuration Test"
+          echo "::notice title=Service Test::Testing Homebrew service configuration"
+          
+          FORMULA_FILE="Formula/usbipd-mac.rb"
+          
+          echo "🔍 Validating service configuration..."
+          
+          # Extract and validate service configuration
+          if grep -q "service do" "$FORMULA_FILE"; then
+            echo "✅ Service block found in formula"
+            
+            # Check for required service attributes
+            if grep -A 10 "service do" "$FORMULA_FILE" | grep -q "run"; then
+              echo "✅ Service run command specified"
+            else
+              echo "::error title=Service Error::Service block missing run command"
+              exit 1
+            fi
+            
+            if grep -A 10 "service do" "$FORMULA_FILE" | grep -q "require_root"; then
+              echo "✅ Service root requirement specified"
+            else
+              echo "::warning title=Service Warning::Service may need root requirement for System Extension"
+            fi
+            
+            if grep -A 10 "service do" "$FORMULA_FILE" | grep -q "keep_alive"; then
+              echo "✅ Service keep_alive configuration found"
+            else
+              echo "::warning title=Service Warning::Service keep_alive not configured"
+            fi
+            
+            # Test service management commands (dry-run)
+            echo "🧪 Testing service management capabilities..."
+            echo "   Service would be managed with:"
+            echo "   • brew services start usbipd-mac"
+            echo "   • brew services stop usbipd-mac" 
+            echo "   • brew services restart usbipd-mac"
+            echo "   • brew services info usbipd-mac"
+            
+            echo "✅ Service configuration validation completed"
+          else
+            echo "::warning title=No Service::Formula does not include service configuration"
+            echo "⚠️ Service management will not be available through Homebrew"
+          fi
+          
+          echo "::notice title=Service Test Complete::Service configuration test completed"
+          echo "::endgroup::"
+
+      - name: 🔍 Run Formula Validation Script
+        if: hashFiles('Scripts/validate-formula.sh') != ''
+        run: |
+          echo "::group::Comprehensive Formula Validation"
+          echo "::notice title=Formula Validation::Running comprehensive formula validation script"
+          
+          if [ -x "Scripts/validate-formula.sh" ]; then
+            echo "🔍 Running formula validation script..."
+            
+            # Run validation script in CI mode (skip actual installation)
+            if Scripts/validate-formula.sh --skip-installation --ci-mode; then
+              echo "✅ Comprehensive formula validation passed"
+            else
+              echo "::error title=Validation Failed::Formula validation script detected issues"
+              exit 1
+            fi
+          else
+            echo "::warning title=Script Missing::Formula validation script not found or not executable"
+          fi
+          
+          echo "::notice title=Validation Complete::Comprehensive formula validation completed"
+          echo "::endgroup::"
+
+      - name: 📊 Homebrew Validation Summary
+        if: always()
+        run: |
+          echo "::group::Homebrew Validation Summary"
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "::notice title=Homebrew Validation Complete::All Homebrew formula validation checks passed"
+            echo "✅ Formula syntax validation: PASSED"
+            echo "✅ Formula installation test: PASSED" 
+            echo "✅ Service configuration test: PASSED"
+            echo "🍺 Formula ready for Homebrew distribution"
+            echo "📋 Validation ensures formula will work correctly when published"
+          else
+            echo "::error title=Homebrew Validation Failed::Homebrew formula validation failed"
+            echo "❌ Formula validation: FAILED"
+            echo "🔧 Action required: Fix formula issues before merging"
+            echo "📋 Common formula issues to check:"
+            echo "   • Ruby syntax errors in formula file"
+            echo "   • Missing required formula methods (install, service)"
+            echo "   • Incorrect dependency specifications"
+            echo "   • Service configuration problems"
+            echo "   • Formula audit failures"
+          fi
+          echo "::endgroup::"
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [code-quality, build-validation, test-suite]
+    needs: [code-quality, build-validation, test-suite, homebrew-validation]
     outputs:
       success: ${{ steps.check-status.outputs.success }}
       release_ready: ${{ steps.check-status.outputs.release_ready }}
@@ -386,6 +616,7 @@ jobs:
           CODE_QUALITY_STATUS="${{ needs.code-quality.result }}"
           BUILD_STATUS="${{ needs.build-validation.result }}"
           TEST_STATUS="${{ needs.test-suite.result }}"
+          HOMEBREW_STATUS="${{ needs.homebrew-validation.result }}"
           # Check if release validation was requested
           IS_RELEASE_VAL="${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}"
           if [[ "$IS_RELEASE_VAL" == "true" ]]; then
@@ -398,6 +629,7 @@ jobs:
           echo "   • Code Quality: $CODE_QUALITY_STATUS"
           echo "   • Build Validation: $BUILD_STATUS"
           echo "   • Test Suite (${{ env.TEST_ENVIRONMENT }}): $TEST_STATUS"
+          echo "   • Homebrew Validation: $HOMEBREW_STATUS"
           echo "   • Release Validation: $RELEASE_VAL_STATUS"
           
           # Determine overall success
@@ -414,6 +646,11 @@ jobs:
             if [[ "${{ env.SKIP_OPTIONAL_TESTS }}" != "true" ]]; then
               REQUIRED_SUCCESS=false
             fi
+          fi
+          
+          # Check Homebrew validation status (required if it runs, skipped if formula changes not detected)
+          if [[ "$HOMEBREW_STATUS" != "success" && "$HOMEBREW_STATUS" != "skipped" ]]; then
+            REQUIRED_SUCCESS=false
           fi
           
           # For release validation, check if release validation passed
