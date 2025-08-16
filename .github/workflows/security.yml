@@ -88,6 +88,7 @@ jobs:
             python3 << 'EOF' > .security-scan-results/dependency-list.json
             import json
             import sys
+            import datetime
             
             try:
                 with open('Package.resolved', 'r') as f:
@@ -109,7 +110,6 @@ jobs:
                             'url': pin.get('location', 'unknown')
                         })
                 
-                import datetime
                 result = {
                     'total_dependencies': len(dependencies),
                     'dependencies': dependencies,
