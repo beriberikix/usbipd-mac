@@ -45,23 +45,28 @@ readonly EXIT_USAGE_ERROR=6
 
 # Logging functions
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${BLUE}[INFO]${NC} $1"
+    [ -d "$(dirname "$LOG_FILE")" ] && echo -e "${BLUE}[INFO]${NC} $1" >> "$LOG_FILE" || true
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    [ -d "$(dirname "$LOG_FILE")" ] && echo -e "${GREEN}[SUCCESS]${NC} $1" >> "$LOG_FILE" || true
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+    [ -d "$(dirname "$LOG_FILE")" ] && echo -e "${YELLOW}[WARNING]${NC} $1" >> "$LOG_FILE" || true
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${RED}[ERROR]${NC} $1"
+    [ -d "$(dirname "$LOG_FILE")" ] && echo -e "${RED}[ERROR]${NC} $1" >> "$LOG_FILE" || true
 }
 
 log_step() {
-    echo -e "${BOLD}${BLUE}==>${NC}${BOLD} $1${NC}" | tee -a "$LOG_FILE"
+    echo -e "${BOLD}${BLUE}==>${NC}${BOLD} $1${NC}"
+    [ -d "$(dirname "$LOG_FILE")" ] && echo -e "${BOLD}${BLUE}==>${NC}${BOLD} $1${NC}" >> "$LOG_FILE" || true
 }
 
 # Print script header
