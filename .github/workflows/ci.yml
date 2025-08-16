@@ -559,7 +559,7 @@ jobs:
             echo "🔍 Running formula validation script..."
             
             # Run validation script in CI mode (skip actual installation)
-            if Scripts/validate-formula.sh --skip-installation --ci-mode; then
+            if Scripts/validate-formula.sh --skip-installation; then
               echo "✅ Comprehensive formula validation passed"
             else
               echo "::error title=Validation Failed::Formula validation script detected issues"
