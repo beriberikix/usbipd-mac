@@ -1,0 +1,225 @@
+name: 'SwiftLint Validation'
+description: 'Standardized SwiftLint validation with caching, installation, and detailed reporting'
+author: 'usbipd-mac CI Team'
+
+inputs:
+  strict-mode:
+    description: 'Enable strict mode (treat warnings as errors)'
+    required: false
+    default: 'true'
+  cache-key-suffix:
+    description: 'Additional cache key suffix for cache differentiation'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Working directory for SwiftLint execution'
+    required: false
+    default: '.'
+  reporter:
+    description: 'SwiftLint reporter format (xcode, json, csv, checkstyle, junit, html, emoji, sonarqube, markdown)'
+    required: false
+    default: 'xcode'
+
+outputs:
+  result:
+    description: 'SwiftLint validation result (success, failed, error)'
+    value: ${{ steps.validate.outputs.result }}
+  violations-count:
+    description: 'Number of violations found'
+    value: ${{ steps.validate.outputs.violations_count }}
+  cache-hit:
+    description: 'Whether SwiftLint was restored from cache'
+    value: ${{ steps.cache-swiftlint.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Starting SwiftLint Validation
+      shell: bash
+      run: |
+        echo "::notice title=SwiftLint Validation::Starting standardized SwiftLint code quality validation"
+        echo "🔍 Validating Swift code against project style guidelines"
+        echo "📊 Status: STARTING"
+        echo "⚙️ Working directory: ${{ inputs.working-directory }}"
+        echo "🎯 Strict mode: ${{ inputs.strict-mode }}"
+        echo "📋 Reporter format: ${{ inputs.reporter }}"
+
+    - name: Cache SwiftLint Installation
+      id: cache-swiftlint
+      uses: actions/cache@v4
+      with:
+        path: |
+          /usr/local/bin/swiftlint
+          /opt/homebrew/bin/swiftlint
+        key: ${{ runner.os }}-swiftlint-${{ hashFiles(format('{0}/.swiftlint.yml', inputs.working-directory)) }}-v2${{ inputs.cache-key-suffix }}
+        restore-keys: |
+          ${{ runner.os }}-swiftlint-v2${{ inputs.cache-key-suffix }}
+          ${{ runner.os }}-swiftlint-v2
+          ${{ runner.os }}-swiftlint-
+
+    - name: 🔧 Install SwiftLint
+      shell: bash
+      run: |
+        echo "::group::SwiftLint Installation"
+        echo "📦 Checking SwiftLint installation status..."
+        
+        # Check if SwiftLint is already installed and functional
+        if command -v swiftlint &> /dev/null && swiftlint version &> /dev/null; then
+          echo "::notice title=SwiftLint Found::Using cached SwiftLint installation"
+          echo "✅ SwiftLint is already installed and functional"
+          echo "📋 Version: $(swiftlint version)"
+          echo "💾 Cache status: ${{ steps.cache-swiftlint.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
+        else
+          echo "::notice title=SwiftLint Installation::Installing SwiftLint via Homebrew"
+          echo "⬇️ SwiftLint not found or non-functional, installing via Homebrew..."
+          
+          # Install SwiftLint with retry logic
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if brew install swiftlint; then
+              echo "✅ SwiftLint installation completed successfully"
+              echo "📋 Installed version: $(swiftlint version)"
+              break
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⚠️ Installation attempt $RETRY_COUNT failed, retrying..."
+                sleep 5
+              else
+                echo "::error title=Installation Failed::SwiftLint installation failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
+        fi
+        echo "::endgroup::"
+
+    - name: 📝 SwiftLint Configuration Validation
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "::group::Configuration Validation"
+        echo "::notice title=Configuration Check::Validating SwiftLint configuration"
+        
+        # Check for SwiftLint configuration file
+        if [ -f ".swiftlint.yml" ]; then
+          echo "✅ SwiftLint configuration found: .swiftlint.yml"
+          
+          # Validate configuration syntax
+          if swiftlint rules &> /dev/null; then
+            echo "✅ Configuration syntax valid"
+            
+            # Show enabled rules count for transparency
+            RULES_COUNT=$(swiftlint rules | wc -l)
+            echo "📋 Active rules: $RULES_COUNT"
+          else
+            echo "::warning title=Configuration Warning::SwiftLint configuration may have issues"
+            echo "⚠️ Configuration validation had warnings, but proceeding with default rules"
+          fi
+        else
+          echo "::notice title=Default Configuration::Using SwiftLint default configuration"
+          echo "📋 No .swiftlint.yml found, using default rules"
+        fi
+        echo "::endgroup::"
+
+    - name: 🔍 Execute SwiftLint Analysis
+      id: validate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "::group::SwiftLint Analysis"
+        echo "::notice title=Code Analysis::Running SwiftLint with standardized validation"
+        echo "🔍 Analyzing Swift code for style and quality violations..."
+        echo "📊 Status: RUNNING"
+        echo "⚙️ Configuration: Using project SwiftLint rules"
+        echo "🎯 Mode: ${{ inputs.strict-mode == 'true' && 'Strict (warnings as errors)' || 'Standard' }}"
+        echo "📋 Reporter: ${{ inputs.reporter }}"
+        
+        # Prepare SwiftLint command
+        SWIFTLINT_CMD="swiftlint lint --reporter ${{ inputs.reporter }}"
+        if [ "${{ inputs.strict-mode }}" == "true" ]; then
+          SWIFTLINT_CMD="$SWIFTLINT_CMD --strict"
+        fi
+        
+        # Execute SwiftLint and capture results
+        VIOLATIONS_COUNT=0
+        RESULT="success"
+        
+        echo "🚀 Executing: $SWIFTLINT_CMD"
+        
+        # Run SwiftLint and capture both exit code and output
+        if OUTPUT=$($SWIFTLINT_CMD 2>&1); then
+          echo "::notice title=SwiftLint Success::No code style violations found"
+          echo "✅ Code quality validation PASSED"
+          echo "📊 Status: SUCCESS"
+          RESULT="success"
+          
+          # Try to extract violations count from output (if available)
+          if echo "$OUTPUT" | grep -q "violations"; then
+            VIOLATIONS_COUNT=$(echo "$OUTPUT" | grep -o '[0-9]\+ violations' | grep -o '[0-9]\+' | head -1 || echo "0")
+          fi
+        else
+          SWIFTLINT_EXIT_CODE=$?
+          echo "::error title=SwiftLint Violations::Code style violations detected"
+          echo "❌ Code quality validation FAILED"
+          echo "📊 Status: FAILED"
+          echo "🔧 Exit code: $SWIFTLINT_EXIT_CODE"
+          RESULT="failed"
+          
+          # Extract violations count for reporting
+          if echo "$OUTPUT" | grep -q "violations"; then
+            VIOLATIONS_COUNT=$(echo "$OUTPUT" | grep -o '[0-9]\+ violations' | grep -o '[0-9]\+' | head -1 || echo "unknown")
+          else
+            VIOLATIONS_COUNT="unknown"
+          fi
+          
+          # Show detailed output for debugging
+          echo "📋 SwiftLint output:"
+          echo "$OUTPUT"
+        fi
+        
+        # Set outputs for downstream use
+        echo "result=$RESULT" >> $GITHUB_OUTPUT
+        echo "violations_count=$VIOLATIONS_COUNT" >> $GITHUB_OUTPUT
+        
+        echo "📊 Final status: $RESULT"
+        echo "🔢 Violations found: $VIOLATIONS_COUNT"
+        echo "::endgroup::"
+        
+        # Exit with failure if violations found and strict mode enabled
+        if [ "$RESULT" == "failed" ]; then
+          exit 1
+        fi
+
+    - name: 📊 SwiftLint Validation Summary
+      shell: bash
+      if: always()
+      run: |
+        echo "::group::SwiftLint Validation Summary"
+        
+        RESULT="${{ steps.validate.outputs.result }}"
+        VIOLATIONS_COUNT="${{ steps.validate.outputs.violations_count }}"
+        CACHE_STATUS="${{ steps.cache-swiftlint.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
+        
+        if [ "$RESULT" == "success" ]; then
+          echo "::notice title=Validation Complete::SwiftLint validation completed successfully"
+          echo "✅ SwiftLint validation: PASSED"
+          echo "📋 Code quality: EXCELLENT"
+          echo "🎯 No style violations detected"
+          echo "💾 Cache performance: $CACHE_STATUS"
+        else
+          echo "::error title=Validation Failed::SwiftLint validation detected violations"
+          echo "❌ SwiftLint validation: FAILED"
+          echo "📋 Violations found: $VIOLATIONS_COUNT"
+          echo "🔧 Action required: Fix code style issues before merging"
+          echo "💾 Cache performance: $CACHE_STATUS"
+          echo ""
+          echo "📖 Common SwiftLint violation resolution tips:"
+          echo "   • Run 'swiftlint --fix' for auto-fixable violations"
+          echo "   • Check .swiftlint.yml for project-specific rules"
+          echo "   • Use 'swiftlint lint' locally before committing"
+          echo "   • Review SwiftLint documentation for style guidelines"
+        fi
+        
+        echo "::endgroup::"

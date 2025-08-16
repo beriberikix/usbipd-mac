@@ -555,17 +555,24 @@ class USBDeviceCommunicatorImplementationTests: XCTestCase, TestSuite {
         // Attempt transfer should fail with device disconnection error
         let request = createControlTransferRequest()
         
-        await XCTAssertThrowsError(try await communicator.executeControlTransfer(device: testDevice, request: request)) { error in
+        do {
+            _ = try await communicator.executeControlTransfer(device: testDevice, request: request)
+            XCTFail("Expected error to be thrown")
+        } catch {
             XCTAssertTrue(error is USBRequestError)
         }
         
         // System should handle gracefully and allow cleanup
-        XCTAssertNoThrow(try await communicator.closeUSBInterface(device: testDevice, interfaceNumber: 0))
+        do {
+            try await communicator.closeUSBInterface(device: testDevice, interfaceNumber: 0)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
     }
     
     func testSystemExtensionMultipleDeviceManagement() async throws {
         // Test System Extension managing multiple devices simultaneously
-        let managedDevices = [testDevice!, testDevice2!]
+        var managedDevices = [testDevice!, testDevice2!]
         let additionalDevice = createTestDevice(busID: "4-1", deviceID: "5.0", vendorID: 0x4040, productID: 0x5050)
         managedDevices.append(additionalDevice)
         
@@ -828,19 +835,19 @@ private class MockIOKitUSBInterfaceWrapper: IOKitUSBInterface {
     
     // Forward mock interface configuration methods
     func setControlTransferResponse(data: Data?, status: USBIPDCore.USBStatus, actualLength: UInt32? = nil) {
-        mockInterface.setControlTransferResponse(data: data, status: status, actualLength: actualLength)
+        mockInterface.setControlTransferResponse(data: data ?? Data(), status: status, actualLength: actualLength)
     }
     
     func setBulkTransferResponse(data: Data?, status: USBIPDCore.USBStatus, actualLength: UInt32? = nil) {
-        mockInterface.setBulkTransferResponse(data: data, status: status, actualLength: actualLength)
+        mockInterface.setBulkTransferResponse(data: data ?? Data(), status: status, actualLength: actualLength)
     }
     
     func setInterruptTransferResponse(data: Data?, status: USBIPDCore.USBStatus, actualLength: UInt32? = nil) {
-        mockInterface.setInterruptTransferResponse(data: data, status: status, actualLength: actualLength)
+        mockInterface.setInterruptTransferResponse(data: data ?? Data(), status: status, actualLength: actualLength)
     }
     
     func setIsochronousTransferResponse(data: Data?, status: USBIPDCore.USBStatus, actualLength: UInt32? = nil, errorCount: UInt32 = 0) {
-        mockInterface.setIsochronousTransferResponse(data: data, status: status, actualLength: actualLength, errorCount: errorCount)
+        mockInterface.setIsochronousTransferResponse(data: data ?? Data(), status: status, actualLength: actualLength, errorCount: errorCount)
     }
     
     func wasOperationCalled(_ operation: String) -> Bool {

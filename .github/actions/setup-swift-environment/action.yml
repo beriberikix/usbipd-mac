@@ -1,0 +1,180 @@
+name: 'Setup Swift Environment'
+description: 'Sets up Swift development environment with caching, SwiftLint, and test scripts'
+author: 'usbipd-mac'
+
+inputs:
+  cache-key-suffix:
+    description: 'Additional suffix for cache keys to allow cache variations'
+    required: false
+    default: ''
+  install-swiftlint:
+    description: 'Whether to install SwiftLint'
+    required: false
+    default: 'true'
+  setup-test-scripts:
+    description: 'Whether to make test scripts executable'
+    required: false
+    default: 'true'
+  validate-environment:
+    description: 'Whether to validate test environment'
+    required: false
+    default: 'false'
+
+outputs:
+  swift-version:
+    description: 'Swift version that was detected'
+    value: ${{ steps.swift-info.outputs.version }}
+  swiftlint-version:
+    description: 'SwiftLint version that was installed/found'
+    value: ${{ steps.swiftlint-info.outputs.version }}
+  cache-hit:
+    description: 'Whether Swift package cache was hit'
+    value: ${{ steps.swift-cache.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Environment Information
+      id: swift-info
+      shell: bash
+      run: |
+        echo "::group::Swift Environment Information"
+        echo "::notice title=Environment Setup::Detecting Swift and macOS environment"
+        
+        SWIFT_VERSION=$(swift --version | head -n1 | sed 's/.*Swift version \([0-9.]*\).*/\1/')
+        MACOS_VERSION="$(sw_vers -productName) $(sw_vers -productVersion)"
+        
+        echo "🔧 Swift version: $SWIFT_VERSION"
+        echo "🖥️ macOS runner: $MACOS_VERSION"
+        echo "📊 Environment detection: COMPLETE"
+        
+        echo "version=$SWIFT_VERSION" >> $GITHUB_OUTPUT
+        echo "::endgroup::"
+
+    - name: Cache SwiftLint
+      if: inputs.install-swiftlint == 'true'
+      uses: actions/cache@v3
+      with:
+        path: |
+          /usr/local/bin/swiftlint
+          /opt/homebrew/bin/swiftlint
+        key: ${{ runner.os }}-swiftlint-${{ hashFiles('.swiftlint.yml') }}${{ inputs.cache-key-suffix }}
+        restore-keys: |
+          ${{ runner.os }}-swiftlint-
+
+    - name: 🔧 Install SwiftLint
+      id: swiftlint-info
+      if: inputs.install-swiftlint == 'true'
+      shell: bash
+      run: |
+        echo "::group::SwiftLint Installation"
+        echo "📦 Checking SwiftLint installation status..."
+        
+        # Check if SwiftLint is already installed
+        if ! command -v swiftlint &> /dev/null; then
+          echo "::notice title=SwiftLint Installation::Installing SwiftLint via Homebrew"
+          echo "⬇️ SwiftLint not found, installing via Homebrew..."
+          brew install swiftlint
+          echo "✅ SwiftLint installation completed"
+        else
+          echo "::notice title=SwiftLint Found::Using cached SwiftLint installation"
+          echo "✅ SwiftLint is already installed"
+        fi
+        
+        SWIFTLINT_VERSION=$(swiftlint version)
+        echo "📋 Version: $SWIFTLINT_VERSION"
+        echo "version=$SWIFTLINT_VERSION" >> $GITHUB_OUTPUT
+        echo "::endgroup::"
+
+    - name: Cache Swift packages
+      id: swift-cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          .build
+          ~/Library/Caches/org.swift.swiftpm
+          ~/Library/org.swift.swiftpm
+        key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}${{ inputs.cache-key-suffix }}
+        restore-keys: |
+          ${{ runner.os }}-swift-
+
+    - name: 📦 Resolve Dependencies
+      shell: bash
+      run: |
+        echo "::group::Dependency Resolution"
+        echo "::notice title=Dependencies::Resolving Swift package dependencies"
+        echo "📦 Resolving Swift package dependencies..."
+        echo "📊 Status: RESOLVING"
+        
+        if swift package resolve; then
+          echo "::notice title=Dependencies Success::All dependencies resolved successfully"
+          echo "✅ Dependencies resolved successfully"
+          echo "📊 Status: RESOLVED"
+        else
+          echo "::error title=Dependencies Failed::Failed to resolve package dependencies"
+          echo "❌ Dependency resolution failed"
+          echo "📊 Status: FAILED"
+          exit 1
+        fi
+        echo "::endgroup::"
+
+    - name: 🔧 Setup Test Scripts
+      if: inputs.setup-test-scripts == 'true'
+      shell: bash
+      run: |
+        echo "::group::Test Script Setup"
+        echo "::notice title=Script Setup::Making test scripts executable"
+        echo "🔧 Setting up test scripts..."
+        
+        # List of test scripts to make executable
+        SCRIPTS=(
+          "Scripts/run-development-tests.sh"
+          "Scripts/run-ci-tests.sh"
+          "Scripts/run-production-tests.sh"
+          "Scripts/test-environment-setup.sh"
+          "Scripts/qemu-test-validation.sh"
+        )
+        
+        for script in "${SCRIPTS[@]}"; do
+          if [ -f "$script" ]; then
+            chmod +x "$script"
+            echo "✅ Made $script executable"
+          else
+            echo "ℹ️ Script $script not found (optional)"
+          fi
+        done
+        
+        echo "::notice title=Scripts Ready::Test scripts are ready for execution"
+        echo "📊 Status: CONFIGURED"
+        echo "::endgroup::"
+
+    - name: 🔍 Validate Test Environment
+      if: inputs.validate-environment == 'true'
+      shell: bash
+      run: |
+        echo "::group::Test Environment Validation"
+        echo "::notice title=Environment Validation::Validating test environment prerequisites"
+        echo "🔍 Validating test environment..."
+        echo "📊 Status: VALIDATING"
+        
+        # Validate test environment if script exists
+        if [ -f "Scripts/test-environment-setup.sh" ]; then
+          if ./Scripts/test-environment-setup.sh validate; then
+            echo "::notice title=Environment Ready::Test environment validated successfully"
+            echo "✅ Test environment validation PASSED"
+            echo "📊 Status: VALIDATED"
+          else
+            echo "::error title=Environment Failed::Test environment validation failed"
+            echo "❌ Test environment validation FAILED"
+            echo "📊 Status: FAILED"
+            exit 1
+          fi
+        else
+          echo "::warning title=Validation Skipped::Test environment validation script not found"
+          echo "⚠️ Skipping environment validation - script not available"
+        fi
+        echo "::endgroup::"
+
+branding:
+  icon: 'settings'
+  color: 'blue'

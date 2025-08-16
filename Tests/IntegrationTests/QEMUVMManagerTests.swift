@@ -14,7 +14,17 @@ import SharedUtilities
 #endif
 
 /// Test suite for QEMU VM management functionality
-final class QEMUVMManagerTests: XCTestCase {
+final class QEMUVMManagerTests: XCTestCase, TestSuite {
+    
+    // MARK: - TestSuite Protocol Implementation
+    
+    var environmentConfig: TestEnvironmentConfig {
+        return TestEnvironmentConfig.ci // CI environment for integration tests
+    }
+    
+    var requiredCapabilities: TestEnvironmentCapabilities {
+        return [.qemuIntegration, .mockingSupport]
+    }
     
     // MARK: - Test Configuration
     
@@ -377,7 +387,7 @@ final class QEMUVMManagerTests: XCTestCase {
         let vmName = "performance-vm-\(UUID().uuidString)"
         _ = try vmManager.createVM(name: vmName)
         
-        let timeout = environmentConfig.timeout(for: testCategory)
+        let timeout = environmentConfig.environment.executionTimeLimit
         
         // Measure VM startup time
         measure {

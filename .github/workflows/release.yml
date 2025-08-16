@@ -1,4 +1,4 @@
-name: Production Release
+name: Production Release (Streamlined)
 
 on:
   push:
@@ -29,17 +29,18 @@ env:
   NOTARIZATION_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
 
 jobs:
-  validate-release:
+  release-validation:
     name: Release Validation
     runs-on: macos-latest
     outputs:
       version: ${{ steps.extract-version.outputs.version }}
       is-prerelease: ${{ steps.extract-version.outputs.prerelease }}
+      release-type: ${{ steps.extract-version.outputs.release-type }}
     steps:
       - name: 🏷️ Starting Release Validation
         run: |
-          echo "::notice title=Release Validation::Starting release validation and version extraction"
-          echo "🏷️ This stage validates release triggers and extracts version information"
+          echo "::notice title=Release Validation::Starting streamlined release validation and version extraction"
+          echo "🏷️ This stage validates release triggers and extracts necessary metadata"
           echo "📊 Status: STARTING"
 
       - name: Checkout code
@@ -57,9 +58,11 @@ jobs:
             VERSION=${{ github.ref_name }}
             echo "📌 Tag-triggered release: $VERSION"
             PRERELEASE=$(echo "$VERSION" | grep -E '-(alpha|beta|rc)' >/dev/null && echo "true" || echo "false")
+            RELEASE_TYPE="automated"
           else
             VERSION="${{ github.event.inputs.version }}"
             PRERELEASE="${{ github.event.inputs.prerelease }}"
+            RELEASE_TYPE="manual"
             echo "🔧 Manual release dispatch: $VERSION"
           fi
           
@@ -71,8 +74,10 @@ jobs:
           
           echo "✅ Version validated: $VERSION"
           echo "🏷️ Pre-release: $PRERELEASE"
+          echo "🔧 Release type: $RELEASE_TYPE"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+          echo "release-type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
           echo "::endgroup::"
 
       - name: 📊 Release Validation Summary
@@ -82,198 +87,46 @@ jobs:
           echo "✅ Release trigger: ${{ github.event_name }}"
           echo "✅ Version: ${{ steps.extract-version.outputs.version }}"
           echo "✅ Pre-release: ${{ steps.extract-version.outputs.prerelease }}"
+          echo "✅ Release type: ${{ steps.extract-version.outputs.release-type }}"
           echo "📊 Status: VALIDATED"
           echo "::endgroup::"
 
-  lint-and-build:
-    name: Code Quality and Build
-    runs-on: macos-latest
-    needs: validate-release
-    steps:
-      - name: 🔧 Starting Code Quality and Build Validation
-        run: |
-          echo "::notice title=Quality Check::Starting code quality validation and build verification for release"
-          echo "🔧 This stage ensures code quality and successful compilation before release"
-          echo "📊 Status: STARTING"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Cache SwiftLint
-        uses: actions/cache@v3
-        with:
-          path: |
-            /usr/local/bin/swiftlint
-            /opt/homebrew/bin/swiftlint
-          key: ${{ runner.os }}-swiftlint-${{ hashFiles('.swiftlint.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-swiftlint-
-
-      - name: 🔧 Install SwiftLint
-        run: |
-          echo "::group::SwiftLint Installation"
-          if ! command -v swiftlint &> /dev/null; then
-            echo "::notice title=SwiftLint Installation::Installing SwiftLint for code quality validation"
-            brew install swiftlint
-            echo "✅ SwiftLint installation completed"
-          else
-            echo "::notice title=SwiftLint Found::Using cached SwiftLint installation"
-            echo "✅ SwiftLint version: $(swiftlint version)"
-          fi
-          echo "::endgroup::"
-
-      - name: 🔍 Run SwiftLint Analysis
-        run: |
-          echo "::group::SwiftLint Release Validation"
-          echo "::notice title=Code Quality::Running strict SwiftLint validation for release"
-          echo "🔍 Validating code quality for release readiness..."
-          if swiftlint lint --strict --reporter xcode; then
-            echo "::notice title=Code Quality Success::Code meets release quality standards"
-            echo "✅ Code quality validation PASSED"
-          else
-            echo "::error title=Code Quality Failed::Code quality issues prevent release"
-            echo "❌ Release blocked by code quality violations"
-            exit 1
-          fi
-          echo "::endgroup::"
-
-      - name: Cache Swift packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-
-
-      - name: 🔨 Build for Release
-        run: |
-          echo "::group::Release Build"
-          echo "::notice title=Release Build::Building project for release with optimizations"
-          echo "🔨 Building optimized release binaries..."
-          
-          # Build in release mode with optimization
-          if swift build --configuration release --verbose; then
-            echo "::notice title=Build Success::Release build completed successfully"
-            echo "✅ Release build PASSED"
-            echo "📦 Release artifacts ready"
-          else
-            echo "::error title=Build Failed::Release build failed"
-            echo "❌ Release blocked by build failures"
-            exit 1
-          fi
-          echo "::endgroup::"
-
-  test-validation:
-    name: Test Validation
-    runs-on: macos-latest
-    needs: [validate-release, lint-and-build]
+  ci-validation:
+    name: CI Validation
+    needs: release-validation
     if: ${{ !inputs.skip_tests }}
-    steps:
-      - name: 🧪 Starting Release Test Validation
-        run: |
-          echo "::notice title=Test Validation::Starting comprehensive test validation for release"
-          echo "🧪 This stage runs full test validation to ensure release quality"
-          echo "📊 Status: STARTING"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Cache Swift packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-
-
-      - name: 🔧 Setup Test Environment
-        run: |
-          echo "::group::Test Environment Setup"
-          echo "::notice title=Test Setup::Setting up comprehensive test environment for release"
-          
-          # Make scripts executable
-          chmod +x Scripts/run-ci-tests.sh
-          chmod +x Scripts/run-production-tests.sh
-          chmod +x Scripts/test-environment-setup.sh
-          
-          # Validate test environment
-          if ./Scripts/test-environment-setup.sh validate; then
-            echo "::notice title=Environment Ready::Test environment validated for release testing"
-            echo "✅ Test environment ready"
-          else
-            echo "::error title=Environment Failed::Test environment validation failed"
-            echo "❌ Release blocked by test environment issues"
-            exit 1
-          fi
-          echo "::endgroup::"
-
-      - name: 🧪 Execute CI Tests
-        run: |
-          echo "::group::CI Test Execution"
-          echo "::notice title=CI Tests::Running CI test suite for release validation"
-          echo "🧪 Running CI tests for release validation..."
-          
-          if ./Scripts/run-ci-tests.sh; then
-            echo "::notice title=CI Tests Success::All CI tests passed for release"
-            echo "✅ CI tests PASSED"
-          else
-            echo "::error title=CI Tests Failed::CI test failures block release"
-            echo "❌ Release blocked by CI test failures"
-            exit 1
-          fi
-          echo "::endgroup::"
-
-      - name: 🔗 Execute Production Tests
-        run: |
-          echo "::group::Production Test Execution"
-          echo "::notice title=Production Tests::Running production test validation for release"
-          echo "🔗 Running production tests for release validation..."
-          
-          # Run production tests with CI constraints for release validation
-          if ./Scripts/run-production-tests.sh --no-qemu --no-system-extension --no-hardware --timeout 300; then
-            echo "::notice title=Production Tests Success::Production tests validated for release"
-            echo "✅ Production tests PASSED"
-          else
-            echo "::error title=Production Tests Failed::Production test failures block release"
-            echo "❌ Release blocked by production test failures"
-            exit 1
-          fi
-          echo "::endgroup::"
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_validation: true
+      skip_optional_tests: false
+      test_environment: 'ci'
+    secrets: inherit
 
   build-artifacts:
     name: Build Release Artifacts
     runs-on: macos-latest
-    needs: [validate-release, lint-and-build, test-validation]
-    if: always() && needs.validate-release.result == 'success' && needs.lint-and-build.result == 'success' && (needs.test-validation.result == 'success' || needs.test-validation.result == 'skipped')
+    needs: [release-validation, ci-validation]
+    if: always() && needs.release-validation.result == 'success' && (needs.ci-validation.result == 'success' || needs.ci-validation.result == 'skipped')
     outputs:
       artifact-paths: ${{ steps.build-artifacts.outputs.paths }}
       checksums: ${{ steps.generate-checksums.outputs.checksums }}
     steps:
       - name: 📦 Starting Artifact Building
         run: |
-          echo "::notice title=Artifact Building::Starting release artifact building and packaging"
+          echo "::notice title=Artifact Building::Starting streamlined release artifact building and packaging"
           echo "📦 This stage builds and packages release artifacts with code signing"
           echo "📊 Status: STARTING"
 
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Cache Swift packages
-        uses: actions/cache@v3
+      - name: 🔧 Setup Swift Environment
+        uses: ./.github/actions/setup-swift-environment
         with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-
+          cache-key-suffix: '-release'
+          install-swiftlint: 'false'
+          setup-test-scripts: 'false'
+          validate-environment: 'false'
 
       - name: 🔒 Setup Code Signing
         if: env.DEVELOPER_ID_CERTIFICATE != ''
@@ -300,7 +153,7 @@ jobs:
           echo "::group::Release Artifact Building"
           echo "::notice title=Artifact Building::Building optimized release artifacts"
           
-          VERSION="${{ needs.validate-release.outputs.version }}"
+          VERSION="${{ needs.release-validation.outputs.version }}"
           ARTIFACTS_DIR="release-artifacts"
           mkdir -p "$ARTIFACTS_DIR"
           
@@ -354,7 +207,7 @@ jobs:
           echo "::notice title=Checksums::Generating SHA256 checksums for release artifacts"
           
           cd release-artifacts
-          CHECKSUMS_FILE="checksums-${{ needs.validate-release.outputs.version }}.sha256"
+          CHECKSUMS_FILE="checksums-${{ needs.release-validation.outputs.version }}.sha256"
           
           echo "📊 Generating checksums..."
           shasum -a 256 * > "$CHECKSUMS_FILE"
@@ -368,14 +221,14 @@ jobs:
       - name: 📤 Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts-${{ needs.validate-release.outputs.version }}
+          name: release-artifacts-${{ needs.release-validation.outputs.version }}
           path: release-artifacts/
           retention-days: 30
 
   create-release:
     name: Create GitHub Release
     runs-on: macos-latest
-    needs: [validate-release, build-artifacts]
+    needs: [release-validation, build-artifacts]
     steps:
       - name: 🚀 Starting Release Creation
         run: |
@@ -391,7 +244,7 @@ jobs:
       - name: 📤 Download Release Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-artifacts-${{ needs.validate-release.outputs.version }}
+          name: release-artifacts-${{ needs.release-validation.outputs.version }}
           path: release-artifacts/
 
       - name: 📝 Generate Release Notes
@@ -400,7 +253,7 @@ jobs:
           echo "::group::Release Notes Generation"
           echo "::notice title=Release Notes::Generating release notes from commit history"
           
-          VERSION="${{ needs.validate-release.outputs.version }}"
+          VERSION="${{ needs.release-validation.outputs.version }}"
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           
           echo "📝 Generating release notes for $VERSION..."
@@ -450,8 +303,8 @@ jobs:
           echo "::group::GitHub Release Creation"
           echo "::notice title=GitHub Release::Creating GitHub release with artifacts"
           
-          VERSION="${{ needs.validate-release.outputs.version }}"
-          PRERELEASE="${{ needs.validate-release.outputs.is-prerelease }}"
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          PRERELEASE="${{ needs.release-validation.outputs.is-prerelease }}"
           
           echo "🚀 Creating GitHub release $VERSION..."
           
@@ -472,15 +325,15 @@ jobs:
           echo "::endgroup::"
 
   post-release:
-    name: Post-Release Actions
+    name: Post-Release Validation
     runs-on: macos-latest
-    needs: [validate-release, create-release]
+    needs: [release-validation, create-release]
     if: always() && needs.create-release.result == 'success'
     steps:
-      - name: 📊 Starting Post-Release Actions
+      - name: 📊 Starting Post-Release Validation
         run: |
-          echo "::notice title=Post-Release::Starting post-release validation and notification"
-          echo "📊 This stage handles post-release validation and notifications"
+          echo "::notice title=Post-Release::Starting post-release validation and summary"
+          echo "📊 This stage validates the published release and provides completion summary"
           echo "📊 Status: STARTING"
 
       - name: Checkout code
@@ -491,7 +344,7 @@ jobs:
           echo "::group::Release Validation"
           echo "::notice title=Release Validation::Validating published release"
           
-          VERSION="${{ needs.validate-release.outputs.version }}"
+          VERSION="${{ needs.release-validation.outputs.version }}"
           echo "✅ Validating release $VERSION..."
           
           # Verify release exists and is accessible
@@ -502,7 +355,8 @@ jobs:
             # Display release summary
             echo "📊 Release Summary:"
             echo "   • Version: $VERSION"
-            echo "   • Pre-release: ${{ needs.validate-release.outputs.is-prerelease }}"
+            echo "   • Pre-release: ${{ needs.release-validation.outputs.is-prerelease }}"
+            echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
             echo "   • Artifacts: Available"
             echo "   • Status: Published"
           else
@@ -512,25 +366,30 @@ jobs:
           fi
           echo "::endgroup::"
 
-      - name: 🎉 Release Success Notification
+      - name: 🎉 Release Success Summary
         run: |
           echo "::group::Release Success"
-          echo "::notice title=Release Complete::Production release completed successfully"
-          echo "🎉 Release ${{ needs.validate-release.outputs.version }} has been successfully published!"
+          echo "::notice title=Release Complete::Streamlined production release completed successfully"
+          echo "🎉 Release ${{ needs.release-validation.outputs.version }} has been successfully published!"
           echo ""
           echo "📦 **Release Details:**"
-          echo "   • Version: ${{ needs.validate-release.outputs.version }}"
-          echo "   • Pre-release: ${{ needs.validate-release.outputs.is-prerelease }}"
-          echo "   • Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }}"
+          echo "   • Version: ${{ needs.release-validation.outputs.version }}"
+          echo "   • Pre-release: ${{ needs.release-validation.outputs.is-prerelease }}"
+          echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
+          echo "   • Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-validation.outputs.version }}"
           echo ""
           echo "✅ **Completed Steps:**"
-          echo "   • Version validation"
-          echo "   • Code quality checks (SwiftLint)"
-          echo "   • Release build compilation"
-          echo "   • Test validation (CI and Production)"
-          echo "   • Artifact building and signing"
-          echo "   • GitHub release creation"
+          echo "   • Release version validation"
+          echo "   • Comprehensive CI validation (via workflow_call)"
+          echo "   • Optimized artifact building and signing"
+          echo "   • GitHub release creation with artifacts"
           echo "   • Post-release verification"
+          echo ""
+          echo "🔗 **Workflow Benefits:**"
+          echo "   • Reused CI validation logic from consolidated workflow"
+          echo "   • Streamlined artifact building process"
+          echo "   • Consistent validation across CI and release pipelines"
+          echo "   • Reduced workflow duplication and maintenance"
           echo ""
           echo "📊 Status: **SUCCESS**"
           echo "::endgroup::"

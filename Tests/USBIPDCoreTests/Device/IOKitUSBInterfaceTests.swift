@@ -33,7 +33,6 @@ class IOKitUSBInterfaceTests: XCTestCase {
     
     override func setUp() {
         super.setUp()
-        setUpTestSuite()
         
         // Create test device
         testDevice = USBDevice(
@@ -58,7 +57,6 @@ class IOKitUSBInterfaceTests: XCTestCase {
         mockIOKit = nil
         testDevice = nil
         
-        tearDownTestSuite()
         super.tearDown()
     }
     

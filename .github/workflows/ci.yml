@@ -1,12 +1,20 @@
-name: CI
+name: CI (Consolidated)
 
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'  # Support release tag validation
+    paths-ignore:
+      - '**.md'
+      - 'Documentation/**'
+      - '.gitignore'
+      - 'LICENSE'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'Documentation/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_call:  # Enable reuse by release workflows
     inputs:
       release_validation:
@@ -19,15 +27,29 @@ on:
         required: false
         default: false
         type: boolean
+      test_environment:
+        description: 'Test environment to run (development, ci, production)'
+        required: false
+        default: 'ci'
+        type: string
   workflow_dispatch:
     inputs:
-      run_tests:
-        description: 'Run Unit Tests'
+      test_environment:
+        description: 'Test environment to run'
+        required: false
+        default: 'ci'
+        type: choice
+        options:
+          - development
+          - ci
+          - production
+      enable_qemu_tests:
+        description: 'Enable QEMU integration tests'
         required: false
         default: false
         type: boolean
-      run_integration_tests:
-        description: 'Run Integration Tests (QEMU)'
+      enable_hardware_tests:
+        description: 'Enable hardware-dependent tests'
         required: false
         default: false
         type: boolean
@@ -43,140 +65,83 @@ env:
   # Release validation context
   IS_RELEASE_VALIDATION: ${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}
   SKIP_OPTIONAL_TESTS: ${{ inputs.skip_optional_tests || false }}
+  TEST_ENVIRONMENT: ${{ inputs.test_environment || 'ci' }}
 
 jobs:
-  lint:
-    name: Code Quality (SwiftLint)
+  code-quality:
+    name: Code Quality
     runs-on: macos-latest
+    outputs:
+      result: ${{ steps.swiftlint.outputs.result }}
+      violations-count: ${{ steps.swiftlint.outputs.violations-count }}
     steps:
-      - name: 📋 Starting Code Quality Check
+      - name: 📋 Starting Code Quality Validation
         run: |
-          echo "::notice title=Code Quality Check::Starting SwiftLint validation for code quality and style compliance"
-          echo "🔍 This check validates Swift code against project style guidelines"
+          echo "::notice title=Code Quality::Starting comprehensive code quality validation"
+          echo "🔍 Validating Swift code against project style guidelines using standardized SwiftLint validation"
           echo "📊 Status: STARTING"
-      
+          echo "🎯 Using reusable composite action for consistent validation"
+
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Cache SwiftLint
-        uses: actions/cache@v3
+
+      - name: 🔍 Run SwiftLint Validation
+        id: swiftlint
+        uses: ./.github/actions/swiftlint-validation
         with:
-          path: |
-            /usr/local/bin/swiftlint
-            /opt/homebrew/bin/swiftlint
-          key: ${{ runner.os }}-swiftlint-${{ hashFiles('.swiftlint.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-swiftlint-
-      
-      - name: 🔧 Install SwiftLint
-        run: |
-          echo "::group::SwiftLint Installation"
-          echo "📦 Checking SwiftLint installation status..."
-          # Check if SwiftLint is already installed
-          if ! command -v swiftlint &> /dev/null; then
-            echo "::notice title=SwiftLint Installation::Installing SwiftLint via Homebrew"
-            echo "⬇️ SwiftLint not found, installing via Homebrew..."
-            brew install swiftlint
-            echo "✅ SwiftLint installation completed"
-          else
-            echo "::notice title=SwiftLint Found::Using cached SwiftLint installation"
-            echo "✅ SwiftLint is already installed"
-            echo "📋 Version: $(swiftlint version)"
-          fi
-          echo "::endgroup::"
-      
-      - name: 🔍 Run SwiftLint Analysis
-        run: |
-          echo "::group::SwiftLint Analysis"
-          echo "::notice title=Code Analysis::Running SwiftLint with strict validation"
-          echo "🔍 Analyzing Swift code for style violations..."
-          echo "📊 Status: RUNNING"
-          echo "⚙️ Configuration: Using .swiftlint.yml rules"
-          echo "🎯 Mode: Strict (warnings treated as errors)"
-          
-          # Use --strict to fail on warnings, --reporter xcode for detailed output
-          if swiftlint lint --strict --reporter xcode; then
-            echo "::notice title=SwiftLint Success::No code style violations found"
-            echo "✅ Code quality check PASSED"
-            echo "📊 Status: SUCCESS"
-          else
-            echo "::error title=SwiftLint Violations::Code style violations detected"
-            echo "❌ Code quality check FAILED"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-          echo "::endgroup::"
-        continue-on-error: false
-      
+          strict-mode: 'true'
+          cache-key-suffix: '-ci'
+          working-directory: '.'
+          reporter: 'xcode'
+
       - name: 📊 Code Quality Summary
         if: always()
         run: |
-          echo "::group::Code Quality Check Summary"
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "::notice title=Code Quality Complete::All code quality checks passed successfully"
+          echo "::group::Code Quality Summary"
+          
+          RESULT="${{ steps.swiftlint.outputs.result }}"
+          VIOLATIONS_COUNT="${{ steps.swiftlint.outputs.violations-count }}"
+          
+          if [ "$RESULT" == "success" ]; then
+            echo "::notice title=Quality Complete::Code quality validation completed successfully"
             echo "✅ SwiftLint validation: PASSED"
-            echo "📋 No style violations found"
-            echo "🎯 Code meets project quality standards"
+            echo "📋 Code quality: EXCELLENT"
+            echo "🎯 No style violations detected"
           else
-            echo "::error title=Code Quality Failed::Code quality checks failed"
+            echo "::error title=Quality Failed::Code quality validation detected violations"
             echo "❌ SwiftLint validation: FAILED"
-            echo "📋 Style violations detected - see details above"
+            echo "📋 Violations found: $VIOLATIONS_COUNT"
             echo "🔧 Action required: Fix code style issues before merging"
           fi
+          
           echo "::endgroup::"
 
-  build:
+  build-validation:
     name: Build Validation
     runs-on: macos-latest
+    outputs:
+      swift-version: ${{ steps.swift-setup.outputs.swift-version }}
+      cache-hit: ${{ steps.swift-setup.outputs.cache-hit }}
     steps:
       - name: 🏗️ Starting Build Validation
         run: |
-          echo "::notice title=Build Validation::Starting project compilation and build validation"
-          echo "🔨 This check validates that the project compiles successfully"
+          echo "::notice title=Build Validation::Starting comprehensive project build validation"
+          echo "🔨 Validating that the project compiles successfully with comprehensive dependency resolution"
           echo "📊 Status: STARTING"
-      
+          echo "🎯 Using reusable composite action for consistent environment setup"
+
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: 📋 Verify Build Environment
-        run: |
-          echo "::group::Build Environment Information"
-          echo "::notice title=Environment Setup::Verifying Swift and macOS environment"
-          echo "🔧 Swift version: $(swift --version | head -n1)"
-          echo "🖥️ macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
-          echo "📊 Environment status: READY"
-          echo "::endgroup::"
-      
-      - name: Cache Swift packages
-        uses: actions/cache@v3
+
+      - name: 🔧 Setup Swift Environment
+        id: swift-setup
+        uses: ./.github/actions/setup-swift-environment
         with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-
-      
-      - name: 📦 Resolve Dependencies
-        run: |
-          echo "::group::Dependency Resolution"
-          echo "::notice title=Dependencies::Resolving Swift package dependencies"
-          echo "📦 Resolving Swift package dependencies..."
-          echo "📊 Status: RESOLVING"
-          
-          if swift package resolve; then
-            echo "::notice title=Dependencies Success::All dependencies resolved successfully"
-            echo "✅ Dependencies resolved successfully"
-            echo "📊 Status: RESOLVED"
-          else
-            echo "::error title=Dependencies Failed::Failed to resolve package dependencies"
-            echo "❌ Dependency resolution failed"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-          echo "::endgroup::"
-      
+          cache-key-suffix: '-build'
+          install-swiftlint: 'false'
+          setup-test-scripts: 'false'
+          validate-environment: 'false'
+
       - name: 🔨 Build Project
         run: |
           echo "::group::Project Compilation"
@@ -184,6 +149,8 @@ jobs:
           echo "🔨 Building project with Swift Package Manager..."
           echo "📊 Status: BUILDING"
           echo "⚙️ Build mode: Debug with verbose output"
+          echo "🔧 Swift version: ${{ steps.swift-setup.outputs.swift-version }}"
+          echo "💾 Cache status: ${{ steps.swift-setup.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
           
           # Build with verbose output to capture detailed error information
           if swift build --verbose; then
@@ -198,8 +165,7 @@ jobs:
             exit 1
           fi
           echo "::endgroup::"
-        continue-on-error: false
-      
+
       - name: 📊 Build Validation Summary
         if: always()
         run: |
@@ -210,6 +176,7 @@ jobs:
             echo "✅ Dependency resolution: PASSED"
             echo "🎯 All Swift modules built successfully"
             echo "📋 Build artifacts ready for testing"
+            echo "🔧 Environment: ${{ steps.swift-setup.outputs.swift-version }}"
           else
             echo "::error title=Build Failed::Build validation failed"
             echo "❌ Project compilation: FAILED"
@@ -223,21 +190,105 @@ jobs:
           fi
           echo "::endgroup::"
 
+  test-suite:
+    name: Test Suite (${{ matrix.environment }})
+    runs-on: macos-latest
+    needs: [code-quality, build-validation]
+    strategy:
+      matrix:
+        environment: 
+          - ${{ inputs.test_environment || 'ci' }}
+      fail-fast: false
+    outputs:
+      result: ${{ steps.test-execution.outputs.result }}
+      test-time: ${{ steps.test-execution.outputs.test-time }}
+      tests-run: ${{ steps.test-execution.outputs.tests-run }}
+      capabilities: ${{ steps.test-execution.outputs.environment-capabilities }}
+    steps:
+      - name: 🧪 Starting Test Suite Execution
+        run: |
+          echo "::notice title=Test Suite::Starting comprehensive test suite execution"
+          echo "🧪 Executing ${{ matrix.environment }} test environment using standardized test execution"
+          echo "📊 Status: STARTING"
+          echo "🎯 Using reusable composite action for consistent test execution"
+          echo "⚙️ Environment: ${{ matrix.environment }}"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Swift Environment
+        uses: ./.github/actions/setup-swift-environment
+        with:
+          cache-key-suffix: '-test-${{ matrix.environment }}'
+          install-swiftlint: 'false'
+          setup-test-scripts: 'true'
+          validate-environment: 'true'
+
+      - name: 🧪 Execute Test Suite
+        id: test-execution
+        uses: ./.github/actions/run-test-suite
+        with:
+          test-environment: ${{ matrix.environment }}
+          cache-key-suffix: '-${{ matrix.environment }}'
+          timeout-seconds: ${{ matrix.environment == 'production' && '600' || '180' }}
+          swift-configuration: 'debug'
+          parallel-execution: 'true'
+          enable-qemu-tests: ${{ inputs.enable_qemu_tests || 'auto' }}
+          enable-hardware-tests: ${{ inputs.enable_hardware_tests || 'auto' }}
+          enable-system-extension-tests: 'auto'
+          skip-build: 'false'
+          working-directory: '.'
+
+      - name: 📊 Test Suite Summary
+        if: always()
+        run: |
+          echo "::group::Test Suite Summary"
+          
+          RESULT="${{ steps.test-execution.outputs.result }}"
+          TEST_TIME="${{ steps.test-execution.outputs.test-time }}"
+          TESTS_RUN="${{ steps.test-execution.outputs.tests-run }}"
+          CAPABILITIES="${{ steps.test-execution.outputs.capabilities }}"
+          
+          if [ "$RESULT" = "success" ]; then
+            echo "::notice title=Test Suite Complete::${{ matrix.environment }} test suite completed successfully"
+            echo "✅ Test execution: SUCCESS"
+            echo "⏱️ Duration: ${TEST_TIME}s"
+            echo "🧪 Tests run: $TESTS_RUN"
+            echo "🔧 Capabilities: $CAPABILITIES"
+            echo "🎯 Environment: ${{ matrix.environment }}"
+          else
+            echo "::error title=Test Suite Failed::${{ matrix.environment }} test suite execution failed"
+            echo "❌ Test execution: $RESULT"
+            echo "⏱️ Duration: ${TEST_TIME}s"
+            echo "🧪 Tests attempted: $TESTS_RUN"
+            echo "🔧 Action required: Fix failing tests before merging"
+          fi
+          
+          echo "::endgroup::"
+
   release-validation:
     name: Release Validation
     runs-on: macos-latest
-    if: ${{ env.IS_RELEASE_VALIDATION == 'true' }}
-    needs: [lint, build]
+    if: ${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}
+    needs: [code-quality, build-validation, test-suite]
     steps:
       - name: 🚀 Starting Release Validation
         run: |
           echo "::notice title=Release Validation::Starting release-specific validation checks"
-          echo "🚀 This check validates release-specific requirements and artifacts"
+          echo "🚀 Validating release-specific requirements and artifacts for release readiness"
           echo "📊 Status: STARTING"
-      
+
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
+      - name: 🔧 Setup Swift Environment
+        uses: ./.github/actions/setup-swift-environment
+        with:
+          cache-key-suffix: '-release'
+          install-swiftlint: 'false'
+          setup-test-scripts: 'false'
+          validate-environment: 'false'
+
       - name: 📋 Verify Release Context
         run: |
           echo "::group::Release Context Information"
@@ -246,20 +297,10 @@ jobs:
           echo "📦 Event: ${{ github.event_name }}"
           echo "🔍 Release validation mode: ${{ env.IS_RELEASE_VALIDATION }}"
           echo "⚡ Skip optional tests: ${{ env.SKIP_OPTIONAL_TESTS }}"
+          echo "🎯 Test environment: ${{ env.TEST_ENVIRONMENT }}"
           echo "📊 Release context status: VERIFIED"
           echo "::endgroup::"
-      
-      - name: Cache Swift packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-
-      
+
       - name: 🔍 Validate Release Artifacts
         run: |
           echo "::group::Release Artifact Validation"
@@ -282,7 +323,7 @@ jobs:
           echo "::notice title=Artifacts Valid::Release artifacts validated successfully"
           echo "📊 Status: VALIDATED"
           echo "::endgroup::"
-      
+
       - name: 🏷️ Validate Version Information
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -307,7 +348,7 @@ jobs:
           
           echo "📊 Status: VALIDATED"
           echo "::endgroup::"
-      
+
       - name: 📊 Release Validation Summary
         if: always()
         run: |
@@ -325,288 +366,66 @@ jobs:
           fi
           echo "::endgroup::"
 
-  test:
-    name: CI Tests
-    runs-on: macos-latest
-    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (env.IS_RELEASE_VALIDATION == 'true' && env.SKIP_OPTIONAL_TESTS != 'true') }}
-    needs: [lint, build]
-    steps:
-      - name: 🧪 Starting CI Test Execution
-        run: |
-          echo "::notice title=CI Tests::Starting environment-based CI test execution"
-          echo "🧪 This check validates functionality through environment-specific CI tests"
-          echo "📊 Status: STARTING"
-      
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 📋 Verify Test Environment
-        run: |
-          echo "::group::Test Environment Information"
-          echo "::notice title=Test Environment::Verifying Swift and macOS test environment"
-          echo "🔧 Swift version: $(swift --version | head -n1)"
-          echo "🖥️ macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
-          echo "📊 Test environment status: READY"
-          echo "::endgroup::"
-      
-      - name: Cache Swift packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-
-      
-      - name: 🔧 Setup CI Test Environment
-        run: |
-          echo "::group::CI Test Environment Setup"
-          echo "::notice title=Environment Setup::Setting up CI test environment"
-          echo "🔧 Setting up CI test environment..."
-          echo "📊 Status: CONFIGURING"
-          
-          # Make scripts executable
-          chmod +x Scripts/run-ci-tests.sh
-          chmod +x Scripts/test-environment-setup.sh
-          
-          # Validate test environment prerequisites
-          if ./Scripts/test-environment-setup.sh validate; then
-            echo "::notice title=Environment Ready::CI test environment validated successfully"
-            echo "✅ CI test environment ready"
-            echo "📊 Status: CONFIGURED"
-          else
-            echo "::error title=Environment Failed::CI test environment validation failed"
-            echo "❌ CI test environment setup failed"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-          echo "::endgroup::"
-      
-      - name: 🧪 Execute CI Tests
-        run: |
-          echo "::group::CI Test Execution"
-          echo "::notice title=CI Test Execution::Running environment-specific CI test suite"
-          echo "🧪 Running CI tests with environment-based execution..."
-          echo "📊 Status: TESTING"
-          echo "⚙️ Test mode: CI environment tests without hardware dependencies"
-          echo "🎯 CI test components:"
-          echo "   • Protocol validation tests"
-          echo "   • Network communication tests"
-          echo "   • System Extension bundle validation"
-          echo "   • Integration tests suitable for automated environments"
-          
-          # Run CI-specific tests using the new script
-          if ./Scripts/run-ci-tests.sh; then
-            echo "::notice title=CI Tests Success::All CI tests passed successfully"
-            echo "✅ CI tests completed successfully"
-            echo "📊 Status: SUCCESS"
-          else
-            echo "::error title=CI Tests Failed::CI test execution failed"
-            echo "❌ CI tests failed - see detailed failure information above"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-          echo "::endgroup::"
-        continue-on-error: false
-      
-      - name: 📊 CI Test Summary
-        if: always()
-        run: |
-          echo "::group::CI Test Execution Summary"
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "::notice title=CI Tests Complete::CI test execution completed successfully"
-            echo "✅ All CI tests: PASSED"
-            echo "🎯 CI test components validated:"
-            echo "   • Protocol validation tests"
-            echo "   • Network communication tests"
-            echo "   • System Extension bundle validation"
-            echo "   • Integration tests suitable for automated environments"
-            echo "📋 All CI-appropriate functionality validated"
-          else
-            echo "::error title=CI Tests Failed::CI test execution failed"
-            echo "❌ CI test execution: FAILED"
-            echo "🔧 Action required: Fix failing CI tests before merging"
-            echo "📋 Common CI test failure causes:"
-            echo "   • Protocol validation assertion failures"
-            echo "   • Network communication test issues"
-            echo "   • System Extension bundle validation problems"
-            echo "   • Mock configuration or setup issues"
-            echo "   • Environment-specific compatibility problems"
-          fi
-          echo "::endgroup::"
-
-  integration-test:
-    name: Production Tests (QEMU)
-    runs-on: macos-latest
-    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_integration_tests == 'true') || (env.IS_RELEASE_VALIDATION == 'true' && env.SKIP_OPTIONAL_TESTS != 'true') }}
-    needs: [lint, build, test]
-    steps:
-      - name: 🔗 Starting Production Test Execution
-        run: |
-          echo "::notice title=Production Tests::Starting comprehensive production test validation"
-          echo "🔗 This check validates complete system functionality with QEMU integration and hardware testing"
-          echo "📊 Status: STARTING"
-      
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 📋 Verify Production Test Environment
-        run: |
-          echo "::group::Production Test Environment Information"
-          echo "::notice title=Production Environment::Verifying Swift and macOS production test environment"
-          echo "🔧 Swift version: $(swift --version | head -n1)"
-          echo "🖥️ macOS runner: $(sw_vers -productName) $(sw_vers -productVersion)"
-          echo "📊 Production test environment status: READY"
-          echo "::endgroup::"
-      
-      - name: Cache Swift packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-
-      
-      - name: 🔧 Setup Production Test Environment
-        run: |
-          echo "::group::Production Test Environment Setup"
-          echo "::notice title=Environment Setup::Setting up production test environment"
-          echo "🔧 Setting up production test environment..."
-          echo "📊 Status: CONFIGURING"
-          
-          # Make scripts executable
-          chmod +x Scripts/run-production-tests.sh
-          chmod +x Scripts/test-environment-setup.sh
-          chmod +x Scripts/qemu-test-validation.sh
-          
-          # Validate test environment prerequisites
-          if ./Scripts/test-environment-setup.sh validate; then
-            echo "::notice title=Environment Ready::Production test environment validated successfully"
-            echo "✅ Production test environment ready"
-            echo "📊 Status: CONFIGURED"
-          else
-            echo "::error title=Environment Failed::Production test environment validation failed"
-            echo "❌ Production test environment setup failed"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-          echo "::endgroup::"
-      
-      - name: 🔗 Execute Production Tests
-        run: |
-          echo "::group::Production Test Execution"
-          echo "::notice title=Production Test Execution::Running comprehensive production test suite"
-          echo "🔗 Running production tests with QEMU integration and hardware validation..."
-          echo "📊 Status: TESTING"
-          echo "⚙️ Test mode: Production environment tests with comprehensive validation"
-          echo "🎯 Production test components:"
-          echo "   • QEMU test server functionality"
-          echo "   • End-to-end protocol flow validation"
-          echo "   • Network communication layer testing"
-          echo "   • System Extension integration testing"
-          echo "   • Hardware-dependent test validation"
-          echo "   • Complete system validation"
-          
-          # Run production tests using the new script (with CI constraints)
-          if ./Scripts/run-production-tests.sh --no-qemu --no-system-extension --no-hardware --timeout 60; then
-            echo "::notice title=Production Tests Success::Production tests completed successfully"
-            echo "✅ Production tests completed successfully"
-            echo "📊 Status: SUCCESS"
-          else
-            echo "::error title=Production Tests Failed::Production test execution failed"
-            echo "❌ Production tests failed - see detailed failure information above"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-          echo "::endgroup::"
-        continue-on-error: false
-      
-      - name: 📊 Production Test Summary
-        if: always()
-        run: |
-          echo "::group::Production Test Execution Summary"
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "::notice title=Production Tests Complete::Production test execution completed successfully"
-            echo "✅ All production tests: PASSED"
-            echo "🎯 Production test components validated:"
-            echo "   • Core protocol functionality"
-            echo "   • Network communication layer"
-            echo "   • System Extension bundle validation"
-            echo "   • End-to-end integration flows"
-            echo "   • Release-ready functionality validation"
-            echo "📋 Complete production readiness validated"
-          else
-            echo "::error title=Production Tests Failed::Production test execution failed"
-            echo "❌ Production test execution: FAILED"
-            echo "🔧 Action required: Fix production issues before merging"
-            echo "📋 Common production test failure causes:"
-            echo "   • QEMU integration setup or configuration issues"
-            echo "   • System Extension validation problems"
-            echo "   • Hardware-dependent test compatibility issues"
-            echo "   • End-to-end integration failures"
-            echo "   • Production environment configuration problems"
-            echo "   • Resource availability or timing constraints"
-          fi
-          echo "::endgroup::"
-
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [lint, build, release-validation, test, integration-test]
+    needs: [code-quality, build-validation, test-suite]
     outputs:
       success: ${{ steps.check-status.outputs.success }}
       release_ready: ${{ steps.check-status.outputs.release_ready }}
+      test_environment: ${{ env.TEST_ENVIRONMENT }}
     steps:
       - name: 📊 Check Overall CI Status
         id: check-status
         run: |
           echo "::group::CI Status Analysis"
-          echo "::notice title=CI Summary::Analyzing overall CI execution status"
+          echo "::notice title=CI Summary::Analyzing overall consolidated CI execution status"
           
-          # Check required job statuses
-          LINT_STATUS="${{ needs.lint.result }}"
-          BUILD_STATUS="${{ needs.build.result }}"
-          RELEASE_VAL_STATUS="${{ needs.release-validation.result }}"
-          TEST_STATUS="${{ needs.test.result }}"
-          INTEGRATION_STATUS="${{ needs.integration-test.result }}"
+          # Check job statuses
+          CODE_QUALITY_STATUS="${{ needs.code-quality.result }}"
+          BUILD_STATUS="${{ needs.build-validation.result }}"
+          TEST_STATUS="${{ needs.test-suite.result }}"
+          # Check if release validation was requested
+          IS_RELEASE_VAL="${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}"
+          if [[ "$IS_RELEASE_VAL" == "true" ]]; then
+            RELEASE_VAL_STATUS="${{ needs.release-validation.result }}"
+          else
+            RELEASE_VAL_STATUS="skipped"
+          fi
           
           echo "📋 Job status summary:"
-          echo "   • Lint: $LINT_STATUS"
-          echo "   • Build: $BUILD_STATUS"
+          echo "   • Code Quality: $CODE_QUALITY_STATUS"
+          echo "   • Build Validation: $BUILD_STATUS"
+          echo "   • Test Suite (${{ env.TEST_ENVIRONMENT }}): $TEST_STATUS"
           echo "   • Release Validation: $RELEASE_VAL_STATUS"
-          echo "   • CI Tests: $TEST_STATUS"
-          echo "   • Integration Tests: $INTEGRATION_STATUS"
           
-          # Determine overall success (required jobs must succeed, optional jobs can be skipped)
+          # Determine overall success
           REQUIRED_SUCCESS=true
           RELEASE_READY=false
           
-          # Check required jobs
-          if [[ "$LINT_STATUS" != "success" || "$BUILD_STATUS" != "success" ]]; then
+          # Check required jobs (code quality, build, tests)
+          if [[ "$CODE_QUALITY_STATUS" != "success" || "$BUILD_STATUS" != "success" ]]; then
             REQUIRED_SUCCESS=false
           fi
           
+          # Check test status (required unless explicitly skipped)
+          if [[ "$TEST_STATUS" != "success" && "$TEST_STATUS" != "skipped" ]]; then
+            if [[ "${{ env.SKIP_OPTIONAL_TESTS }}" != "true" ]]; then
+              REQUIRED_SUCCESS=false
+            fi
+          fi
+          
           # For release validation, check if release validation passed
-          if [[ "${{ env.IS_RELEASE_VALIDATION }}" == "true" ]]; then
+          if [[ "$IS_RELEASE_VAL" == "true" ]]; then
             if [[ "$RELEASE_VAL_STATUS" == "success" ]]; then
               RELEASE_READY=true
               echo "🚀 Release validation: PASSED"
             else
               RELEASE_READY=false
               echo "❌ Release validation: FAILED"
-            fi
-            
-            # Check test jobs if not skipped
-            if [[ "${{ env.SKIP_OPTIONAL_TESTS }}" != "true" ]]; then
-              if [[ "$TEST_STATUS" != "success" && "$TEST_STATUS" != "skipped" ]]; then
+              if [[ "$RELEASE_VAL_STATUS" != "skipped" ]]; then
                 REQUIRED_SUCCESS=false
-                RELEASE_READY=false
               fi
             fi
           fi
@@ -616,15 +435,18 @@ jobs:
           echo "release_ready=$RELEASE_READY" >> $GITHUB_OUTPUT
           
           if [[ "$REQUIRED_SUCCESS" == "true" ]]; then
-            echo "::notice title=CI Success::All required CI checks passed successfully"
+            echo "::notice title=CI Success::All required consolidated CI checks passed successfully"
             echo "✅ Overall CI status: SUCCESS"
+            echo "🎯 Test environment: ${{ env.TEST_ENVIRONMENT }}"
+            echo "📋 Consolidated workflow execution: COMPLETE"
           else
-            echo "::error title=CI Failed::One or more required CI checks failed"
+            echo "::error title=CI Failed::One or more required consolidated CI checks failed"
             echo "❌ Overall CI status: FAILED"
+            echo "🔧 Review job details above for specific failure information"
           fi
           
           if [[ "$RELEASE_READY" == "true" ]]; then
-            echo "::notice title=Release Ready::CI validation complete - ready for release"
+            echo "::notice title=Release Ready::Consolidated CI validation complete - ready for release"
             echo "🚀 Release readiness: READY"
           fi
           

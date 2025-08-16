@@ -321,14 +321,14 @@ final class QEMUUSBIPProtocolTests: XCTestCase, TestSuite {
         }
         
         // Test server is listening
-        XCTAssertTrue(tcpServer.isRunning, "Server should be running")
+        XCTAssertTrue(tcpServer.isRunning(), "Server should be running")
         
         // Stop server
         serverStopExpectation = XCTestExpectation(description: "Server stopped")
         tcpServer.stop()
         await fulfillment(of: [serverStopExpectation!], timeout: 5.0)
         
-        XCTAssertFalse(tcpServer.isRunning, "Server should be stopped")
+        XCTAssertFalse(tcpServer.isRunning(), "Server should be stopped")
         
         logger.info("TCP server lifecycle validated")
     }
@@ -338,7 +338,7 @@ final class QEMUUSBIPProtocolTests: XCTestCase, TestSuite {
         
         // Start test server
         try tcpServer.start(port: testServerPort)
-        defer { tcpServer.stop() }
+        defer { try? tcpServer.stop() }
         
         // Allow server to start
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
@@ -368,11 +368,12 @@ final class QEMUUSBIPProtocolTests: XCTestCase, TestSuite {
         
         let connectResult = withUnsafePointer(to: &serverAddr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                CFSocketConnectToAddress(socket, Data(bytes: sockPtr, count: MemoryLayout<sockaddr_in>.size), 5.0)
+                let data = Data(bytes: sockPtr, count: MemoryLayout<sockaddr_in>.size)
+                return CFSocketConnectToAddress(socket, data as CFData, 5.0)
             }
         }
         
-        XCTAssertEqual(connectResult, .success, "Should connect to server")
+        XCTAssertEqual(connectResult, CFSocketError.success, "Should connect to server")
         
         // Clean up socket
         if let socket = socket {
@@ -387,7 +388,7 @@ final class QEMUUSBIPProtocolTests: XCTestCase, TestSuite {
     func testUSBIPHeaderEncoding() async throws {
         // Test USB/IP header encoding/decoding compliance
         
-        let testCommands: [USBIPCommand] = [
+        let testCommands: [USBIPProtocol.Command] = [
             .requestDeviceList,
             .replyDeviceList,
             .requestDeviceImport,

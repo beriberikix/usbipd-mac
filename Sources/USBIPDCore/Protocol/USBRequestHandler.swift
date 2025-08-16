@@ -208,27 +208,25 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     /// Execute an async throwing task synchronously
     /// This is a temporary bridge until the protocol can be made async
     private func executeAsyncSynchronously<T>(_ operation: @escaping () async throws -> T) throws -> T {
-        let semaphore = DispatchSemaphore(value: 0)
-        let resultQueue = DispatchQueue(label: "com.usbipd.mac.request-result", attributes: .concurrent)
-        var result: Result<T, Error>!
-        
-        Task<Void, Never> {
-            do {
-                let value = try await operation()
-                resultQueue.async(flags: .barrier) {
+        // Use Swift 6 compatible approach with MainActor synchronization
+        return try MainActor.assumeIsolated {
+            var result: Result<T, Error>?
+            _ = Task {
+                do {
+                    let value = try await operation()
                     result = .success(value)
-                    semaphore.signal()
-                }
-            } catch {
-                resultQueue.async(flags: .barrier) {
+                } catch {
                     result = .failure(error)
-                    semaphore.signal()
                 }
             }
+            
+            // Wait for task completion in a blocking manner
+            while result == nil {
+                Thread.sleep(forTimeInterval: 0.001) // Small sleep to avoid busy waiting
+            }
+            
+            return try result!.get()
         }
-        
-        semaphore.wait()
-        return try result.get()
     }
 }
 

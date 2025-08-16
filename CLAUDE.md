@@ -85,17 +85,68 @@ swiftlint --fix
 
 ### Full CI Validation Locally
 ```bash
-# Complete validation sequence (matches CI pipeline)
-swiftlint lint --strict
-swift build --verbose
-./Scripts/run-ci-tests.sh
+# Complete validation sequence (matches consolidated CI pipeline)
+swiftlint lint --strict                      # Code quality validation
+swift build --verbose                        # Build validation  
+./Scripts/run-ci-tests.sh                   # CI environment test suite
 
 # Full production validation for release preparation
-swiftlint lint --strict
-swift build --verbose
-./Scripts/run-production-tests.sh
-./Scripts/generate-test-report.sh
+swiftlint lint --strict                      # Code quality validation
+swift build --verbose                        # Build validation
+./Scripts/run-production-tests.sh           # Production environment test suite
+./Scripts/generate-test-report.sh           # Comprehensive test reporting
+
+# Validate specific workflow components locally
+# (These match the consolidated CI workflow jobs)
+
+# 1. Code Quality Job validation
+swiftlint lint --strict --reporter xcode    # Matches CI swiftlint-validation action
+
+# 2. Build Validation Job validation  
+swift package resolve                        # Dependency resolution
+swift build --verbose                        # Project compilation
+
+# 3. Test Suite Job validation (environment-specific)
+./Scripts/run-development-tests.sh          # Development environment tests
+./Scripts/run-ci-tests.sh                   # CI environment tests  
+./Scripts/run-production-tests.sh           # Production environment tests
+
+# 4. Release Validation (when preparing releases)
+swift build --configuration release         # Release build validation
+# Note: Full release validation includes version checks and artifact validation
 ```
+
+### Working with Consolidated CI Workflows
+
+When making changes that might affect CI workflows:
+
+```bash
+# Test changes against CI workflow locally before pushing
+swiftlint lint --strict && swift build --verbose && ./Scripts/run-ci-tests.sh
+
+# For release-related changes, test with production environment
+swiftlint lint --strict && swift build --verbose && ./Scripts/run-production-tests.sh
+
+# Check if changes affect security scanning
+# (Security workflow runs on Package.swift, Package.resolved, and Sources/ changes)
+find Sources -name "*.swift" -exec grep -l "secret\|password\|key" {} +
+
+# Validate test environment setup before CI runs
+./Scripts/test-environment-setup.sh validate
+```
+
+### AI Assistant Guidance for CI Workflows
+
+When working with the consolidated CI system:
+
+1. **Code Quality**: Always run `swiftlint lint --strict` before committing to catch issues early
+2. **Build Validation**: Use `swift build --verbose` to get detailed build information
+3. **Test Execution**: Use environment-specific test scripts that match CI workflow job matrix
+4. **Release Preparation**: Use production environment tests for release validation
+5. **Security Awareness**: Be mindful of changes to dependencies and source code that trigger security scans
+6. **Workflow Monitoring**: Monitor GitHub Actions for CI status and investigate failures promptly
+
+The consolidated architecture reduces complexity while maintaining comprehensive validation coverage.
 
 ## Key Implementation Details
 
@@ -287,52 +338,71 @@ Use the release preparation script to validate and prepare releases locally:
 ./Scripts/prepare-release.sh --force --skip-tests --skip-lint v1.2.4
 ```
 
-### GitHub Actions Workflows
+### GitHub Actions Workflows (Consolidated Architecture)
 
-The automated release system includes several GitHub Actions workflows:
+The project uses a streamlined GitHub Actions architecture with three consolidated workflows:
 
-#### Production Release Workflow (`.github/workflows/release.yml`)
+#### CI (Consolidated) Workflow (`.github/workflows/ci.yml`)
+- **Purpose**: Main continuous integration validation for all code changes
+- **Triggers**: Push to main, pull requests, workflow calls from release workflows, manual dispatch
+- **Jobs**: Code quality (SwiftLint), build validation, comprehensive test suite, release validation (conditional)
+- **Features**: Parallel execution, environment-specific testing, reusable composite actions
+- **Duration**: ~5-8 minutes for typical CI run
+
+```bash
+# Manual CI trigger with options
+gh workflow run ci.yml -f test_environment=ci -f enable_qemu_tests=false
+
+# Manual CI trigger for production testing
+gh workflow run ci.yml -f test_environment=production -f enable_qemu_tests=true
+
+# Manual release validation mode
+gh workflow run ci.yml -f release_validation=true -f test_environment=ci
+```
+
+#### Production Release (Streamlined) Workflow (`.github/workflows/release.yml`)
+- **Purpose**: Automated release process from validation to publication
 - **Triggers**: Git tags (`v*`) or manual dispatch
-- **Stages**: Validation → Build → Test → Artifact Creation → Release Publication
-- **Features**: Code signing, notarization, artifact validation, multi-architecture builds
+- **Jobs**: Release validation, CI validation (via workflow_call), artifact building, release creation, post-release validation
+- **Features**: Reuses CI workflow for validation, code signing, multi-architecture builds, GitHub release creation
 - **Duration**: ~15-20 minutes for full release
 
 ```bash
 # Manual release trigger (via GitHub web interface or gh CLI)
 gh workflow run release.yml -f version=v1.2.3 -f prerelease=false
 
-# Emergency release (skips some tests)
-gh workflow run release.yml -f version=v1.2.3 -f skip_tests=true
+# Emergency release (skips CI validation)
+gh workflow run release.yml -f version=v1.2.3-hotfix -f skip_tests=true
 ```
 
-#### Pre-Release Validation Workflow (`.github/workflows/pre-release.yml`)
-- **Triggers**: Pull requests to main or manual dispatch
-- **Validation Levels**: Quick (PR) → Comprehensive (manual) → Release Candidate (pre-release)
-- **Features**: Multi-level testing, release readiness validation
+#### Security Scanning Workflow (`.github/workflows/security.yml`)
+- **Purpose**: Comprehensive security monitoring without blocking development
+- **Triggers**: Daily schedule (6 AM UTC), push/PR on security-relevant files, manual dispatch
+- **Jobs**: Dependency vulnerability scanning, static security analysis, security summary
+- **Features**: Configurable scan types and severity thresholds, detailed security reporting
+- **Duration**: ~3-5 minutes for comprehensive scan
 
 ```bash
-# Run comprehensive pre-release validation
-gh workflow run pre-release.yml -f validation_level=comprehensive
+# Manual security scan with options
+gh workflow run security.yml -f scan_type=comprehensive -f severity_threshold=high
 
-# Full release candidate validation
-gh workflow run pre-release.yml -f validation_level=release-candidate
+# Quick dependency-only scan
+gh workflow run security.yml -f scan_type=dependency-only -f severity_threshold=critical
 ```
 
-#### Release Monitoring Workflow (`.github/workflows/release-monitoring.yml`)
-- **Purpose**: Monitor release workflow execution, failure alerts, metrics collection
-- **Triggers**: Automatic (on workflow completion) or manual dispatch
-- **Features**: Failure notifications, performance metrics, health checks
+#### Composite Actions (`.github/actions/`)
+Reusable workflow components that eliminate duplication:
 
-```bash
-# Manual monitoring and status check
-gh workflow run release-monitoring.yml -f monitoring_mode=status
+- **setup-swift-environment**: Swift environment setup with caching, SwiftLint installation, dependency resolution
+- **swiftlint-validation**: Standardized code quality validation with configurable options  
+- **run-test-suite**: Parameterized test execution across different environments
 
-# Generate release metrics report
-gh workflow run release-monitoring.yml -f monitoring_mode=metrics -f time_window=24
-
-# Perform health check on release infrastructure
-gh workflow run release-monitoring.yml -f monitoring_mode=health-check
-```
+**Benefits of Consolidated Architecture**:
+- Reduced workflow maintenance (7 workflows → 3 workflows)
+- Eliminated duplication through composite actions
+- Consistent environment setup and validation
+- Improved caching and performance
+- Enhanced reusability through workflow_call interface
 
 ### Release Artifact Management
 
