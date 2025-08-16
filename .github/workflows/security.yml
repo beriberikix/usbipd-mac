@@ -84,44 +84,47 @@ jobs:
           if [ -f "Package.resolved" ]; then
             echo "📋 Analyzing Package.resolved for security vulnerabilities..."
             
-            # Parse Package.resolved to extract dependency information
-            python3 << 'EOF' > .security-scan-results/dependency-list.json
-            import json
-            import sys
-            import datetime
-            
-            try:
-                with open('Package.resolved', 'r') as f:
-                    data = json.load(f)
-                
-                dependencies = []
-                if 'pins' in data:
-                    for pin in data['pins']:
-                        dependencies.append({
-                            'name': pin.get('identity', pin.get('package', 'unknown')),
-                            'version': pin.get('state', {}).get('version', 'unknown'),
-                            'url': pin.get('location', 'unknown')
-                        })
-                elif 'object' in data and 'pins' in data['object']:
-                    for pin in data['object']['pins']:
-                        dependencies.append({
-                            'name': pin.get('identity', pin.get('package', 'unknown')),
-                            'version': pin.get('state', {}).get('version', 'unknown'),
-                            'url': pin.get('location', 'unknown')
-                        })
-                
-                result = {
-                    'total_dependencies': len(dependencies),
-                    'dependencies': dependencies,
-                    'scan_timestamp': datetime.datetime.utcnow().isoformat() + 'Z'
-                }
-                
-                print(json.dumps(result, indent=2))
-                
-            except Exception as e:
-                print(json.dumps({"error": f"Failed to parse Package.resolved: {e}"}), file=sys.stderr)
-                sys.exit(1)
-            EOF
+            # Parse Package.resolved to extract dependency information using inline Python
+            python3 -c "
+import json
+import sys
+import datetime
+
+try:
+    with open('Package.resolved', 'r') as f:
+        data = json.load(f)
+    
+    dependencies = []
+    if 'pins' in data:
+        for pin in data['pins']:
+            dependencies.append({
+                'name': pin.get('identity', pin.get('package', 'unknown')),
+                'version': pin.get('state', {}).get('version', 'unknown'),
+                'url': pin.get('location', 'unknown')
+            })
+    elif 'object' in data and 'pins' in data['object']:
+        for pin in data['object']['pins']:
+            dependencies.append({
+                'name': pin.get('identity', pin.get('package', 'unknown')),
+                'version': pin.get('state', {}).get('version', 'unknown'),
+                'url': pin.get('location', 'unknown')
+            })
+    
+    result = {
+        'total_dependencies': len(dependencies),
+        'dependencies': dependencies,
+        'scan_timestamp': datetime.datetime.utcnow().isoformat() + 'Z'
+    }
+    
+    with open('.security-scan-results/dependency-list.json', 'w') as f:
+        json.dump(result, f, indent=2)
+    
+    print(f'Processed {len(dependencies)} dependencies')
+    
+except Exception as e:
+    print(f'Error: Failed to parse Package.resolved: {e}', file=sys.stderr)
+    sys.exit(1)
+"
             
             # Count dependencies for reporting
             TOTAL_DEPS=$(python3 -c "import json; print(json.load(open('.security-scan-results/dependency-list.json'))['total_dependencies'])")
