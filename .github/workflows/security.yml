@@ -119,7 +119,7 @@ jobs:
                 print(json.dumps(result, indent=2))
                 
             except Exception as e:
-                print(f'{{"error": "Failed to parse Package.resolved: {e}"}}', file=sys.stderr)
+                print(json.dumps({"error": f"Failed to parse Package.resolved: {e}"}), file=sys.stderr)
                 sys.exit(1)
             EOF
             
