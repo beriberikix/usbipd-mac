@@ -41,28 +41,52 @@ readonly EXIT_USAGE_ERROR=6
 
 # Logging functions
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"
+    local message="${BLUE}[INFO]${NC} $1"
+    echo -e "$message"
+    if [[ -d "$VALIDATION_DIR" ]]; then
+        echo -e "$message" >> "$LOG_FILE"
+    fi
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$LOG_FILE"
+    local message="${GREEN}[SUCCESS]${NC} $1"
+    echo -e "$message"
+    if [[ -d "$VALIDATION_DIR" ]]; then
+        echo -e "$message" >> "$LOG_FILE"
+    fi
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$LOG_FILE"
+    local message="${YELLOW}[WARNING]${NC} $1"
+    echo -e "$message"
+    if [[ -d "$VALIDATION_DIR" ]]; then
+        echo -e "$message" >> "$LOG_FILE"
+    fi
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"
+    local message="${RED}[ERROR]${NC} $1"
+    echo -e "$message"
+    if [[ -d "$VALIDATION_DIR" ]]; then
+        echo -e "$message" >> "$LOG_FILE"
+    fi
 }
 
 log_step() {
-    echo -e "${BOLD}${BLUE}==>${NC}${BOLD} $1${NC}" | tee -a "$LOG_FILE"
+    local message="${BOLD}${BLUE}==>${NC}${BOLD} $1${NC}"
+    echo -e "$message"
+    if [[ -d "$VALIDATION_DIR" ]]; then
+        echo -e "$message" >> "$LOG_FILE"
+    fi
 }
 
 log_verbose() {
     if [[ "$VERBOSE" == "true" ]]; then
-        echo -e "${BLUE}[VERBOSE]${NC} $1" | tee -a "$LOG_FILE"
+        local message="${BLUE}[VERBOSE]${NC} $1"
+        echo -e "$message"
+        if [[ -d "$VALIDATION_DIR" ]]; then
+            echo -e "$message" >> "$LOG_FILE"
+        fi
     fi
 }
 
