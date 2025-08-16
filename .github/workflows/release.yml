@@ -461,15 +461,18 @@ jobs:
           echo "🚀 Creating GitHub release $VERSION..."
           
           # Create release
-          RELEASE_ARGS="--title \"usbipd-mac $VERSION\" --notes-file release-notes.md"
           if [ "$PRERELEASE" = "true" ]; then
-            RELEASE_ARGS="$RELEASE_ARGS --prerelease"
             echo "🏷️ Creating pre-release"
+            gh release create "$VERSION" release-artifacts/* \
+              --title "usbipd-mac $VERSION" \
+              --notes-file release-notes.md \
+              --prerelease
           else
             echo "🏷️ Creating stable release"
+            gh release create "$VERSION" release-artifacts/* \
+              --title "usbipd-mac $VERSION" \
+              --notes-file release-notes.md
           fi
-          
-          gh release create "$VERSION" release-artifacts/* $RELEASE_ARGS
           
           echo "::notice title=Release Created::GitHub release created successfully"
           echo "✅ Release $VERSION published"
