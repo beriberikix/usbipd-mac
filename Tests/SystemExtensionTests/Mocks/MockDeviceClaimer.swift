@@ -400,7 +400,7 @@ public class MockDeviceClaimer: USBIPDCore.DeviceClaimer {
     private func createMockClaimedDevice(deviceID: String) -> ClaimedDevice {
         let components = deviceID.split(separator: "-")
         let busID = String(components.first ?? "1")
-        let devID = String(components.last ?? "1")
+        _ = String(components.last ?? "1") // Used for potential future extensions
         
         return ClaimedDevice(
             deviceID: deviceID,

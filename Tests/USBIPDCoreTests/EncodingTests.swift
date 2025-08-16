@@ -220,11 +220,11 @@ final class EncodingTests: XCTestCase {
             interfaceCount: 1
         )
         
-        let deviceImportResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(status: 0, deviceInfo: deviceInfo)
-        XCTAssertEqual(deviceImportResponseData.count, 324) // 8 + 4 + 312
+        let deviceImportResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 0)
+        XCTAssertEqual(deviceImportResponseData.count, 12) // 8 + 4
         
         // Test device import response encoding (error case)
-        let deviceImportErrorResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(status: 1, deviceInfo: nil)
+        let deviceImportErrorResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 1)
         XCTAssertEqual(deviceImportErrorResponseData.count, 12) // 8 + 4
     }
     
@@ -418,33 +418,14 @@ final class EncodingTests: XCTestCase {
     
     func testDeviceImportResponseDecoding() throws {
         // Test successful device import response
-        let deviceInfo = USBIPDeviceInfo(
-            path: "/test/path",
-            busID: "1-1",
-            busnum: 1,
-            devnum: 2,
-            speed: 480000000,
-            vendorID: 0x1234,
-            productID: 0x5678,
-            deviceClass: 9,
-            deviceSubClass: 0,
-            deviceProtocol: 1,
-            configurationCount: 1,
-            configurationValue: 1,
-            interfaceCount: 1
-        )
-        
-        let successResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(status: 0, deviceInfo: deviceInfo)
+        let successResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 0)
         let decodedSuccessResponse = try USBIPMessageDecoder.decodeDeviceImportResponse(from: successResponseData)
-        XCTAssertEqual(decodedSuccessResponse.status, 0)
-        XCTAssertNotNil(decodedSuccessResponse.deviceInfo)
-        XCTAssertEqual(decodedSuccessResponse.deviceInfo?.busID, "1-1")
+        XCTAssertEqual(decodedSuccessResponse.returnCode, 0)
         
         // Test error device import response
-        let errorResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(status: 1, deviceInfo: nil)
+        let errorResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 1)
         let decodedErrorResponse = try USBIPMessageDecoder.decodeDeviceImportResponse(from: errorResponseData)
-        XCTAssertEqual(decodedErrorResponse.status, 1)
-        XCTAssertNil(decodedErrorResponse.deviceInfo)
+        XCTAssertEqual(decodedErrorResponse.returnCode, 1)
         
         // Test invalid length for device import response
         let invalidLengthData = Data(count: 20) // Invalid length

@@ -38,7 +38,6 @@ let package = Package(
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
-            exclude: ["README-USB-Implementation.md"],
             linkerSettings: [
                 .linkedFramework("Security")
             ]),
@@ -54,7 +53,6 @@ let package = Package(
             exclude: ["Info.plist"],
             resources: [
                 .copy("SystemExtension.entitlements"),
-                .copy("SYSTEM_EXTENSION_SETUP.md"),
                 .copy("Info.plist.template")
             ],
             linkerSettings: [

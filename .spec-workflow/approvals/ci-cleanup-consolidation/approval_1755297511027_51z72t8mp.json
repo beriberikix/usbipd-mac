@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755297511027_51z72t8mp",
+  "title": "Tasks Phase: ci-cleanup-consolidation - Ready for Review",
+  "filePath": ".spec-workflow/specs/ci-cleanup-consolidation/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-15T22:38:31.027Z",
+  "category": "spec",
+  "categoryName": "ci-cleanup-consolidation",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow git workflow. Commit to git at relevant points with a useful message. First task should create a feature branch and commit spec files. Last task should create a PR and ensure CI passes without failure.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Commit to git at relevant points with a useful message. First task should create a feature branch and commit spec files. Last task should create a PR and ensure CI passes without failure.\",\n      \"timestamp\": \"2025-08-15T22:40:38.049Z\",\n      \"id\": \"comment_1755297638049_4do5gbchp\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Commit to git at relevant points with a useful message. First task should create a feature branch and commit spec files. Last task should create a PR and ensure CI passes without failure.\\n\\n\",\n  \"timestamp\": \"2025-08-15T22:40:42.163Z\"\n}",
+  "respondedAt": "2025-08-15T22:40:42.171Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Commit to git at relevant points with a useful message. First task should create a feature branch and commit spec files. Last task should create a PR and ensure CI passes without failure.",
+      "timestamp": "2025-08-15T22:40:38.049Z",
+      "id": "comment_1755297638049_4do5gbchp"
+    }
+  ]
+}
