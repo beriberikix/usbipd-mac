@@ -225,10 +225,162 @@ jobs:
           path: release-artifacts/
           retention-days: 30
 
+  update-homebrew-formula:
+    name: Update Homebrew Formula
+    runs-on: macos-latest
+    needs: [release-validation, build-artifacts]
+    steps:
+      - name: 🍺 Starting Homebrew Formula Update
+        run: |
+          echo "::notice title=Homebrew Formula::Starting automated Homebrew formula update"
+          echo "🍺 This stage updates the formula with release version and checksum"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📤 Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts-${{ needs.release-validation.outputs.version }}
+          path: release-artifacts/
+
+      - name: 🔢 Calculate Archive SHA256
+        id: calculate-sha256
+        run: |
+          echo "::group::SHA256 Calculation"
+          echo "::notice title=SHA256::Calculating archive checksum for formula update"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          ARCHIVE_PATH="release-artifacts/usbipd-mac-$VERSION.tar.gz"
+          
+          if [ ! -f "$ARCHIVE_PATH" ]; then
+            echo "::error title=Archive Missing::Release archive not found: $ARCHIVE_PATH"
+            exit 1
+          fi
+          
+          echo "📊 Calculating SHA256 for $ARCHIVE_PATH..."
+          SHA256_CHECKSUM=$(shasum -a 256 "$ARCHIVE_PATH" | cut -d' ' -f1)
+          
+          if [[ ! "$SHA256_CHECKSUM" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo "::error title=Invalid Checksum::Generated checksum format is invalid"
+            exit 1
+          fi
+          
+          echo "✅ SHA256 calculated: $SHA256_CHECKSUM"
+          echo "sha256=$SHA256_CHECKSUM" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+      - name: 🍺 Update Formula
+        run: |
+          echo "::group::Formula Update"
+          echo "::notice title=Formula Update::Updating Homebrew formula with release information"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          SHA256_CHECKSUM="${{ steps.calculate-sha256.outputs.sha256 }}"
+          
+          echo "🍺 Updating formula..."
+          echo "   Version: $VERSION"
+          echo "   SHA256: $SHA256_CHECKSUM"
+          
+          # Use the formula update script
+          ./Scripts/update-formula.sh \
+            --version "$VERSION" \
+            --checksum "$SHA256_CHECKSUM" \
+            --skip-validation \
+            --no-tag-validation
+          
+          echo "::notice title=Formula Updated::Formula placeholders updated successfully"
+          echo "✅ Formula updated with release information"
+          echo "::endgroup::"
+
+      - name: 🔍 Validate Updated Formula
+        run: |
+          echo "::group::Formula Validation"
+          echo "::notice title=Formula Validation::Validating updated formula syntax and structure"
+          
+          # Check Ruby syntax
+          if ruby -c Formula/usbipd-mac.rb >/dev/null 2>&1; then
+            echo "✅ Ruby syntax validation passed"
+          else
+            echo "::error title=Syntax Error::Formula has Ruby syntax errors"
+            ruby -c Formula/usbipd-mac.rb
+            exit 1
+          fi
+          
+          # Verify placeholders were replaced
+          if grep -q "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" Formula/usbipd-mac.rb; then
+            echo "::error title=Placeholder Error::Formula still contains unreplaced placeholders"
+            grep -n "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" Formula/usbipd-mac.rb
+            exit 1
+          fi
+          
+          # Verify new values are present
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          SHA256_CHECKSUM="${{ steps.calculate-sha256.outputs.sha256 }}"
+          
+          if ! grep -q "$VERSION" Formula/usbipd-mac.rb; then
+            echo "::error title=Version Missing::Version $VERSION not found in updated formula"
+            exit 1
+          fi
+          
+          if ! grep -q "$SHA256_CHECKSUM" Formula/usbipd-mac.rb; then
+            echo "::error title=Checksum Missing::SHA256 checksum not found in updated formula"
+            exit 1
+          fi
+          
+          echo "::notice title=Formula Validated::Updated formula passed all validation checks"
+          echo "✅ Formula validation completed successfully"
+          echo "::endgroup::"
+
+      - name: 📄 Commit Formula Changes
+        run: |
+          echo "::group::Formula Commit"
+          echo "::notice title=Formula Commit::Committing updated formula to repository"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          SHA256_CHECKSUM="${{ steps.calculate-sha256.outputs.sha256 }}"
+          
+          # Configure Git for the GitHub Actions bot
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Check if there are changes to commit
+          if git diff --quiet Formula/usbipd-mac.rb; then
+            echo "::warning title=No Changes::No changes detected in formula file"
+            echo "⚠️ No formula changes to commit"
+          else
+            # Add and commit the formula changes
+            git add Formula/usbipd-mac.rb
+            
+            git commit -m "feat: update Homebrew formula to $VERSION - automated release workflow update"
+            
+            echo "::notice title=Formula Committed::Formula changes committed successfully"
+            echo "✅ Formula changes committed"
+            echo "📋 Commit message: feat: update Homebrew formula to $VERSION"
+          fi
+          echo "::endgroup::"
+
+      - name: 📤 Push Formula Changes
+        run: |
+          echo "::group::Formula Push"
+          echo "::notice title=Formula Push::Pushing updated formula to repository"
+          
+          # Push the changes
+          git push origin HEAD
+          
+          echo "::notice title=Formula Pushed::Updated formula pushed to repository"
+          echo "✅ Formula changes pushed to repository"
+          echo "🔗 Formula updated in branch: ${{ github.ref_name }}"
+          echo "::endgroup::"
+
   create-release:
     name: Create GitHub Release
     runs-on: macos-latest
-    needs: [release-validation, build-artifacts]
+    needs: [release-validation, build-artifacts, update-homebrew-formula]
     steps:
       - name: 🚀 Starting Release Creation
         run: |
@@ -327,7 +479,7 @@ jobs:
   post-release:
     name: Post-Release Validation
     runs-on: macos-latest
-    needs: [release-validation, create-release]
+    needs: [release-validation, create-release, update-homebrew-formula]
     if: always() && needs.create-release.result == 'success'
     steps:
       - name: 📊 Starting Post-Release Validation
@@ -382,6 +534,7 @@ jobs:
           echo "   • Release version validation"
           echo "   • Comprehensive CI validation (via workflow_call)"
           echo "   • Optimized artifact building and signing"
+          echo "   • Automated Homebrew formula update"
           echo "   • GitHub release creation with artifacts"
           echo "   • Post-release verification"
           echo ""

@@ -21,6 +21,109 @@ usbipd-mac is a macOS implementation of the USB/IP protocol that allows sharing 
 - **Xcode 13+**: Required for System Extensions support and Swift Package Manager
 - **Code Signing**: Optional for development, required for distribution
 
+## Installation
+
+### Homebrew Installation (Recommended)
+
+The easiest way to install usbipd-mac is through Homebrew:
+
+```bash
+# Add the usbipd-mac tap
+brew tap beriberikix/usbipd-mac
+
+# Install usbipd-mac
+brew install usbipd-mac
+```
+
+#### Service Management
+
+After installation, you can manage the usbipd daemon using Homebrew services:
+
+```bash
+# Start the service (requires sudo for System Extension access)
+sudo brew services start usbipd-mac
+
+# Stop the service
+sudo brew services stop usbipd-mac
+
+# Restart the service
+sudo brew services restart usbipd-mac
+
+# Check service status
+brew services info usbipd-mac
+```
+
+#### System Extension Setup
+
+After Homebrew installation, you'll need to approve the System Extension:
+
+1. **System Extension Approval**: macOS will prompt you to approve the System Extension in **System Preferences > Security & Privacy > General**
+2. **Restart Required**: A restart may be required for the System Extension to become active
+3. **Verification**: Check the System Extension status with `usbipd status`
+
+#### Troubleshooting Homebrew Installation
+
+Common installation issues and solutions:
+
+- **Permission Errors**: Ensure you run service commands with `sudo` as the daemon requires System Extension privileges
+- **System Extension Blocked**: Check System Preferences > Security & Privacy and approve the extension
+- **Service Won't Start**: Verify the binary installed correctly with `which usbipd` and check logs with `brew services list`
+- **Version Issues**: Update with `brew upgrade usbipd-mac` or reinstall with `brew reinstall usbipd-mac`
+
+### Manual Installation (Development)
+
+For development or manual installation, see the [Building the Project](#building-the-project) section below.
+
+## Usage
+
+Once installed, you can use usbipd-mac to share USB devices over the network:
+
+### Basic Commands
+
+```bash
+# List available USB devices
+usbipd list
+
+# Share a USB device (device ID from list command)
+usbipd bind --device <device-id>
+
+# Check daemon status and shared devices
+usbipd status
+
+# Stop sharing a device
+usbipd unbind --device <device-id>
+```
+
+### Client Connection
+
+From a USB/IP client (typically Linux):
+
+```bash
+# Install USB/IP tools (Ubuntu/Debian)
+sudo apt install linux-tools-generic
+
+# Connect to shared device
+sudo usbip attach -r <macos-ip-address> -b <device-id>
+
+# List attached devices
+usbip port
+
+# Detach device
+sudo usbip detach -p <port-number>
+```
+
+### Docker Integration
+
+For Docker Desktop users:
+
+```bash
+# Ensure the service is running
+sudo brew services start usbipd-mac
+
+# USB devices will be available to Docker containers
+# through the USB/IP protocol integration
+```
+
 ## Project Status
 
 This project is currently in early development. The core server functionality is being implemented as an MVP.
@@ -83,6 +186,7 @@ For detailed information about development, architecture, and troubleshooting, s
 ### Troubleshooting Guides
 - [**Build Troubleshooting**](Documentation/troubleshooting/build-troubleshooting.md) - Common build and setup issues
 - [**System Extension Troubleshooting**](Documentation/troubleshooting/system-extension-troubleshooting.md) - System Extension specific problems
+- [**Homebrew Troubleshooting**](Documentation/homebrew-troubleshooting.md) - Homebrew installation and service issues
 - [**QEMU Troubleshooting**](Documentation/troubleshooting/qemu-troubleshooting.md) - QEMU test server issues
 
 ## Release Automation
