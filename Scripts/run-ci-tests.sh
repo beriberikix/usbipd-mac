@@ -67,11 +67,7 @@ check_ci_prerequisites() {
         exit 1
     fi
     
-    # Check for SwiftLint (required in CI)
-    if ! command -v swiftlint >/dev/null 2>&1; then
-        log_error "SwiftLint is required in CI environment but not found"
-        exit 1
-    fi
+    # Note: SwiftLint validation is handled by the Code Quality job in consolidated CI
     
     # Check CI environment variables
     if [ -n "${CI}" ] && [ "${CI}" = "true" ]; then
