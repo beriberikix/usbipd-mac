@@ -17,8 +17,12 @@ class UsbipDMac < Formula
   service do
     run [opt_bin/"usbipd", "--daemon"]
     require_root true
-    log_path "/var/log/usbipd.log"
-    error_log_path "/var/log/usbipd.error.log"
+    keep_alive true
+    run_type :immediate
+    log_path var/"log/usbipd.log"
+    error_log_path var/"log/usbipd.error.log"
+    working_dir HOMEBREW_PREFIX
+    process_type :background
   end
   
   test do
