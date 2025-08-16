@@ -593,7 +593,7 @@ final class HomebrewInstallationTests: XCTestCase, TestSuite {
         logger.debug("✅ Service stop command executed")
     }
     
-    private func restartHomebrewService() throws {
+    func restartHomebrewService() throws {
         logger.info("Restarting Homebrew service")
         
         try runBrewCommand(arguments: ["services", "restart", testConfig.testFormulaName])
@@ -856,7 +856,7 @@ final class HomebrewInstallationTests: XCTestCase, TestSuite {
         installedPackages.removeAll()
     }
     
-    private func cleanupTestTapRepository() throws {
+    func cleanupTestTapRepository() throws {
         logger.info("Cleaning up test tap repository")
         
         // Remove tap from Homebrew

@@ -13,6 +13,7 @@ excluded:
   - Resources
   - Scripts
   - Documentation
+  - Formula
   - Package.swift
 
 # Rules to disable
