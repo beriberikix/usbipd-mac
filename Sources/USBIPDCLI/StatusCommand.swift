@@ -192,11 +192,191 @@ public class StatusCommand: Command {
                 print("Note: Detailed status information requires full System Extension integration")
             }
             
-            // Display System Extension lifecycle status from ServerCoordinator
+            // Display System Extension automatic installation status from ServerCoordinator
             if let coordinator = serverCoordinator {
+                displayAutomaticInstallationStatus(coordinator: coordinator, showDetailed: showDetailed)
                 displaySystemExtensionLifecycleStatus(coordinator: coordinator, showDetailed: showDetailed)
                 displayUSBOperationStatus(coordinator: coordinator, showDetailed: showDetailed)
             }
+        }
+    }
+    
+    private func displayAutomaticInstallationStatus(coordinator: ServerCoordinator, showDetailed: Bool) {
+        // Get automatic installation status
+        guard let installationStatus = coordinator.getAutomaticInstallationStatus() else {
+            // No automatic installation available
+            print("")
+            print("System Extension Installation")
+            print("============================")
+            print("")
+            print("❌ Automatic Installation: Not Available")
+            print("")
+            print("Automatic System Extension installation is not configured.")
+            print("The daemon is running without automatic installation support.")
+            print("")
+            print("To enable automatic installation:")
+            print("1. Ensure System Extension bundle is available in build directory")
+            print("2. Enable automatic installation in configuration")
+            print("3. Restart the daemon to detect and install System Extension")
+            return
+        }
+        
+        print("")
+        print("System Extension Installation")
+        print("============================")
+        print("")
+        
+        let (state, history) = installationStatus
+        
+        // Display current installation state
+        let stateSymbol = getStateSymbol(for: state)
+        print("\(stateSymbol) Installation State: \(state.description.capitalized)")
+        
+        // Check if System Extension bundle is available
+        let bundleAvailable = coordinator.isSystemExtensionAvailable()
+        let bundleSymbol = bundleAvailable ? "✅" : "❌"
+        print("\(bundleSymbol) Bundle Available: \(bundleAvailable ? "Yes" : "No")")
+        
+        // Display attempt history summary
+        if !history.isEmpty {
+            let totalAttempts = history.count
+            let successfulAttempts = history.filter { $0.success }.count
+            let lastAttempt = history.last!
+            
+            print("📊 Installation Attempts: \(totalAttempts) (\(successfulAttempts) successful)")
+            print("📅 Last Attempt: \(formatDate(lastAttempt.timestamp))")
+            
+            let lastAttemptSymbol = lastAttempt.success ? "✅" : "❌"
+            print("\(lastAttemptSymbol) Last Result: \(lastAttempt.success ? "Success" : "Failed")")
+            
+            // Display user guidance if needed
+            if !lastAttempt.success {
+                if lastAttempt.requiresUserApproval {
+                    print("")
+                    print("⚠️  User Action Required")
+                    print("━━━━━━━━━━━━━━━━━━━━━━")
+                    print("🔐 System Extension requires approval in System Preferences")
+                    print("📍 Go to: System Preferences > Privacy & Security > General")
+                    print("💡 Look for blocked System Extension and click 'Allow'")
+                    print("🔄 Restart daemon after approval: sudo launchctl unload/load")
+                } else {
+                    print("")
+                    print("💡 Troubleshooting Suggestion")
+                    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    switch lastAttempt.recommendedAction {
+                    case "retryLater":
+                        print("⏳ Automatic retry will occur after delay")
+                        print("📝 Or manually retry: restart the daemon")
+                    case "checkConfiguration":
+                        print("⚙️  Check System Extension configuration:")
+                        print("   • Verify bundle path and identifier")
+                        print("   • Enable developer mode if unsigned: systemextensionsctl developer on")
+                        print("   • Check code signing certificate validity")
+                    case "contactSupport":
+                        print("🆘 Multiple installation attempts failed")
+                        print("   • Check system logs for detailed errors")
+                        print("   • Verify System Extension compatibility")
+                        print("   • Consider manual installation or contact support")
+                    default:
+                        if let primaryError = lastAttempt.primaryError {
+                            print("❌ Error: \(primaryError)")
+                        }
+                        print("📋 Check system logs for more details")
+                    }
+                }
+            }
+        } else {
+            print("📊 Installation Attempts: 0 (not yet attempted)")
+        }
+        
+        print("")
+        
+        // Detailed information if requested
+        if showDetailed && !history.isEmpty {
+            print("Installation History")
+            print("─────────────────────")
+            
+            let recentHistory = Array(history.suffix(5)) // Show last 5 attempts
+            for (index, attempt) in recentHistory.enumerated() {
+                let attemptNumber = history.count - recentHistory.count + index + 1
+                let symbol = attempt.success ? "✅" : "❌"
+                let duration = String(format: "%.1fs", attempt.duration)
+                
+                print("\(symbol) Attempt #\(attemptNumber) (\(formatDate(attempt.timestamp)))")
+                print("   Duration: \(duration)")
+                print("   Result: \(attempt.finalStatus.rawValue)")
+                
+                if !attempt.success {
+                    if let error = attempt.primaryError {
+                        print("   Error: \(error)")
+                    }
+                    print("   Action: \(attempt.recommendedAction)")
+                }
+                
+                if attempt.requiresUserApproval {
+                    print("   🔐 Requires user approval")
+                }
+                
+                if index < recentHistory.count - 1 {
+                    print("")
+                }
+            }
+            
+            if history.count > 5 {
+                print("")
+                print("... showing last 5 of \(history.count) attempts")
+            }
+            
+            print("")
+        }
+        
+        // Status-specific guidance
+        switch state {
+        case .idle:
+            print("💡 System Extension installation has not been attempted")
+            print("   Automatic installation will trigger on next daemon startup")
+        case .detecting:
+            print("🔍 Currently detecting System Extension bundle...")
+        case .installing:
+            print("⚙️  Installation in progress...")
+            print("   This may take a few moments")
+        case .verifying:
+            print("🔍 Verifying installation...")
+        case .completed:
+            print("✅ System Extension installation completed successfully")
+            print("   System Extension should be active and ready")
+        case .failed:
+            print("❌ System Extension installation failed")
+            print("   Check error details above for troubleshooting")
+        case .requiresApproval:
+            print("🔐 Installation is waiting for user approval")
+            print("   Approve in System Preferences > Privacy & Security")
+        case .retryWaiting:
+            print("⏳ Waiting to retry installation after delay")
+            print("   Automatic retry will occur soon")
+        }
+        
+        print("")
+    }
+    
+    private func getStateSymbol(for state: AutomaticInstallationManager.InstallationState) -> String {
+        switch state {
+        case .idle:
+            return "⏸️"
+        case .detecting:
+            return "🔍"
+        case .installing:
+            return "⚙️"
+        case .verifying:
+            return "🔍"
+        case .completed:
+            return "✅"
+        case .failed:
+            return "❌"
+        case .requiresApproval:
+            return "🔐"
+        case .retryWaiting:
+            return "⏳"
         }
     }
     
