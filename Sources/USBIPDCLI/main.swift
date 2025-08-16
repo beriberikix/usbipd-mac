@@ -79,6 +79,33 @@ func main() {
         logger.info("Using default server configuration")
     }
     
+    // Detect System Extension bundle if available
+    logger.debug("Attempting System Extension bundle detection")
+    let bundleDetector = SystemExtensionBundleDetector()
+    let detectionResult = bundleDetector.detectBundle()
+    
+    if detectionResult.found {
+        logger.info("System Extension bundle detected", context: [
+            "bundlePath": detectionResult.bundlePath ?? "unknown",
+            "bundleIdentifier": detectionResult.bundleIdentifier ?? "unknown"
+        ])
+        
+        // Update server configuration with detected bundle
+        if let bundleConfig = SystemExtensionBundleConfig.from(detectionResult: detectionResult) {
+            serverConfig.updateSystemExtensionBundleConfig(bundleConfig)
+            logger.debug("Updated server configuration with System Extension bundle")
+        }
+    } else {
+        logger.info("No System Extension bundle detected", context: [
+            "issues": detectionResult.issues.joined(separator: ", ")
+        ])
+        
+        // Disable auto-installation if no bundle is available
+        if !detectionResult.issues.isEmpty {
+            logger.debug("Disabling System Extension auto-installation due to bundle detection issues")
+        }
+    }
+    
     // Create network service
     let networkService = TCPServer()
     logger.debug("Created TCPServer instance")
@@ -97,12 +124,14 @@ func main() {
         // Continue without System Extension support for now
     }
     
-    // Create server coordinator
+    // Create server coordinator with System Extension parameters if available
     let server = ServerCoordinator(
         networkService: networkService,
         deviceDiscovery: deviceDiscovery,
         deviceClaimManager: deviceClaimManager,
-        config: serverConfig
+        config: serverConfig,
+        systemExtensionBundlePath: serverConfig.getSystemExtensionBundlePath(),
+        systemExtensionBundleIdentifier: serverConfig.getSystemExtensionBundleIdentifier()
     )
     logger.debug("Created ServerCoordinator instance with DeviceClaimManager")
     
