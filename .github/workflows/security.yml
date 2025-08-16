@@ -109,10 +109,11 @@ jobs:
                             'url': pin.get('location', 'unknown')
                         })
                 
+                import datetime
                 result = {
                     'total_dependencies': len(dependencies),
                     'dependencies': dependencies,
-                    'scan_timestamp': '$(date -u "+%Y-%m-%dT%H:%M:%S.%3NZ")'
+                    'scan_timestamp': datetime.datetime.utcnow().isoformat() + 'Z'
                 }
                 
                 print(json.dumps(result, indent=2))
@@ -251,8 +252,9 @@ jobs:
           python3 -c "
           import json
           import os
+          import datetime
           summary = {
-              'scan_timestamp': '$(date -u \"+%Y-%m-%dT%H:%M:%S.%3NZ\")',
+              'scan_timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
               'scan_type': '${{ env.SCAN_TYPE }}',
               'severity_threshold': '${{ env.SEVERITY_THRESHOLD }}',
               'results': {
