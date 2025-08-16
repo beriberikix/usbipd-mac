@@ -269,7 +269,7 @@ jobs:
   release-validation:
     name: Release Validation
     runs-on: macos-latest
-    if: ${{ env.IS_RELEASE_VALIDATION == 'true' }}
+    if: ${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}
     needs: [code-quality, build-validation, test-suite]
     steps:
       - name: 🚀 Starting Release Validation
@@ -370,7 +370,7 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [code-quality, build-validation, test-suite, release-validation]
+    needs: [code-quality, build-validation, test-suite]
     outputs:
       success: ${{ steps.check-status.outputs.success }}
       release_ready: ${{ steps.check-status.outputs.release_ready }}
@@ -386,7 +386,13 @@ jobs:
           CODE_QUALITY_STATUS="${{ needs.code-quality.result }}"
           BUILD_STATUS="${{ needs.build-validation.result }}"
           TEST_STATUS="${{ needs.test-suite.result }}"
-          RELEASE_VAL_STATUS="${{ needs.release-validation.result }}"
+          # Check if release validation was requested
+          IS_RELEASE_VAL="${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}"
+          if [[ "$IS_RELEASE_VAL" == "true" ]]; then
+            RELEASE_VAL_STATUS="${{ needs.release-validation.result }}"
+          else
+            RELEASE_VAL_STATUS="skipped"
+          fi
           
           echo "📋 Job status summary:"
           echo "   • Code Quality: $CODE_QUALITY_STATUS"
@@ -411,7 +417,7 @@ jobs:
           fi
           
           # For release validation, check if release validation passed
-          if [[ "${{ env.IS_RELEASE_VALIDATION }}" == "true" ]]; then
+          if [[ "$IS_RELEASE_VAL" == "true" ]]; then
             if [[ "$RELEASE_VAL_STATUS" == "success" ]]; then
               RELEASE_READY=true
               echo "🚀 Release validation: PASSED"
