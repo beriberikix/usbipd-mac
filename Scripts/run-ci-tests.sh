@@ -199,26 +199,7 @@ build_ci_project() {
     fi
 }
 
-# Run SwiftLint for CI code quality
-run_ci_linting() {
-    log_info "Running SwiftLint for CI code quality..."
-    
-    local start_time=$(date +%s)
-    
-    # Run SwiftLint with strict CI settings
-    swiftlint lint \
-        --strict \
-        --reporter github-actions-logging \
-        --config "$PROJECT_ROOT/.swiftlint.yml" || {
-        log_error "SwiftLint failed with errors"
-        exit 1
-    }
-    
-    local end_time=$(date +%s)
-    local lint_time=$((end_time - start_time))
-    
-    log_success "CI linting completed in ${lint_time}s"
-}
+# Note: SwiftLint validation is now handled by the Code Quality job in consolidated CI
 
 # Run the CI test suite
 run_ci_tests() {
@@ -592,10 +573,7 @@ main() {
     # Build the project
     build_ci_project
     
-    # Run linting unless skipped
-    if [ "$skip_lint" = false ]; then
-        run_ci_linting
-    fi
+    # Note: SwiftLint validation is handled by the Code Quality job in consolidated CI
     
     # Run tests based on mode
     if [ "$protocol_only" = true ]; then
