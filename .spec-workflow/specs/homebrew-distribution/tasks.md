@@ -21,7 +21,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - Purpose: Establish foundation for Homebrew distribution
   - _Requirements: 1.1, 1.2_
 
-- [ ] 3. Implement formula template with dynamic version handling
+- [x] 3. Implement formula template with dynamic version handling
   - File: Formula/usbipd-mac.rb (continue from task 2)
   - Add template placeholders for version and SHA256 checksum
   - Configure proper dependencies (macOS Big Sur, Xcode)
@@ -31,7 +31,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - Purpose: Create working formula that can be dynamically updated
   - _Requirements: 1.3, 2.1_
 
-- [ ] 4. Add launchd service configuration to formula
+- [x] 4. Add launchd service configuration to formula
   - File: Formula/usbipd-mac.rb (continue from task 3)
   - Implement service block with proper daemon configuration
   - Configure log paths and service permissions
@@ -40,7 +40,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - Purpose: Enable Homebrew services management for daemon
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [ ] 5. Create formula validation script
+- [x] 5. Create formula validation script
   - File: Scripts/validate-formula.sh
   - Implement Homebrew formula syntax validation using brew audit
   - Add formula linting and style checks
@@ -51,7 +51,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: Scripts/validate-release-artifacts.sh_
   - _Requirements: 4.1_
 
-- [ ] 6. Create formula update automation script
+- [x] 6. Create formula update automation script
   - File: Scripts/update-formula.sh
   - Implement script to update formula version and checksum placeholders
   - Add validation that new version matches Git tag
@@ -62,7 +62,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: Scripts/prepare-release.sh patterns_
   - _Requirements: 4.2, 4.3_
 
-- [ ] 7. Extend GitHub Actions release workflow for formula updates
+- [x] 7. Extend GitHub Actions release workflow for formula updates
   - File: .github/workflows/release.yml (modify existing)
   - Add step to calculate SHA256 checksum of release archive
   - Implement automatic formula version and checksum updates
@@ -73,7 +73,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: existing release workflow and Scripts/prepare-release.sh_
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 8. Add Homebrew validation to existing CI workflow
+- [x] 8. Add Homebrew validation to existing CI workflow
   - File: .github/workflows/ci.yml (modify existing)
   - Add job for Homebrew formula syntax validation
   - Implement test installation of formula using brew install --build-from-source
@@ -84,7 +84,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: existing CI workflow structure_
   - _Requirements: 4.1_
 
-- [ ] 9. Update project documentation with Homebrew installation instructions
+- [x] 9. Update project documentation with Homebrew installation instructions
   - File: README.md (modify existing)
   - Add Homebrew installation section with tap and install commands
   - Document service management using brew services
@@ -95,7 +95,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: existing documentation structure_
   - _Requirements: 1.1, 1.2, 6.4_
 
-- [ ] 10. Create Homebrew-specific troubleshooting documentation
+- [x] 10. Create Homebrew-specific troubleshooting documentation
   - File: Documentation/homebrew-troubleshooting.md
   - Document common formula installation failures and solutions
   - Add guidance for System Extension approval after Homebrew installation
@@ -106,7 +106,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: Documentation/ directory structure_
   - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 11. Implement end-to-end Homebrew installation test
+- [x] 11. Implement end-to-end Homebrew installation test
   - File: Tests/Integration/HomebrewInstallationTests.swift
   - Create test that validates complete tap → install → uninstall workflow
   - Add service management testing (start, stop, restart)
@@ -117,7 +117,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: Tests/Integration/ directory and existing test patterns_
   - _Requirements: 3.1, 3.2, 6.1, 6.2_
 
-- [ ] 12. Create rollback and recovery procedures
+- [x] 12. Create rollback and recovery procedures
   - File: Scripts/rollback-formula.sh
   - Implement automated rollback for failed formula updates
   - Add manual recovery procedures for corrupted formula state
@@ -128,7 +128,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: Scripts/rollback-release.sh patterns_
   - _Requirements: 4.4_
 
-- [ ] 13. Add formula performance optimization
+- [x] 13. Add formula performance optimization
   - File: Formula/usbipd-mac.rb (optimize from previous tasks)
   - Optimize Swift build configuration for release distribution
   - Add parallel compilation settings for faster installation
@@ -138,7 +138,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - Purpose: Improve installation speed and user experience
   - _Requirements: Performance requirements_
 
-- [ ] 14. Create comprehensive installation validation
+- [x] 14. Create comprehensive installation validation
   - File: Scripts/validate-homebrew-installation.sh
   - Implement post-installation verification script
   - Add binary functionality testing after Homebrew installation
@@ -149,7 +149,7 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - _Leverage: existing validation patterns_
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 15. Create pull request and resolve CI issues
+- [-] 15. Create pull request and resolve CI issues
   - Push feature branch to remote: `git push -u origin feature/homebrew-distribution`
   - Create pull request with title: "feat: implement Homebrew distribution with tap-based installation"
   - Add comprehensive PR description with implementation summary and testing instructions
