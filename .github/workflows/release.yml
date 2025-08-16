@@ -369,12 +369,12 @@ jobs:
           echo "::group::Formula Push"
           echo "::notice title=Formula Push::Pushing updated formula to repository"
           
-          # Push the changes
-          git push origin HEAD
+          # Push the changes to main branch (release runs on tag, so HEAD is detached)
+          git push origin HEAD:main
           
           echo "::notice title=Formula Pushed::Updated formula pushed to repository"
           echo "✅ Formula changes pushed to repository"
-          echo "🔗 Formula updated in branch: ${{ github.ref_name }}"
+          echo "🔗 Formula updated in main branch"
           echo "::endgroup::"
 
   create-release:
