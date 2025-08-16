@@ -1,4 +1,4 @@
-class UsbipDMac < Formula
+class UsbipdMac < Formula
   desc "macOS USB/IP protocol implementation for sharing USB devices over IP"
   homepage "https://github.com/beriberikix/usbipd-mac"
   url "https://github.com/beriberikix/usbipd-mac/archive/VERSION_PLACEHOLDER.tar.gz"
