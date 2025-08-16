@@ -11,7 +11,6 @@ class UsbipDMac < Formula
   def install
     system "swift", "build", "--configuration", "release", "--disable-sandbox"
     bin.install ".build/release/usbipd"
-    bin.install ".build/release/QEMUTestServer"
   end
   
   service do
