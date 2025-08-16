@@ -22,7 +22,7 @@ final class SystemExtensionBundleCreatorTests: XCTestCase {
         
         // Create mock logger
         mockLogger = MockLogger()
-        bundleCreator = SystemExtensionBundleCreator(logger: mockLogger)
+        bundleCreator = SystemExtensionBundleCreator(logger: Logger.shared)
         
         // Create a test executable file
         testExecutablePath = tempDirectory.appendingPathComponent("TestExecutable").path
@@ -302,30 +302,30 @@ private struct LoggedMessage {
     let context: [String: Any]?
 }
 
-private class MockLogger: Logger {
+private class MockLogger {
     var loggedMessages: [LoggedMessage] = []
     
-    override func log(_ level: LogLevel, _ message: String, context: [String: Any]? = nil) {
+    func log(_ level: LogLevel, _ message: String, context: [String: Any]? = nil) {
         loggedMessages.append(LoggedMessage(level: level, message: message, context: context))
     }
     
-    override func debug(_ message: String, context: [String: Any]? = nil) {
+    func debug(_ message: String, context: [String: Any]? = nil) {
         log(.debug, message, context: context)
     }
     
-    override func info(_ message: String, context: [String: Any]? = nil) {
+    func info(_ message: String, context: [String: Any]? = nil) {
         log(.info, message, context: context)
     }
     
-    override func warning(_ message: String, context: [String: Any]? = nil) {
+    func warning(_ message: String, context: [String: Any]? = nil) {
         log(.warning, message, context: context)
     }
     
-    override func error(_ message: String, context: [String: Any]? = nil) {
+    func error(_ message: String, context: [String: Any]? = nil) {
         log(.error, message, context: context)
     }
     
-    override func critical(_ message: String, context: [String: Any]? = nil) {
+    func critical(_ message: String, context: [String: Any]? = nil) {
         log(.critical, message, context: context)
     }
 }

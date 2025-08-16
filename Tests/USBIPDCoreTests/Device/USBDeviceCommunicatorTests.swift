@@ -52,7 +52,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
             deviceClass: 0x09,
             deviceSubClass: 0x00,
             deviceProtocol: 0x00,
-            speed: .highSpeed,
+            speed: .high,
             manufacturerString: "Test Manufacturer",
             productString: "Test Device",
             serialNumberString: "TEST001"
@@ -281,7 +281,7 @@ final class USBDeviceCommunicatorTests: XCTestCase {
     }
     
     func testExecuteControlTransferInvalidTransferType() async throws {
-        var request = createBulkTransferRequest() // Wrong type
+        let request = createBulkTransferRequest() // Wrong type
         // Change the type to control to test mismatch
         let controlRequest = USBRequestBlock(
             seqnum: request.seqnum,
@@ -412,26 +412,29 @@ final class USBDeviceCommunicatorTests: XCTestCase {
     // MARK: - Concurrent Access Tests
     
     func testConcurrentInterfaceOperations() async throws {
-        let group = DispatchGroup()
-        var errors: [Error] = []
-        let errorLock = NSLock()
-        
-        // Test concurrent opening of different interfaces
-        for i in 0..<5 {
-            group.enter()
-            Task {
-                do {
-                    try await deviceCommunicator.openUSBInterface(device: testDevice, interfaceNumber: UInt8(i))
-                } catch {
-                    errorLock.lock()
-                    errors.append(error)
-                    errorLock.unlock()
+        // Test concurrent opening of different interfaces using TaskGroup
+        let errors = await withTaskGroup(of: Error?.self, returning: [Error].self) { group in
+            var errorList: [Error] = []
+            
+            for i in 0..<5 {
+                group.addTask {
+                    do {
+                        try await self.deviceCommunicator.openUSBInterface(device: self.testDevice, interfaceNumber: UInt8(i))
+                        return nil
+                    } catch {
+                        return error
+                    }
                 }
-                group.leave()
             }
+            
+            for await error in group {
+                if let error = error {
+                    errorList.append(error)
+                }
+            }
+            
+            return errorList
         }
-        
-        group.wait()
         
         // Check that some operations succeeded (IOKit limitations may cause some to fail)
         // We mainly want to ensure no crashes or data corruption
