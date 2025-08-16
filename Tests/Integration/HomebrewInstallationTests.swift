@@ -509,7 +509,7 @@ final class HomebrewInstallationTests: XCTestCase, TestSuite {
         logger.debug("✅ Package installation verified")
     }
     
-    private func testExecutableFunctionality() throws {
+    func testExecutableFunctionality() throws {
         logger.info("Testing executable functionality")
         
         let executablePath = "\(testConfig.homebrewPrefix)/bin/usbipd"
@@ -717,7 +717,7 @@ final class HomebrewInstallationTests: XCTestCase, TestSuite {
         logger.debug("✅ Update script validation passed")
     }
     
-    private func testFormulaUpdateScript() throws {
+    func testFormulaUpdateScript() throws {
         logger.info("Testing formula update script")
         
         let updateScriptPath = packageRootDirectory.appendingPathComponent("Scripts/update-formula.sh")
