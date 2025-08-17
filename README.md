@@ -197,26 +197,100 @@ usbipd-mac uses automated GitHub Actions workflows for consistent and reliable r
 
 #### Release Process
 
-1. **Prepare Release**:
+1. **Create and Edit Changelog**:
    ```bash
-   # Run local release preparation
-   ./Scripts/prepare-release.sh <version>
-   
-   # This will:
-   # - Validate environment and dependencies
-   # - Run comprehensive test suite
-   # - Generate changelog entries
-   # - Create and push version tag
+   # Manually edit CHANGELOG.md to document changes for the release
+   # Add entries under the [Unreleased] section
+   # Follow Keep a Changelog format
    ```
 
-2. **Automated Pipeline**: Once a version tag is pushed, GitHub Actions automatically:
+2. **Commit Changelog**:
+   ```bash
+   # Commit the changelog updates
+   git add CHANGELOG.md
+   git commit -m "docs: update changelog for v1.2.3 release"
+   ```
+
+3. **Prepare Release Locally**:
+   ```bash
+   # Prepare specific version (will prompt to review auto-generated changelog)
+   ./Scripts/prepare-release.sh --version v1.2.3
+   
+   # The script will:
+   # - Update CHANGELOG.md with version entry
+   # - Pause for you to manually edit the changelog
+   # - Run validation, tests, and create the Git tag
+   ```
+   
+   Available options:
+   - `--version VERSION`: Specific version (e.g., v1.2.3 or 1.2.3)
+   - `--dry-run`: Preview actions without making changes
+   - `--skip-tests`: Skip test execution (not recommended)
+   - `--skip-lint`: Skip code quality checks (not recommended)
+   - `--force`: Override safety checks and skip manual changelog review
+
+4. **Push Release Tag**:
+   ```bash
+   # Push the created tag to trigger automated workflows
+   git push origin v1.2.3
+   ```
+
+5. **Automated Pipeline**: Once a version tag is pushed, GitHub Actions automatically:
    - Validates the release candidate
    - Builds production artifacts with code signing
    - Runs comprehensive test validation
-   - Publishes release with checksums and signatures
-   - Updates documentation and notifications
+   - **Updates Homebrew formula automatically**
+   - Creates GitHub release with artifacts and checksums
+   - Pushes formula changes back to the repository
 
-3. **Emergency Releases**: For critical fixes, use the manual workflow dispatch in GitHub Actions with validation bypasses as documented in [Emergency Release Procedures](Documentation/Emergency-Release-Procedures.md).
+6. **Emergency Releases**: For critical fixes, use `--force` to skip manual changelog review and validation.
+
+#### Homebrew Formula Management
+
+**Automatic Formula Updates**: The Homebrew formula in this repository is updated automatically during the release workflow. However, the **tap repository** (`beriberikix/homebrew-usbipd-mac`) requires manual updates.
+
+**Complete Formula Update Process**:
+
+1. **Automatic (this repository)**: The release workflow automatically:
+   - Updates `Formula/usbipd-mac.rb` with new version and checksum
+   - Validates the updated formula syntax
+   - Commits and pushes changes back to the main branch
+
+2. **Manual (tap repository)**: After the release workflow completes:
+   ```bash
+   # Clone or navigate to the tap repository
+   git clone https://github.com/beriberikix/homebrew-usbipd-mac.git
+   cd homebrew-usbipd-mac
+   
+   # Copy updated formula from main repository
+   cp ../usbipd-mac/Formula/usbipd-mac.rb Formula/
+   
+   # Commit and push to tap repository
+   git add Formula/usbipd-mac.rb
+   git commit -m "feat: update formula to v1.2.3"
+   git push origin main
+   ```
+
+**Formula Testing and Validation**:
+```bash
+# Test formula syntax locally
+./Scripts/validate-formula.sh
+
+# Test installation from tap
+brew uninstall usbipd-mac || true
+brew untap beriberikix/usbipd-mac || true
+brew tap beriberikix/usbipd-mac
+brew install usbipd-mac
+```
+
+**Manual Formula Operations** (for testing/troubleshooting):
+```bash
+# Preview formula update
+./Scripts/update-formula.sh --version v1.2.3 --dry-run
+
+# Rollback formula to previous version
+./Scripts/update-formula.sh --rollback
+```
 
 #### Versioning Strategy
 
@@ -231,7 +305,20 @@ For release automation to work properly:
 
 1. **Code Signing**: Configure Apple Developer certificates in GitHub repository secrets
 2. **Permissions**: Ensure maintainer access to repository settings and secrets
-3. **Environment**: Validate local environment with `./Scripts/prepare-release.sh --check`
+3. **Homebrew Tap**: Access to the `beriberikix/homebrew-usbipd-mac` tap repository for formula updates
+4. **Environment**: Validate local environment with release preparation script
+
+Validation commands:
+```bash
+# Check release preparation environment
+./Scripts/prepare-release.sh --help
+
+# Validate formula update tools
+./Scripts/update-formula.sh --help
+
+# Validate formula syntax
+./Scripts/validate-formula.sh --help
+```
 
 See [Release Automation Documentation](Documentation/Release-Automation.md) for complete setup instructions and troubleshooting.
 
