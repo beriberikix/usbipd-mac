@@ -5,52 +5,6 @@ import Foundation
 import SystemExtensions
 import Common
 
-/// Installation attempt result with detailed information
-public struct InstallationAttemptResult {
-    /// Whether the automatic installation was successful
-    public let success: Bool
-    
-    /// Whether manual installation is required
-    public let requiresManualInstallation: Bool
-    
-    /// Categorized errors that occurred during installation
-    public let errors: [InstallationErrorCategory]
-    
-    /// Warnings that don't prevent installation
-    public let warnings: [String]
-    
-    /// Time taken for the installation attempt
-    public let installationTime: TimeInterval
-    
-    /// Method used for installation attempt
-    public let installationMethod: InstallationMethod
-    
-    /// User-friendly instructions if manual installation is required
-    public let manualInstallationInstructions: String?
-    
-    /// Developer mode status during installation
-    public let developerModeStatus: DeveloperModeDetectionResult
-    
-    public init(
-        success: Bool,
-        requiresManualInstallation: Bool = false,
-        errors: [InstallationErrorCategory] = [],
-        warnings: [String] = [],
-        installationTime: TimeInterval = 0,
-        installationMethod: InstallationMethod = .automatic,
-        manualInstallationInstructions: String? = nil,
-        developerModeStatus: DeveloperModeDetectionResult
-    ) {
-        self.success = success
-        self.requiresManualInstallation = requiresManualInstallation
-        self.errors = errors
-        self.warnings = warnings
-        self.installationTime = installationTime
-        self.installationMethod = installationMethod
-        self.manualInstallationInstructions = manualInstallationInstructions
-        self.developerModeStatus = developerModeStatus
-    }
-}
 
 /// Installation method used
 public enum InstallationMethod {
@@ -135,6 +89,87 @@ public enum InstallationErrorCategory {
 /// Automatic installation manager for Homebrew System Extension integration
 public class AutomaticInstallationManager {
     
+    // MARK: - Nested Types
+    
+    /// Installation state tracking
+    public enum InstallationState: String {
+        case notStarted = "not_started"
+        case inProgress = "in_progress"
+        case completed = "completed"
+        case failed = "failed"
+        case requiresManualIntervention = "requires_manual_intervention"
+        
+        public var description: String {
+            switch self {
+            case .notStarted:
+                return "Not started"
+            case .inProgress:
+                return "In progress"
+            case .completed:
+                return "Completed"
+            case .failed:
+                return "Failed"
+            case .requiresManualIntervention:
+                return "Requires manual intervention"
+            }
+        }
+    }
+    
+    /// Installation attempt result with detailed information
+    public struct InstallationAttemptResult {
+        /// Whether the automatic installation was successful
+        public let success: Bool
+        
+        /// Final status after installation attempt
+        public let finalStatus: InstallationState
+        
+        /// Whether manual installation is required
+        public let requiresManualInstallation: Bool
+        
+        /// Categorized errors that occurred during installation
+        public let errors: [InstallationErrorCategory]
+        
+        /// Warnings that don't prevent installation
+        public let warnings: [String]
+        
+        /// Time taken for the installation attempt
+        public let installationTime: TimeInterval
+        
+        /// Duration (alias for installationTime for compatibility)
+        public var duration: TimeInterval { return installationTime }
+        
+        /// Method used for installation attempt
+        public let installationMethod: InstallationMethod
+        
+        /// User-friendly instructions if manual installation is required
+        public let manualInstallationInstructions: String?
+        
+        /// Developer mode status during installation
+        public let developerModeStatus: DeveloperModeDetectionResult
+        
+        public init(
+            success: Bool,
+            finalStatus: InstallationState,
+            requiresManualInstallation: Bool = false,
+            errors: [InstallationErrorCategory] = [],
+            warnings: [String] = [],
+            installationTime: TimeInterval = 0,
+            installationMethod: InstallationMethod = .automatic,
+            manualInstallationInstructions: String? = nil,
+            developerModeStatus: DeveloperModeDetectionResult
+        ) {
+            self.success = success
+            self.finalStatus = finalStatus
+            self.requiresManualInstallation = requiresManualInstallation
+            self.errors = errors
+            self.warnings = warnings
+            self.installationTime = installationTime
+            self.installationMethod = installationMethod
+            self.manualInstallationInstructions = manualInstallationInstructions
+            self.developerModeStatus = developerModeStatus
+        }
+    }
+    
     // MARK: - Properties
     
     private let logger: Logger
@@ -148,23 +183,27 @@ public class AutomaticInstallationManager {
     /// Maximum retry attempts for automatic installation
     public var maxRetryAttempts: Int = 3
     
+    /// Current installation state
+    private var currentState: InstallationState = .notStarted
+    
+    /// Installation attempt history
+    private var attemptHistory: [InstallationAttemptResult] = []
+    
     // MARK: - Initialization
     
     /// Initialize automatic installation manager
     /// - Parameters:
-    ///   - systemExtensionInstaller: System Extension installer instance
-    ///   - developerModeDetector: Developer mode detection utility
-    ///   - homebrewBundleCreator: Homebrew bundle creation utility
+    ///   - config: Server configuration
+    ///   - installer: System Extension installer instance
     ///   - logger: Custom logger instance (uses shared logger if nil)
     public init(
-        systemExtensionInstaller: SystemExtensionInstaller,
-        developerModeDetector: DeveloperModeDetector,
-        homebrewBundleCreator: HomebrewBundleCreator,
+        config: ServerConfig,
+        installer: SystemExtensionInstaller,
         logger: Logger? = nil
     ) {
-        self.systemExtensionInstaller = systemExtensionInstaller
-        self.developerModeDetector = developerModeDetector
-        self.homebrewBundleCreator = homebrewBundleCreator
+        self.systemExtensionInstaller = installer
+        self.developerModeDetector = DeveloperModeDetector(logger: logger)
+        self.homebrewBundleCreator = HomebrewBundleCreator(logger: logger)
         self.logger = logger ?? Logger.shared
     }
     
@@ -688,5 +727,49 @@ public struct ReadinessCheck {
         self.passed = passed
         self.message = message
         self.required = required
+    }
+}
+
+// MARK: - Server Coordinator API Compatibility
+
+extension AutomaticInstallationManager {
+    
+    /// Attempt automatic installation with callback (for compatibility with ServerCoordinator)
+    /// - Parameter completion: Completion handler with installation result
+    public func attemptAutomaticInstallation(completion: @escaping (InstallationAttemptResult) -> Void) {
+        currentState = .inProgress
+        
+        // Create a default Homebrew configuration for automatic installation
+        let config = HomebrewBundleConfig(
+            homebrewPrefix: "/opt/homebrew", // Default for Apple Silicon, fallback to detecting
+            formulaVersion: "latest",
+            installationPrefix: "/opt/homebrew/Cellar/usbipd-mac/latest",
+            bundleIdentifier: "com.github.usbipd-mac.systemextension",
+            displayName: "USBIPD System Extension",
+            executableName: "USBIPDSystemExtension",
+            teamIdentifier: "", // Will be determined at runtime
+            executablePath: "", // Will be determined at runtime
+            formulaName: "usbipd-mac",
+            buildNumber: "1"
+        )
+        
+        Task {
+            let result = await attemptAutomaticInstallation(with: config)
+            
+            // Update internal state
+            currentState = result.success ? .completed : .failed
+            attemptHistory.append(result)
+            
+            // Call completion handler on main queue
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }
+    }
+    
+    /// Get current installation status and history (for compatibility with ServerCoordinator)
+    /// - Returns: Tuple of current state and attempt history
+    public func getInstallationStatus() -> (state: InstallationState, history: [InstallationAttemptResult]) {
+        return (state: currentState, history: attemptHistory)
     }
 }

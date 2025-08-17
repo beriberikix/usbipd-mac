@@ -83,7 +83,7 @@ public final class SystemExtensionDiagnostics {
         logger.info("Starting bundle validation", context: ["bundle_path": bundlePath])
         
         let startTime = Date()
-        var validationResults: [BundleValidationResult] = []
+        var validationResults: [DiagnosticBundleValidationResult] = []
         var bundleMetadata: [String: Any] = [:]
         
         // Check if bundle exists and is accessible
@@ -369,7 +369,7 @@ public final class SystemExtensionDiagnostics {
     
     // MARK: - Bundle Validation Implementation
     
-    private func validateBundleExistence(bundlePath: String) -> BundleValidationResult {
+    private func validateBundleExistence(bundlePath: String) -> DiagnosticBundleValidationResult {
         let exists = FileManager.default.fileExists(atPath: bundlePath)
         var isDirectory: ObjCBool = false
         
@@ -377,7 +377,7 @@ public final class SystemExtensionDiagnostics {
             FileManager.default.fileExists(atPath: bundlePath, isDirectory: &isDirectory)
         }
         
-        return BundleValidationResult(
+        return DiagnosticBundleValidationResult(
             validationType: .bundleExistence,
             isValid: exists && isDirectory.boolValue,
             message: exists && isDirectory.boolValue ? "Bundle exists and is a directory" : "Bundle does not exist or is not a directory",
@@ -386,7 +386,7 @@ public final class SystemExtensionDiagnostics {
         )
     }
     
-    private func validateBundleStructure(bundlePath: String) -> BundleValidationResult {
+    private func validateBundleStructure(bundlePath: String) -> DiagnosticBundleValidationResult {
         let requiredPaths = [
             "Contents/Info.plist",
             "Contents/MacOS",
@@ -407,7 +407,7 @@ public final class SystemExtensionDiagnostics {
         
         let isValid = missingPaths.isEmpty
         
-        return BundleValidationResult(
+        return DiagnosticBundleValidationResult(
             validationType: .bundleStructure,
             isValid: isValid,
             message: isValid ? "Bundle structure is correct" : "Bundle structure is missing required paths",
@@ -419,12 +419,12 @@ public final class SystemExtensionDiagnostics {
         )
     }
     
-    private func validateInfoPlist(bundlePath: String) -> BundleValidationResult {
+    private func validateInfoPlist(bundlePath: String) -> DiagnosticBundleValidationResult {
         let infoPlistPath = (bundlePath as NSString).appendingPathComponent("Contents/Info.plist")
         
         guard let plistData = try? Data(contentsOf: URL(fileURLWithPath: infoPlistPath)),
               let plist = try? PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any] else {
-            return BundleValidationResult(
+            return DiagnosticBundleValidationResult(
                 validationType: .infoPlist,
                 isValid: false,
                 message: "Info.plist not found or invalid",
@@ -444,7 +444,7 @@ public final class SystemExtensionDiagnostics {
         let bundleId = plist["CFBundleIdentifier"] as? String ?? "Unknown"
         let version = plist["CFBundleVersion"] as? String ?? "Unknown"
         
-        return BundleValidationResult(
+        return DiagnosticBundleValidationResult(
             validationType: .infoPlist,
             isValid: isValid,
             message: isValid ? "Info.plist is valid" : "Info.plist is missing required keys",
@@ -457,11 +457,11 @@ public final class SystemExtensionDiagnostics {
         )
     }
     
-    private func validateExecutable(bundlePath: String) -> BundleValidationResult {
+    private func validateExecutable(bundlePath: String) -> DiagnosticBundleValidationResult {
         let macOSPath = (bundlePath as NSString).appendingPathComponent("Contents/MacOS")
         
         guard let contents = try? FileManager.default.contentsOfDirectory(atPath: macOSPath) else {
-            return BundleValidationResult(
+            return DiagnosticBundleValidationResult(
                 validationType: .executable,
                 isValid: false,
                 message: "MacOS directory not accessible",
@@ -477,7 +477,7 @@ public final class SystemExtensionDiagnostics {
         
         let hasExecutable = !executables.isEmpty
         
-        return BundleValidationResult(
+        return DiagnosticBundleValidationResult(
             validationType: .executable,
             isValid: hasExecutable,
             message: hasExecutable ? "Executable found in bundle" : "No executable found in bundle",
@@ -490,7 +490,7 @@ public final class SystemExtensionDiagnostics {
         )
     }
     
-    private func validateCodeSigning(bundlePath: String) -> BundleValidationResult {
+    private func validateCodeSigning(bundlePath: String) -> DiagnosticBundleValidationResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         process.arguments = ["-v", bundlePath]
@@ -507,7 +507,7 @@ public final class SystemExtensionDiagnostics {
             
             let isSigned = process.terminationStatus == 0
             
-            return BundleValidationResult(
+            return DiagnosticBundleValidationResult(
                 validationType: .codeSigning,
                 isValid: true, // Signing is optional for development
                 message: isSigned ? "Bundle is code signed" : "Bundle is not code signed (OK for development)",
@@ -519,7 +519,7 @@ public final class SystemExtensionDiagnostics {
                 metadata: ["is_signed": isSigned]
             )
         } catch {
-            return BundleValidationResult(
+            return DiagnosticBundleValidationResult(
                 validationType: .codeSigning,
                 isValid: false,
                 message: "Unable to verify code signing",
@@ -529,7 +529,7 @@ public final class SystemExtensionDiagnostics {
         }
     }
     
-    private func validateEntitlements(bundlePath: String) -> BundleValidationResult {
+    private func validateEntitlements(bundlePath: String) -> DiagnosticBundleValidationResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         process.arguments = ["-d", "--entitlements", "-", bundlePath]
@@ -545,7 +545,7 @@ public final class SystemExtensionDiagnostics {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let hasEntitlements = !data.isEmpty
             
-            return BundleValidationResult(
+            return DiagnosticBundleValidationResult(
                 validationType: .entitlements,
                 isValid: true, // Entitlements check is informational
                 message: hasEntitlements ? "Bundle has entitlements" : "Bundle has no entitlements (may be unsigned)",
@@ -553,7 +553,7 @@ public final class SystemExtensionDiagnostics {
                 metadata: nil
             )
         } catch {
-            return BundleValidationResult(
+            return DiagnosticBundleValidationResult(
                 validationType: .entitlements,
                 isValid: true,
                 message: "Unable to check entitlements (may be unsigned)",
@@ -563,10 +563,10 @@ public final class SystemExtensionDiagnostics {
         }
     }
     
-    private func validateBundleSize(bundlePath: String) -> BundleValidationResult {
+    private func validateBundleSize(bundlePath: String) -> DiagnosticBundleValidationResult {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: bundlePath),
               let size = attributes[.size] as? Int64 else {
-            return BundleValidationResult(
+            return DiagnosticBundleValidationResult(
                 validationType: .bundleSize,
                 isValid: false,
                 message: "Unable to determine bundle size",
@@ -578,7 +578,7 @@ public final class SystemExtensionDiagnostics {
         let sizeInMB = Double(size) / (1024 * 1024)
         let isReasonableSize = size > 1024 && sizeInMB < 100 // Between 1KB and 100MB
         
-        return BundleValidationResult(
+        return DiagnosticBundleValidationResult(
             validationType: .bundleSize,
             isValid: isReasonableSize,
             message: isReasonableSize ? "Bundle size is reasonable" : "Bundle size is outside expected range",
@@ -1477,7 +1477,7 @@ public enum BundleValidationType: String, Codable, CaseIterable {
 }
 
 /// Result of individual bundle validation
-public struct BundleValidationResult: Codable {
+public struct DiagnosticBundleValidationResult: Codable {
     /// Type of validation performed
     public let validationType: BundleValidationType
     
@@ -1539,7 +1539,7 @@ public struct BundleValidationReport: Codable {
     public let isValid: Bool
     
     /// Individual validation results
-    public let validationResults: [BundleValidationResult]
+    public let validationResults: [DiagnosticBundleValidationResult]
     
     /// Bundle metadata extracted during validation
     public let bundleMetadata: [String: Any]
@@ -1553,7 +1553,7 @@ public struct BundleValidationReport: Codable {
     public init(
         bundlePath: String,
         isValid: Bool,
-        validationResults: [BundleValidationResult],
+        validationResults: [DiagnosticBundleValidationResult],
         bundleMetadata: [String: Any],
         validationTime: TimeInterval,
         timestamp: Date
@@ -1584,7 +1584,7 @@ public struct BundleValidationReport: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         bundlePath = try container.decode(String.self, forKey: .bundlePath)
         isValid = try container.decode(Bool.self, forKey: .isValid)
-        validationResults = try container.decode([BundleValidationResult].self, forKey: .validationResults)
+        validationResults = try container.decode([DiagnosticBundleValidationResult].self, forKey: .validationResults)
         validationTime = try container.decode(TimeInterval.self, forKey: .validationTime)
         timestamp = try container.decode(Date.self, forKey: .timestamp)
         bundleMetadata = [:] // Not persisted in Codable representation

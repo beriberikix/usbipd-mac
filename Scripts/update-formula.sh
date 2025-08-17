@@ -33,6 +33,10 @@ FORCE_UPDATE=false
 CREATE_BACKUP=true
 AUTO_COMMIT=false
 VALIDATE_TAG=true
+SYSTEM_EXTENSION_BUNDLE=""
+SYSTEM_EXTENSION_CHECKSUM=""
+VALIDATE_SYSTEM_EXTENSION=true
+INCLUDE_SYSTEM_EXTENSION=true
 
 # Exit codes
 readonly EXIT_SUCCESS=0
@@ -42,6 +46,7 @@ readonly EXIT_UPDATE_FAILED=3
 readonly EXIT_CHECKSUM_FAILED=4
 readonly EXIT_VERSION_MISMATCH=5
 readonly EXIT_USAGE_ERROR=6
+readonly EXIT_SYSTEM_EXTENSION_FAILED=7
 
 # Logging functions
 log_info() {
@@ -78,12 +83,15 @@ print_header() {
     echo "Version: ${VERSION:-'[required]'}"
     echo "Checksum: ${SHA256_CHECKSUM:-'[auto-calculate]'}"
     echo "Archive URL: ${ARCHIVE_URL:-'[auto-detect]'}"
+    echo "System Extension Bundle: ${SYSTEM_EXTENSION_BUNDLE:-'[auto-detect]'}"
+    echo "System Extension Checksum: ${SYSTEM_EXTENSION_CHECKSUM:-'[auto-calculate]'}"
     echo "Dry Run: $([ "$DRY_RUN" = true ] && echo "YES" || echo "NO")"
     echo "Skip Validation: $([ "$SKIP_VALIDATION" = true ] && echo "YES" || echo "NO")"
     echo "Force Update: $([ "$FORCE_UPDATE" = true ] && echo "YES" || echo "NO")"
     echo "Create Backup: $([ "$CREATE_BACKUP" = true ] && echo "YES" || echo "NO")"
     echo "Auto Commit: $([ "$AUTO_COMMIT" = true ] && echo "YES" || echo "NO")"
     echo "Validate Tag: $([ "$VALIDATE_TAG" = true ] && echo "YES" || echo "NO")"
+    echo "Include System Extension: $([ "$INCLUDE_SYSTEM_EXTENSION" = true ] && echo "YES" || echo "NO")"
     echo "=================================================================="
     echo ""
 }
@@ -273,6 +281,157 @@ calculate_checksum() {
     fi
 }
 
+# Detect and validate System Extension bundle
+detect_system_extension_bundle() {
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = false ]; then
+        log_step "Skipping System Extension bundle detection (--no-system-extension specified)"
+        return 0
+    fi
+    
+    log_step "Detecting System Extension bundle"
+    
+    if [ -n "$SYSTEM_EXTENSION_BUNDLE" ]; then
+        log_info "Using provided System Extension bundle path: $SYSTEM_EXTENSION_BUNDLE"
+        
+        # Validate provided bundle path
+        if [ ! -d "$SYSTEM_EXTENSION_BUNDLE" ]; then
+            log_error "System Extension bundle not found at: $SYSTEM_EXTENSION_BUNDLE"
+            exit $EXIT_SYSTEM_EXTENSION_FAILED
+        fi
+        return 0
+    fi
+    
+    # Auto-detect System Extension bundle from build directory
+    local potential_bundles=(
+        "$PROJECT_ROOT/.build/release/USBIPDSystemExtension.systemextension"
+        "$PROJECT_ROOT/.build/debug/USBIPDSystemExtension.systemextension"
+        "$PROJECT_ROOT/build/USBIPDSystemExtension.systemextension"
+    )
+    
+    for bundle_path in "${potential_bundles[@]}"; do
+        if [ -d "$bundle_path" ]; then
+            SYSTEM_EXTENSION_BUNDLE="$bundle_path"
+            log_success "Detected System Extension bundle: $SYSTEM_EXTENSION_BUNDLE"
+            return 0
+        fi
+    done
+    
+    if [ "$FORCE_UPDATE" = false ]; then
+        log_error "No System Extension bundle found. Build the project first or specify --system-extension-bundle"
+        log_error "Expected locations:"
+        for bundle_path in "${potential_bundles[@]}"; do
+            log_error "  - $bundle_path"
+        done
+        exit $EXIT_SYSTEM_EXTENSION_FAILED
+    else
+        log_warning "No System Extension bundle found (continuing due to --force)"
+        INCLUDE_SYSTEM_EXTENSION=false
+    fi
+}
+
+# Validate System Extension bundle structure
+validate_system_extension_bundle() {
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = false ] || [ -z "$SYSTEM_EXTENSION_BUNDLE" ]; then
+        log_step "Skipping System Extension bundle validation"
+        return 0
+    fi
+    
+    if [ "$VALIDATE_SYSTEM_EXTENSION" = false ]; then
+        log_step "Skipping System Extension bundle validation (--skip-system-extension-validation specified)"
+        return 0
+    fi
+    
+    log_step "Validating System Extension bundle structure"
+    
+    local bundle_path="$SYSTEM_EXTENSION_BUNDLE"
+    
+    # Check bundle directory structure
+    local required_paths=(
+        "$bundle_path/Contents"
+        "$bundle_path/Contents/Info.plist"
+        "$bundle_path/Contents/MacOS"
+    )
+    
+    for required_path in "${required_paths[@]}"; do
+        if [ ! -e "$required_path" ]; then
+            log_error "Missing required System Extension component: $required_path"
+            exit $EXIT_SYSTEM_EXTENSION_FAILED
+        fi
+    done
+    
+    # Validate Info.plist
+    if command -v plutil >/dev/null 2>&1; then
+        if plutil -lint "$bundle_path/Contents/Info.plist" >/dev/null 2>&1; then
+            log_success "✓ Info.plist is valid"
+        else
+            log_error "✗ Invalid Info.plist in System Extension bundle"
+            exit $EXIT_SYSTEM_EXTENSION_FAILED
+        fi
+    else
+        log_warning "plutil not available, skipping Info.plist validation"
+    fi
+    
+    # Check for executable
+    local executable_count
+    executable_count=$(find "$bundle_path/Contents/MacOS" -type f -perm +111 | wc -l)
+    if [ "$executable_count" -eq 0 ]; then
+        log_error "No executable found in System Extension bundle"
+        exit $EXIT_SYSTEM_EXTENSION_FAILED
+    elif [ "$executable_count" -gt 1 ]; then
+        log_warning "Multiple executables found in System Extension bundle"
+    else
+        log_success "✓ System Extension executable found"
+    fi
+    
+    # Get bundle size
+    local bundle_size
+    bundle_size=$(du -sh "$bundle_path" | cut -f1)
+    log_info "System Extension bundle size: $bundle_size"
+    
+    log_success "System Extension bundle validation completed"
+}
+
+# Calculate System Extension bundle checksum
+calculate_system_extension_checksum() {
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = false ] || [ -z "$SYSTEM_EXTENSION_BUNDLE" ]; then
+        log_step "Skipping System Extension checksum calculation"
+        return 0
+    fi
+    
+    log_step "Calculating System Extension bundle checksum"
+    
+    if [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
+        log_info "Using provided System Extension checksum: $SYSTEM_EXTENSION_CHECKSUM"
+        return 0
+    fi
+    
+    # Create temporary archive of System Extension bundle
+    local temp_archive
+    temp_archive=$(mktemp -d)/systemextension-bundle.tar.gz
+    
+    log_info "Creating temporary archive for checksum calculation..."
+    if tar -czf "$temp_archive" -C "$(dirname "$SYSTEM_EXTENSION_BUNDLE")" "$(basename "$SYSTEM_EXTENSION_BUNDLE")"; then
+        # Calculate SHA256 checksum of the archive
+        SYSTEM_EXTENSION_CHECKSUM=$(shasum -a 256 "$temp_archive" | cut -d' ' -f1)
+        log_success "System Extension checksum calculated: $SYSTEM_EXTENSION_CHECKSUM"
+        
+        # Verify checksum format
+        if [[ ! "$SYSTEM_EXTENSION_CHECKSUM" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            log_error "Invalid System Extension SHA256 checksum format: $SYSTEM_EXTENSION_CHECKSUM"
+            exit $EXIT_CHECKSUM_FAILED
+        fi
+        
+        # Clean up
+        rm -f "$temp_archive"
+        rmdir "$(dirname "$temp_archive")" 2>/dev/null || true
+    else
+        log_error "Failed to create System Extension bundle archive for checksum calculation"
+        rm -f "$temp_archive"
+        rmdir "$(dirname "$temp_archive")" 2>/dev/null || true
+        exit $EXIT_SYSTEM_EXTENSION_FAILED
+    fi
+}
+
 # Create backup of current formula
 create_formula_backup() {
     if [ "$CREATE_BACKUP" = false ]; then
@@ -309,13 +468,16 @@ update_formula() {
         log_info "  Version: $VERSION"
         log_info "  Archive URL: $ARCHIVE_URL"
         log_info "  SHA256: $SHA256_CHECKSUM"
+        if [ "$INCLUDE_SYSTEM_EXTENSION" = true ]; then
+            log_info "  System Extension Checksum: $SYSTEM_EXTENSION_CHECKSUM"
+        fi
         return 0
     fi
     
     local temp_file
     temp_file=$(mktemp)
     
-    # Verify placeholders exist
+    # Verify required placeholders exist
     if ! grep -q "VERSION_PLACEHOLDER" "$FORMULA_FILE"; then
         log_error "VERSION_PLACEHOLDER not found in formula file"
         exit $EXIT_UPDATE_FAILED
@@ -326,15 +488,42 @@ update_formula() {
         exit $EXIT_UPDATE_FAILED
     fi
     
+    # Check for System Extension placeholders if including System Extension
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ]; then
+        if ! grep -q "SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER" "$FORMULA_FILE"; then
+            log_warning "SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER not found in formula file"
+            log_warning "Formula may not support System Extension integration"
+        fi
+    fi
+    
     # Update formula with actual values
-    sed "s/VERSION_PLACEHOLDER/$VERSION/g" "$FORMULA_FILE" | \
-    sed "s/SHA256_PLACEHOLDER/$SHA256_CHECKSUM/g" > "$temp_file"
+    local sed_commands="$FORMULA_FILE"
+    sed_commands=$(sed "s/VERSION_PLACEHOLDER/$VERSION/g" "$sed_commands")
+    sed_commands=$(echo "$sed_commands" | sed "s/SHA256_PLACEHOLDER/$SHA256_CHECKSUM/g")
+    
+    # Update System Extension placeholders if applicable
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
+        sed_commands=$(echo "$sed_commands" | sed "s/SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER/$SYSTEM_EXTENSION_CHECKSUM/g")
+    fi
+    
+    echo "$sed_commands" > "$temp_file"
     
     # Verify the update was successful
-    if grep -q "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" "$temp_file"; then
-        log_error "Failed to replace all placeholders in formula"
+    local remaining_placeholders
+    remaining_placeholders=$(grep -o "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" "$temp_file" | wc -l)
+    if [ "$remaining_placeholders" -gt 0 ]; then
+        log_error "Failed to replace all required placeholders in formula"
         rm -f "$temp_file"
         exit $EXIT_UPDATE_FAILED
+    fi
+    
+    # Check for remaining System Extension placeholders (warning only)
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ]; then
+        local se_placeholders
+        se_placeholders=$(grep -o "SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER" "$temp_file" | wc -l)
+        if [ "$se_placeholders" -gt 0 ]; then
+            log_warning "System Extension placeholder not replaced (formula may not support System Extensions)"
+        fi
     fi
     
     # Verify the new values are present
@@ -350,12 +539,24 @@ update_formula() {
         exit $EXIT_UPDATE_FAILED
     fi
     
+    # Verify System Extension checksum if applicable
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
+        if grep -q "$SYSTEM_EXTENSION_CHECKSUM" "$temp_file"; then
+            log_success "✓ System Extension checksum updated in formula"
+        else
+            log_warning "System Extension checksum not found in updated formula"
+        fi
+    fi
+    
     # Replace original formula with updated version
     mv "$temp_file" "$FORMULA_FILE"
     
     log_success "Formula updated successfully"
     log_info "Version: $VERSION"
     log_info "SHA256: $SHA256_CHECKSUM"
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
+        log_info "System Extension SHA256: $SYSTEM_EXTENSION_CHECKSUM"
+    fi
 }
 
 # Validate updated formula
@@ -386,7 +587,14 @@ validate_updated_formula() {
     local formula_validator="$SCRIPT_DIR/validate-formula.sh"
     if [ -x "$formula_validator" ]; then
         log_info "Running formula validation script..."
-        if "$formula_validator" --skip-installation; then
+        local validation_args="--skip-installation"
+        
+        # Add System Extension validation if applicable
+        if [ "$INCLUDE_SYSTEM_EXTENSION" = true ]; then
+            validation_args="$validation_args --validate-system-extension"
+        fi
+        
+        if $formula_validator $validation_args; then
             log_success "✓ Formula validation passed"
         else
             log_error "✗ Formula validation failed"
@@ -394,6 +602,27 @@ validate_updated_formula() {
         fi
     else
         log_warning "Formula validation script not found, skipping comprehensive validation"
+    fi
+    
+    # Additional System Extension validation
+    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ "$VALIDATE_SYSTEM_EXTENSION" = true ]; then
+        log_info "Performing additional System Extension formula validation..."
+        
+        # Check that System Extension checksum is present in formula
+        if [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
+            if grep -q "$SYSTEM_EXTENSION_CHECKSUM" "$FORMULA_FILE"; then
+                log_success "✓ System Extension checksum found in formula"
+            else
+                log_warning "⚠ System Extension checksum not found in formula (may not be required)"
+            fi
+        fi
+        
+        # Validate System Extension bundle references in formula
+        if grep -q "systemextension\|SystemExtension" "$FORMULA_FILE"; then
+            log_success "✓ System Extension references found in formula"
+        else
+            log_warning "⚠ No System Extension references found in formula"
+        fi
     fi
     
     log_success "Formula validation completed"
@@ -426,7 +655,8 @@ commit_changes() {
 
 - Update version from placeholder to $VERSION
 - Update SHA256 checksum for release archive
-- Formula URL: $ARCHIVE_URL
+- Formula URL: $ARCHIVE_URL$([ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ -n "$SYSTEM_EXTENSION_CHECKSUM" ] && echo "
+- Update System Extension bundle checksum: $SYSTEM_EXTENSION_CHECKSUM" || echo "")
 
 🤖 Generated with formula update automation"
     
@@ -471,7 +701,9 @@ Update Information:
   Version: $VERSION
   SHA256 Checksum: $SHA256_CHECKSUM
   Archive URL: $ARCHIVE_URL
-  Formula File: $FORMULA_FILE
+  Formula File: $FORMULA_FILE$([ "$INCLUDE_SYSTEM_EXTENSION" = true ] && echo "
+  System Extension Bundle: ${SYSTEM_EXTENSION_BUNDLE:-'[not detected]'}
+  System Extension Checksum: ${SYSTEM_EXTENSION_CHECKSUM:-'[not calculated]'}" || echo "")
 
 Configuration:
   Dry Run: $([ "$DRY_RUN" = true ] && echo "YES" || echo "NO")
@@ -480,12 +712,16 @@ Configuration:
   Create Backup: $([ "$CREATE_BACKUP" = true ] && echo "YES" || echo "NO")
   Auto Commit: $([ "$AUTO_COMMIT" = true ] && echo "YES" || echo "NO")
   Validate Tag: $([ "$VALIDATE_TAG" = true ] && echo "YES" || echo "NO")
+  Include System Extension: $([ "$INCLUDE_SYSTEM_EXTENSION" = true ] && echo "YES" || echo "NO")
+  Validate System Extension: $([ "$VALIDATE_SYSTEM_EXTENSION" = true ] && echo "YES" || echo "NO")
 
 Update Status:
   ✓ Prerequisites validated
   ✓ Version validated
   ✓ Archive URL generated
-  ✓ SHA256 checksum calculated
+  ✓ SHA256 checksum calculated$([ "$INCLUDE_SYSTEM_EXTENSION" = true ] && echo "
+  ✓ System Extension bundle detected and validated
+  ✓ System Extension checksum calculated" || echo "")
   ✓ Formula backup created
   ✓ Formula updated
   ✓ Updated formula validated
@@ -549,6 +785,10 @@ REQUIRED OPTIONS:
 OPTIONAL OPTIONS:
   --checksum CHECKSUM         SHA256 checksum (auto-calculated if not provided)
   --archive-url URL           Archive URL (auto-generated if not provided)
+  --system-extension-bundle PATH  System Extension bundle path (auto-detected if not provided)
+  --system-extension-checksum CHECKSUM  System Extension SHA256 checksum (auto-calculated if not provided)
+  --no-system-extension       Skip System Extension integration
+  --skip-system-extension-validation  Skip System Extension bundle validation
   --dry-run                   Preview actions without making changes
   --skip-validation           Skip formula validation after update
   --force                     Override safety checks and validation
@@ -563,6 +803,8 @@ EXAMPLES:
   $0 --version v1.2.3 --dry-run         # Preview update without changes
   $0 --version v1.2.3 --checksum abc123 # Use specific checksum
   $0 --version v1.2.3 --force           # Force update without validation
+  $0 --version v1.2.3 --no-system-extension  # Skip System Extension integration
+  $0 --version v1.2.3 --system-extension-bundle /path/to/bundle  # Use specific bundle
 
 ROLLBACK:
   To rollback to previous formula version:
@@ -573,10 +815,12 @@ UPDATE PROCESS:
   2. Validate that Git tag exists for the version
   3. Generate archive URL from Git repository
   4. Calculate SHA256 checksum by downloading archive
-  5. Create backup of current formula
-  6. Update formula placeholders with actual values
-  7. Validate updated formula syntax and structure
-  8. Optionally commit changes to Git repository
+  5. Detect and validate System Extension bundle (if enabled)
+  6. Calculate System Extension bundle checksum (if applicable)
+  7. Create backup of current formula
+  8. Update formula placeholders with actual values
+  9. Validate updated formula syntax and structure
+  10. Optionally commit changes to Git repository
 
 This script is designed for integration with release automation workflows
 and ensures formula updates are reliable and reversible.
@@ -658,6 +902,22 @@ main() {
                 VALIDATE_TAG=false
                 shift
                 ;;
+            --system-extension-bundle)
+                SYSTEM_EXTENSION_BUNDLE="$2"
+                shift 2
+                ;;
+            --system-extension-checksum)
+                SYSTEM_EXTENSION_CHECKSUM="$2"
+                shift 2
+                ;;
+            --no-system-extension)
+                INCLUDE_SYSTEM_EXTENSION=false
+                shift
+                ;;
+            --skip-system-extension-validation)
+                VALIDATE_SYSTEM_EXTENSION=false
+                shift
+                ;;
             --rollback)
                 rollback_mode=true
                 shift
@@ -698,6 +958,9 @@ main() {
     validate_version
     generate_archive_url
     calculate_checksum
+    detect_system_extension_bundle
+    validate_system_extension_bundle
+    calculate_system_extension_checksum
     create_formula_backup
     update_formula
     validate_updated_formula
