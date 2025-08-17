@@ -252,18 +252,16 @@ jobs:
         id: calculate-sha256
         run: |
           echo "::group::SHA256 Calculation"
-          echo "::notice title=SHA256::Calculating archive checksum for formula update"
+          echo "::notice title=SHA256::Calculating GitHub source archive checksum for formula update"
           
           VERSION="${{ needs.release-validation.outputs.version }}"
-          ARCHIVE_PATH="release-artifacts/usbipd-mac-$VERSION.tar.gz"
+          ARCHIVE_URL="https://github.com/beriberikix/usbipd-mac/archive/$VERSION.tar.gz"
           
-          if [ ! -f "$ARCHIVE_PATH" ]; then
-            echo "::error title=Archive Missing::Release archive not found: $ARCHIVE_PATH"
-            exit 1
-          fi
+          echo "📊 Downloading and calculating SHA256 for GitHub source archive..."
+          echo "   URL: $ARCHIVE_URL"
           
-          echo "📊 Calculating SHA256 for $ARCHIVE_PATH..."
-          SHA256_CHECKSUM=$(shasum -a 256 "$ARCHIVE_PATH" | cut -d' ' -f1)
+          # Download and calculate SHA256 of the GitHub source archive
+          SHA256_CHECKSUM=$(curl -sL "$ARCHIVE_URL" | shasum -a 256 | cut -d' ' -f1)
           
           if [[ ! "$SHA256_CHECKSUM" =~ ^[a-fA-F0-9]{64}$ ]]; then
             echo "::error title=Invalid Checksum::Generated checksum format is invalid"
@@ -271,6 +269,7 @@ jobs:
           fi
           
           echo "✅ SHA256 calculated: $SHA256_CHECKSUM"
+          echo "   This matches what Homebrew will download from GitHub"
           echo "sha256=$SHA256_CHECKSUM" >> $GITHUB_OUTPUT
           echo "::endgroup::"
 

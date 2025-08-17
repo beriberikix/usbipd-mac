@@ -258,12 +258,28 @@ usbipd-mac uses automated GitHub Actions workflows for consistent and reliable r
 
 2. **Manual (tap repository)**: After the release workflow completes:
    ```bash
-   # Clone or navigate to the tap repository
-   git clone https://github.com/beriberikix/homebrew-usbipd-mac.git
-   cd homebrew-usbipd-mac
+   # Option A: Update from main repository directory
+   cd /path/to/usbipd-mac  # Your main repository
    
-   # Copy updated formula from main repository
-   cp ../usbipd-mac/Formula/usbipd-mac.rb Formula/
+   # Clone the tap repository alongside your main repo
+   git clone https://github.com/beriberikix/homebrew-usbipd-mac.git ../homebrew-usbipd-mac
+   
+   # Copy updated formula to tap repository
+   cp Formula/usbipd-mac.rb ../homebrew-usbipd-mac/Formula/
+   
+   # Commit and push to tap repository
+   cd ../homebrew-usbipd-mac
+   git add Formula/usbipd-mac.rb
+   git commit -m "feat: update formula to v1.2.3"
+   git push origin main
+   ```
+   
+   ```bash
+   # Option B: Update directly in Homebrew's tap directory
+   cd /opt/homebrew/Library/Taps/beriberikix/homebrew-usbipd-mac
+   
+   # Copy from your main repository (adjust path as needed)
+   cp /path/to/usbipd-mac/Formula/usbipd-mac.rb Formula/
    
    # Commit and push to tap repository
    git add Formula/usbipd-mac.rb
