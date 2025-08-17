@@ -215,7 +215,7 @@ validate_formula_syntax() {
     
     # Check for template placeholders
     log_info "Checking for template placeholders..."
-    local placeholders=("VERSION_PLACEHOLDER" "SHA256_PLACEHOLDER")
+    local placeholders=("{{VERSION}}" "{{SHA256}}" "VERSION_PLACEHOLDER" "SHA256_PLACEHOLDER")
     local found_placeholders=()
     
     for placeholder in "${placeholders[@]}"; do
@@ -251,6 +251,9 @@ validate_formula_audit() {
     cp "$FORMULA_FILE" "$temp_formula"
     
     # Replace placeholders with dummy values for audit
+    sed -i '' 's/{{VERSION}}/1.0.0/g' "$temp_formula" 2>/dev/null || sed -i 's/{{VERSION}}/1.0.0/g' "$temp_formula"
+    sed -i '' 's/{{SHA256}}/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$temp_formula" 2>/dev/null || \
+        sed -i 's/{{SHA256}}/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$temp_formula"
     sed -i '' 's/VERSION_PLACEHOLDER/1.0.0/g' "$temp_formula" 2>/dev/null || sed -i 's/VERSION_PLACEHOLDER/1.0.0/g' "$temp_formula"
     sed -i '' 's/SHA256_PLACEHOLDER/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$temp_formula" 2>/dev/null || \
         sed -i 's/SHA256_PLACEHOLDER/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$temp_formula"
@@ -268,9 +271,10 @@ validate_formula_audit() {
         fi
     else
         # Check if the error is due to audit [path ...] being disabled
-        if echo "$audit_output" | grep -q "audit \[path \.\.\.\] is disabled"; then
+        if echo "$audit_output" | grep -q "Calling.*brew audit.*path.*is disabled"; then
             log_warning "✓ Homebrew audit skipped (audit with file paths not supported in this Homebrew version)"
             log_info "Formula syntax and structure validation is sufficient for CI purposes"
+            # Don't increment audit_errors for this expected case - this is not a real failure
         else
             log_error "✗ Homebrew audit failed"
             echo "$audit_output" | while IFS= read -r line; do
@@ -364,6 +368,9 @@ test_formula_installation() {
     
     # Prepare test formula with dummy values
     cp "$FORMULA_FILE" "$test_formula"
+    sed -i '' 's/{{VERSION}}/test-1.0.0/g' "$test_formula" 2>/dev/null || sed -i 's/{{VERSION}}/test-1.0.0/g' "$test_formula"
+    sed -i '' 's/{{SHA256}}/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$test_formula" 2>/dev/null || \
+        sed -i 's/{{SHA256}}/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$test_formula"
     sed -i '' 's/VERSION_PLACEHOLDER/test-1.0.0/g' "$test_formula" 2>/dev/null || sed -i 's/VERSION_PLACEHOLDER/test-1.0.0/g' "$test_formula"
     sed -i '' 's/SHA256_PLACEHOLDER/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$test_formula" 2>/dev/null || \
         sed -i 's/SHA256_PLACEHOLDER/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g' "$test_formula"
@@ -426,7 +433,7 @@ validate_checksum_integrity() {
     local checksum_errors=0
     
     # Check that SHA256 placeholder exists
-    if grep -q "SHA256_PLACEHOLDER" "$FORMULA_FILE"; then
+    if grep -q "{{SHA256}}" "$FORMULA_FILE" || grep -q "SHA256_PLACEHOLDER" "$FORMULA_FILE"; then
         log_success "✓ SHA256 placeholder found for dynamic updates"
     elif grep -q 'sha256.*"[a-fA-F0-9]{64}"' "$FORMULA_FILE"; then
         log_success "✓ Valid SHA256 checksum found"
@@ -436,7 +443,7 @@ validate_checksum_integrity() {
     fi
     
     # Check URL structure for checksum validation
-    if grep -q "VERSION_PLACEHOLDER" "$FORMULA_FILE"; then
+    if grep -q "{{VERSION}}" "$FORMULA_FILE" || grep -q "VERSION_PLACEHOLDER" "$FORMULA_FILE"; then
         log_success "✓ Version placeholder found for dynamic updates"
     elif grep -q 'url.*v[0-9]' "$FORMULA_FILE"; then
         log_success "✓ Valid version in URL found"
