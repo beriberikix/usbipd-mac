@@ -1,0 +1,27 @@
+{
+  "id": "approval_1755381127068_1848abpb7",
+  "title": "Tasks Phase: system-extension-activation - Ready for Review",
+  "filePath": ".spec-workflow/specs/system-extension-activation/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-16T21:52:07.068Z",
+  "category": "spec",
+  "categoryName": "system-extension-activation",
+  "response": "Feedback Summary (2 comments):\n\nGeneral Comments:\n1. Follow git workflow. Git commit at relevant points with helpful messages. First task should create a feature branch and commit spec docs. Last commit should create PR and fix CI issues.\n2. Make sure tests that can't run in CI are avoided or skipped in that environment.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Git commit at relevant points with helpful messages. First task should create a feature branch and commit spec docs. Last commit should create PR and fix CI issues.\",\n      \"timestamp\": \"2025-08-16T21:53:38.439Z\",\n      \"id\": \"comment_1755381218439_a588264sf\"\n    },\n    {\n      \"type\": \"general\",\n      \"comment\": \"Make sure tests that can't run in CI are avoided or skipped in that environment.\",\n      \"timestamp\": \"2025-08-16T21:54:23.106Z\",\n      \"id\": \"comment_1755381263106_1j23iur4k\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (2 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Git commit at relevant points with helpful messages. First task should create a feature branch and commit spec docs. Last commit should create PR and fix CI issues.\\n2. Make sure tests that can't run in CI are avoided or skipped in that environment.\\n\\n\",\n  \"timestamp\": \"2025-08-16T21:54:24.003Z\"\n}",
+  "respondedAt": "2025-08-16T21:54:24.011Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Git commit at relevant points with helpful messages. First task should create a feature branch and commit spec docs. Last commit should create PR and fix CI issues.",
+      "timestamp": "2025-08-16T21:53:38.439Z",
+      "id": "comment_1755381218439_a588264sf"
+    },
+    {
+      "type": "general",
+      "comment": "Make sure tests that can't run in CI are avoided or skipped in that environment.",
+      "timestamp": "2025-08-16T21:54:23.106Z",
+      "id": "comment_1755381263106_1j23iur4k"
+    }
+  ]
+}
