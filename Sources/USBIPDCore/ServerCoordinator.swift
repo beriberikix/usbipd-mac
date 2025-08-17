@@ -757,7 +757,7 @@ public class ServerCoordinator: USBIPServer {
                 bundleIdentifier: bundleConfig.bundleIdentifier,
                 lastDetectionTime: bundleConfig.lastDetectionTime,
                 isValid: bundleConfig.isValid,
-                installationStatus: result.finalStatus,
+                installationStatus: result.finalStatus.rawValue,
                 detectionIssues: bundleConfig.detectionIssues,
                 bundleSize: bundleConfig.bundleSize,
                 modificationTime: bundleConfig.modificationTime

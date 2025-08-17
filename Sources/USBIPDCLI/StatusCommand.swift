@@ -244,7 +244,7 @@ public class StatusCommand: Command {
             let lastAttempt = history.last!
             
             print("📊 Installation Attempts: \(totalAttempts) (\(successfulAttempts) successful)")
-            print("📅 Last Attempt: \(formatDate(lastAttempt.timestamp))")
+            print("📅 Last Attempt: (duration: \(String(format: "%.1fs", lastAttempt.duration)))")
             
             let lastAttemptSymbol = lastAttempt.success ? "✅" : "❌"
             print("\(lastAttemptSymbol) Last Result: \(lastAttempt.success ? "Success" : "Failed")")
@@ -264,22 +264,26 @@ public class StatusCommand: Command {
                     print("💡 Troubleshooting Suggestion")
                     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     switch lastAttempt.recommendedAction {
-                    case "retryLater":
+                    case .retryLater:
                         print("⏳ Automatic retry will occur after delay")
                         print("📝 Or manually retry: restart the daemon")
-                    case "checkConfiguration":
+                    case .checkConfiguration:
                         print("⚙️  Check System Extension configuration:")
                         print("   • Verify bundle path and identifier")
                         print("   • Enable developer mode if unsigned: systemextensionsctl developer on")
                         print("   • Check code signing certificate validity")
-                    case "contactSupport":
+                    case .contactSupport:
                         print("🆘 Multiple installation attempts failed")
                         print("   • Check system logs for detailed errors")
                         print("   • Verify System Extension compatibility")
                         print("   • Consider manual installation or contact support")
-                    default:
-                        if let primaryError = lastAttempt.primaryError {
-                            print("❌ Error: \(primaryError)")
+                    case .requiresUserApproval:
+                        print("👤 User approval required for System Extension")
+                        print("   • Check System Preferences > Security & Privacy")
+                        print("   • Allow the blocked System Extension")
+                    case .none:
+                        if !lastAttempt.errors.isEmpty {
+                            print("❌ Error: \(lastAttempt.errors.first?.localizedDescription ?? "Unknown error")")
                         }
                         print("📋 Check system logs for more details")
                     }
@@ -302,13 +306,13 @@ public class StatusCommand: Command {
                 let symbol = attempt.success ? "✅" : "❌"
                 let duration = String(format: "%.1fs", attempt.duration)
                 
-                print("\(symbol) Attempt #\(attemptNumber) (\(formatDate(attempt.timestamp)))")
+                print("\(symbol) Attempt #\(attemptNumber) (duration: \(duration))")
                 print("   Duration: \(duration)")
                 print("   Result: \(attempt.finalStatus.rawValue)")
                 
                 if !attempt.success {
-                    if let error = attempt.primaryError {
-                        print("   Error: \(error)")
+                    if !attempt.errors.isEmpty {
+                        print("   Error: \(attempt.errors.first?.localizedDescription ?? "Unknown error")")
                     }
                     print("   Action: \(attempt.recommendedAction)")
                 }

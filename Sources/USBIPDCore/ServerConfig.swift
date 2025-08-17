@@ -443,9 +443,6 @@ public class ServerConfig: Codable {
 // MARK: - System Extension Bundle Configuration Models
 // Note: These types are referenced from SystemExtensionBundleDetector
 
-/// System Extension installation status (imported from SystemExtensionModels.swift)
-public typealias SystemExtensionInstallationStatus = USBIPDCore.SystemExtensionInstallationStatus
-
 /// Bundle configuration structure (mirrors SystemExtensionBundleDetector.SystemExtensionBundleConfig)
 /// This is defined here to avoid circular imports between ServerConfig and BundleDetector
 public struct SystemExtensionBundleConfig: Codable {
@@ -462,7 +459,7 @@ public struct SystemExtensionBundleConfig: Codable {
     public let isValid: Bool
     
     /// Installation status of this bundle
-    public let installationStatus: SystemExtensionInstallationStatus
+    public let installationStatus: String
     
     /// Issues found during detection/validation
     public let detectionIssues: [String]
@@ -478,7 +475,7 @@ public struct SystemExtensionBundleConfig: Codable {
         bundleIdentifier: String,
         lastDetectionTime: Date = Date(),
         isValid: Bool,
-        installationStatus: SystemExtensionInstallationStatus = .unknown,
+        installationStatus: String = "unknown",
         detectionIssues: [String] = [],
         bundleSize: Int64 = 0,
         modificationTime: Date = Date()

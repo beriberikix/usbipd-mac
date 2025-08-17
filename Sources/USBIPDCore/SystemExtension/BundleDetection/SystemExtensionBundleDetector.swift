@@ -212,7 +212,6 @@ public struct SystemExtensionBundleDetector {
             } else {
                 issues.append("Missing CFBundleExecutable in Info.plist")
             }
-            
         } catch {
             issues.append("Error reading Info.plist: \(error.localizedDescription)")
             return BundleValidationResult(isValid: false, issues: issues)
@@ -253,9 +252,10 @@ extension SystemExtensionBundleConfig {
             bundleIdentifier: bundleIdentifier,
             lastDetectionTime: detectionResult.detectionTime,
             isValid: true,
-            installationStatus: .unknown,
+            installationStatus: "unknown",
             detectionIssues: detectionResult.issues,
             bundleSize: bundleSize,
             modificationTime: modificationTime
         )
     }
+}
