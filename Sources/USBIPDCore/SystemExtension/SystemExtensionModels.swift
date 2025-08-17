@@ -1212,3 +1212,254 @@ extension SystemExtensionError: LocalizedError {
         }
     }
 }
+
+// MARK: - Automatic Installation State Tracking
+
+/// Status of automatic System Extension installation
+public enum AutomaticInstallationStatus: String, Codable, CaseIterable {
+    /// No automatic installation attempted yet
+    case notAttempted = "not_attempted"
+    
+    /// Automatic installation is in progress
+    case inProgress = "in_progress"
+    
+    /// Automatic installation completed successfully
+    case completed = "completed"
+    
+    /// Automatic installation failed
+    case failed = "failed"
+    
+    /// Installation is waiting for user approval
+    case waitingForApproval = "waiting_for_approval"
+    
+    /// Installation is waiting to retry after delay
+    case waitingToRetry = "waiting_to_retry"
+    
+    /// Maximum installation attempts exceeded
+    case attemptsExceeded = "attempts_exceeded"
+    
+    /// Installation is disabled by configuration
+    case disabled = "disabled"
+    
+    /// Bundle not available for installation
+    case bundleNotAvailable = "bundle_not_available"
+    
+    /// User-readable description of automatic installation status
+    public var displayName: String {
+        switch self {
+        case .notAttempted:
+            return "Not Attempted"
+        case .inProgress:
+            return "In Progress"
+        case .completed:
+            return "Completed"
+        case .failed:
+            return "Failed"
+        case .waitingForApproval:
+            return "Waiting for User Approval"
+        case .waitingToRetry:
+            return "Waiting to Retry"
+        case .attemptsExceeded:
+            return "Maximum Attempts Exceeded"
+        case .disabled:
+            return "Disabled"
+        case .bundleNotAvailable:
+            return "Bundle Not Available"
+        }
+    }
+    
+    /// Whether this status indicates an active installation process
+    public var isActive: Bool {
+        switch self {
+        case .inProgress, .waitingForApproval, .waitingToRetry:
+            return true
+        case .notAttempted, .completed, .failed, .attemptsExceeded, .disabled, .bundleNotAvailable:
+            return false
+        }
+    }
+    
+    /// Whether this status indicates a final state (success or permanent failure)
+    public var isFinal: Bool {
+        switch self {
+        case .completed, .attemptsExceeded, .disabled, .bundleNotAvailable:
+            return true
+        case .notAttempted, .inProgress, .failed, .waitingForApproval, .waitingToRetry:
+            return false
+        }
+    }
+}
+
+/// Extended System Extension status with automatic installation information
+public struct ExtendedSystemExtensionStatus: Codable {
+    /// Base System Extension status
+    public let baseStatus: SystemExtensionStatus
+    
+    /// Automatic installation status
+    public let automaticInstallationStatus: AutomaticInstallationStatus
+    
+    /// Number of automatic installation attempts made
+    public let installationAttempts: Int
+    
+    /// Last automatic installation attempt time
+    public let lastInstallationAttempt: Date?
+    
+    /// Next scheduled retry time (if applicable)
+    public let nextRetryTime: Date?
+    
+    /// Installation attempt history summary
+    public let recentInstallationHistory: [InstallationAttemptSummary]
+    
+    /// Whether automatic installation is enabled
+    public let automaticInstallationEnabled: Bool
+    
+    /// Bundle availability status
+    public let bundleAvailable: Bool
+    
+    /// User guidance for current state
+    public let userGuidance: String?
+    
+    public init(
+        baseStatus: SystemExtensionStatus,
+        automaticInstallationStatus: AutomaticInstallationStatus,
+        installationAttempts: Int = 0,
+        lastInstallationAttempt: Date? = nil,
+        nextRetryTime: Date? = nil,
+        recentInstallationHistory: [InstallationAttemptSummary] = [],
+        automaticInstallationEnabled: Bool = true,
+        bundleAvailable: Bool = false,
+        userGuidance: String? = nil
+    ) {
+        self.baseStatus = baseStatus
+        self.automaticInstallationStatus = automaticInstallationStatus
+        self.installationAttempts = installationAttempts
+        self.lastInstallationAttempt = lastInstallationAttempt
+        self.nextRetryTime = nextRetryTime
+        self.recentInstallationHistory = recentInstallationHistory
+        self.automaticInstallationEnabled = automaticInstallationEnabled
+        self.bundleAvailable = bundleAvailable
+        self.userGuidance = userGuidance
+    }
+}
+
+/// Summary of an installation attempt for status reporting
+public struct InstallationAttemptSummary: Codable {
+    /// Attempt timestamp
+    public let timestamp: Date
+    
+    /// Whether the attempt was successful
+    public let success: Bool
+    
+    /// Final installation status after attempt
+    public let finalStatus: SystemExtensionInstallationStatus
+    
+    /// Duration of the attempt
+    public let duration: TimeInterval
+    
+    /// Whether user approval was required
+    public let requiresUserApproval: Bool
+    
+    /// Primary error message (if failed)
+    public let primaryError: String?
+    
+    /// Recommended action after attempt
+    public let recommendedAction: String
+    
+    public init(
+        timestamp: Date,
+        success: Bool,
+        finalStatus: SystemExtensionInstallationStatus,
+        duration: TimeInterval,
+        requiresUserApproval: Bool = false,
+        primaryError: String? = nil,
+        recommendedAction: String
+    ) {
+        self.timestamp = timestamp
+        self.success = success
+        self.finalStatus = finalStatus
+        self.duration = duration
+        self.requiresUserApproval = requiresUserApproval
+        self.primaryError = primaryError
+        self.recommendedAction = recommendedAction
+    }
+}
+
+/// Installation progress information for real-time monitoring
+public struct InstallationProgressInfo: Codable {
+    /// Current installation phase
+    public let currentPhase: InstallationPhase
+    
+    /// Progress percentage (0-100)
+    public let progressPercentage: Double
+    
+    /// Current step description
+    public let currentStepDescription: String
+    
+    /// Estimated time remaining (in seconds)
+    public let estimatedTimeRemaining: TimeInterval?
+    
+    /// Whether user interaction is currently required
+    public let requiresUserInteraction: Bool
+    
+    /// Specific user action required (if any)
+    public let requiredUserAction: String?
+    
+    public init(
+        currentPhase: InstallationPhase,
+        progressPercentage: Double,
+        currentStepDescription: String,
+        estimatedTimeRemaining: TimeInterval? = nil,
+        requiresUserInteraction: Bool = false,
+        requiredUserAction: String? = nil
+    ) {
+        self.currentPhase = currentPhase
+        self.progressPercentage = progressPercentage
+        self.currentStepDescription = currentStepDescription
+        self.estimatedTimeRemaining = estimatedTimeRemaining
+        self.requiresUserInteraction = requiresUserInteraction
+        self.requiredUserAction = requiredUserAction
+    }
+}
+
+/// Phases of System Extension installation
+public enum InstallationPhase: String, Codable, CaseIterable {
+    /// Detecting available bundles
+    case detecting = "detecting"
+    
+    /// Preparing for installation
+    case preparing = "preparing"
+    
+    /// Installing System Extension
+    case installing = "installing"
+    
+    /// Verifying installation
+    case verifying = "verifying"
+    
+    /// Waiting for user approval
+    case awaitingApproval = "awaiting_approval"
+    
+    /// Installation completed
+    case completed = "completed"
+    
+    /// Installation failed
+    case failed = "failed"
+    
+    /// User-readable description of installation phase
+    public var displayName: String {
+        switch self {
+        case .detecting:
+            return "Detecting Bundle"
+        case .preparing:
+            return "Preparing Installation"
+        case .installing:
+            return "Installing"
+        case .verifying:
+            return "Verifying Installation"
+        case .awaitingApproval:
+            return "Awaiting User Approval"
+        case .completed:
+            return "Completed"
+        case .failed:
+            return "Failed"
+        }
+    }
+}

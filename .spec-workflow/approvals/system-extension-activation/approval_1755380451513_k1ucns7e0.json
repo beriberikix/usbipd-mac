@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755380451513_k1ucns7e0",
+  "title": "Requirements Phase: system-extension-activation - Ready for Review",
+  "filePath": ".spec-workflow/specs/system-extension-activation/requirements.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-16T21:40:51.513Z",
+  "category": "spec",
+  "categoryName": "system-extension-activation",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Users shouldn't have to manually install the System Extension. It should either happen automatically as part of the brew install process or when the daemon first activates.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Users shouldn't have to manually install the System Extension. It should either happen automatically as part of the brew install process or when the daemon first activates.\",\n      \"timestamp\": \"2025-08-16T21:43:59.748Z\",\n      \"id\": \"comment_1755380639748_bzrqnugdn\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Users shouldn't have to manually install the System Extension. It should either happen automatically as part of the brew install process or when the daemon first activates.\\n\\n\",\n  \"timestamp\": \"2025-08-16T21:44:00.530Z\"\n}",
+  "respondedAt": "2025-08-16T21:44:00.543Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Users shouldn't have to manually install the System Extension. It should either happen automatically as part of the brew install process or when the daemon first activates.",
+      "timestamp": "2025-08-16T21:43:59.748Z",
+      "id": "comment_1755380639748_bzrqnugdn"
+    }
+  ]
+}
