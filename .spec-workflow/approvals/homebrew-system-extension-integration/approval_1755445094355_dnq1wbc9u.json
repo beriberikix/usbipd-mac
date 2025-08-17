@@ -1,0 +1,33 @@
+{
+  "id": "approval_1755445094355_dnq1wbc9u",
+  "title": "Requirements Phase: homebrew-system-extension-integration - Ready for Review",
+  "filePath": ".spec-workflow/specs/homebrew-system-extension-integration/requirements.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-17T15:38:14.355Z",
+  "category": "spec",
+  "categoryName": "homebrew-system-extension-integration",
+  "response": "Feedback Summary (2 comments):\n\nGeneral Comments:\n1. Ensure Github Actions correctly test and builds the system extension where appropriate.\n\nSpecific Text Comments:\n1. \"**User Story:** As a user who has installed usbipd...\": Is the manual step required?\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"selection\",\n      \"comment\": \"Is the manual step required?\",\n      \"timestamp\": \"2025-08-17T15:48:42.893Z\",\n      \"selectedText\": \"**User Story:** As a user who has installed usbipd-mac via Homebrew, I want a simple command to install the System Extension, so that I can enable USB device claiming functionality without manually managing bundle creation or systemextensionsctl commands.\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#FFEB3B\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1755445722893_r58s0h0hf\"\n    },\n    {\n      \"type\": \"general\",\n      \"comment\": \"Ensure Github Actions correctly test and builds the system extension where appropriate.\",\n      \"timestamp\": \"2025-08-17T15:49:42.432Z\",\n      \"id\": \"comment_1755445782432_c60yemefn\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (2 comments):\\n\\nGeneral Comments:\\n1. Ensure Github Actions correctly test and builds the system extension where appropriate.\\n\\nSpecific Text Comments:\\n1. \\\"**User Story:** As a user who has installed usbipd...\\\": Is the manual step required?\\n\",\n  \"timestamp\": \"2025-08-17T15:49:43.497Z\"\n}",
+  "respondedAt": "2025-08-17T15:49:43.509Z",
+  "comments": [
+    {
+      "type": "selection",
+      "comment": "Is the manual step required?",
+      "timestamp": "2025-08-17T15:48:42.893Z",
+      "selectedText": "**User Story:** As a user who has installed usbipd-mac via Homebrew, I want a simple command to install the System Extension, so that I can enable USB device claiming functionality without manually managing bundle creation or systemextensionsctl commands.",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#FFEB3B",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1755445722893_r58s0h0hf"
+    },
+    {
+      "type": "general",
+      "comment": "Ensure Github Actions correctly test and builds the system extension where appropriate.",
+      "timestamp": "2025-08-17T15:49:42.432Z",
+      "id": "comment_1755445782432_c60yemefn"
+    }
+  ]
+}
