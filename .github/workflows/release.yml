@@ -290,7 +290,8 @@ jobs:
             --version "$VERSION" \
             --checksum "$SHA256_CHECKSUM" \
             --skip-validation \
-            --no-tag-validation
+            --no-tag-validation \
+            --no-system-extension
           
           echo "::notice title=Formula Updated::Formula placeholders updated successfully"
           echo "✅ Formula updated with release information"
