@@ -829,10 +829,10 @@ public class MacOSVersionCompatibilityValidator {
 // MARK: - Supporting Enums
 
 public enum ArchitectureType: String, CaseIterable {
-    case x86_64 = "x86_64"
-    case arm64 = "arm64"
-    case universal = "universal"
-    case unknown = "unknown"
+    case x86_64
+    case arm64
+    case universal
+    case unknown
     
     public var displayName: String {
         switch self {

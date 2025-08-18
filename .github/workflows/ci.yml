@@ -62,7 +62,7 @@ jobs:
       - name: 🔍 SwiftLint Validation
         uses: ./.github/actions/swiftlint-validation
         with:
-          strict: true
+          strict-mode: true
 
   build-validation:
     name: Build Validation

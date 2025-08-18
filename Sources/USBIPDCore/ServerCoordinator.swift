@@ -318,7 +318,7 @@ public class ServerCoordinator: USBIPServer {
     /// Flag indicating if System Extension management is enabled
     private let systemExtensionEnabled: Bool
     
-    /// Automatic installation manager for System Extension (disabled in current implementation)
+    // Automatic installation manager for System Extension (disabled in current implementation)
     // private let automaticInstallationManager: AutomaticInstallationManager?
     
     /// Callback for error events
@@ -727,7 +727,7 @@ public class ServerCoordinator: USBIPServer {
         }
     }
     
-    /// Handle automatic installation result (disabled in current implementation)
+    // Handle automatic installation result (disabled in current implementation)
     // private func handleAutomaticInstallationResult(_ result: AutomaticInstallationManager.InstallationAttemptResult) {
     //     if result.success {
     //         logger.info("Automatic System Extension installation completed successfully", context: [
@@ -813,9 +813,9 @@ public class ServerCoordinator: USBIPServer {
         return isServerRunning
     }
     
-    /// Get System Extension status information
-    /// Get automatic installation status and history (disabled in current implementation)
-    /// - Returns: Current installation state and attempt history, or nil if System Extension not enabled
+    // Get System Extension status information
+    // Get automatic installation status and history (disabled in current implementation)
+    // - Returns: Current installation state and attempt history, or nil if System Extension not enabled
     // public func getAutomaticInstallationStatus() -> (state: AutomaticInstallationManager.InstallationState, history: [AutomaticInstallationManager.InstallationAttemptResult])? {
     //     guard let installationManager = automaticInstallationManager else {
     //         return nil
