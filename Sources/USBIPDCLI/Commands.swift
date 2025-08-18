@@ -690,4 +690,223 @@ public class DaemonCommand: Command {
     }
 }
 
+/// System Extension installation command implementation
+public class InstallSystemExtensionCommand: Command, InstallationProgressReporter {
+    public let name = "install-system-extension"
+    public let description = "Install and register the System Extension"
+    
+    private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "install-command")
+    
+    public init() {}
+    
+    public func execute(with arguments: [String]) throws {
+        logger.debug("Executing install-system-extension command", context: ["arguments": arguments.joined(separator: " ")])
+        
+        // Parse options
+        var verbose = false
+        var skipVerification = false
+        
+        var i = 0
+        while i < arguments.count {
+            switch arguments[i] {
+            case "-v", "--verbose":
+                verbose = true
+                i += 1
+            case "--skip-verification":
+                skipVerification = true
+                i += 1
+            case "-h", "--help":
+                printHelp()
+                return
+            default:
+                logger.error("Unknown option for install-system-extension command", context: ["option": arguments[i]])
+                throw CommandLineError.invalidArguments("Unknown option: \(arguments[i])")
+            }
+        }
+        
+        logger.info("Starting System Extension installation", context: [
+            "verbose": verbose,
+            "skipVerification": skipVerification
+        ])
+        
+        print("Starting System Extension installation...")
+        print("This will register the System Extension with macOS and may require user approval.")
+        print("")
+        
+        // Create installation orchestrator
+        let orchestrator = InstallationOrchestrator()
+        orchestrator.progressReporter = self
+        
+        // Run installation asynchronously
+        let result = runAsyncInstallation(orchestrator: orchestrator)
+        
+        if result.success {
+            logger.info("System Extension installation completed successfully")
+            print("")
+            print("✅ System Extension installation completed successfully!")
+            
+            if verbose {
+                printVerboseResults(result: result)
+            }
+            
+            if !result.recommendations.isEmpty {
+                print("")
+                print("Recommendations:")
+                for recommendation in result.recommendations.prefix(5) {
+                    print("  • \(recommendation)")
+                }
+            }
+            
+        } else {
+            logger.error("System Extension installation failed", context: [
+                "finalPhase": result.finalPhase.rawValue,
+                "issues": result.issues.joined(separator: ", ")
+            ])
+            
+            print("")
+            print("❌ System Extension installation failed!")
+            print("Final phase: \(result.finalPhase.rawValue)")
+            
+            if !result.issues.isEmpty {
+                print("")
+                print("Issues encountered:")
+                for issue in result.issues {
+                    print("  • \(issue)")
+                }
+            }
+            
+            if !result.recommendations.isEmpty {
+                print("")
+                print("Recommended actions:")
+                for recommendation in result.recommendations.prefix(5) {
+                    print("  • \(recommendation)")
+                }
+            }
+            
+            throw CommandHandlerError.operationNotSupported("System Extension installation failed")
+        }
+    }
+    
+    // MARK: - InstallationProgressReporter
+    
+    public func reportProgress(phase: OrchestrationPhase, progress: Double, message: String, userActions: [String]?) {
+        let progressBar = createProgressBar(progress: progress)
+        let phaseDescription = getPhaseDescription(phase: phase)
+        
+        print("\r\(progressBar) \(phaseDescription): \(message)", terminator: "")
+        fflush(stdout)
+        
+        if let actions = userActions, !actions.isEmpty {
+            print("")
+            print("")
+            print("User action required:")
+            for action in actions {
+                print("  → \(action)")
+            }
+            print("")
+        }
+        
+        // Add newline for completed phases
+        if progress >= 1.0 || phase == .completed || phase == .failed {
+            print("")
+        }
+    }
+    
+    // MARK: - Private Implementation
+    
+    private func runAsyncInstallation(orchestrator: InstallationOrchestrator) -> OrchestrationResult {
+        var installationResult: OrchestrationResult?
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        Task {
+            do {
+                installationResult = await orchestrator.performCompleteInstallation()
+            } catch {
+                logger.error("Installation threw unexpected error", context: ["error": error.localizedDescription])
+                installationResult = OrchestrationResult(
+                    success: false,
+                    finalPhase: .failed,
+                    issues: ["Unexpected error: \(error.localizedDescription)"],
+                    recommendations: ["Try running the installation again", "Check system logs for detailed error information"]
+                )
+            }
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        return installationResult ?? OrchestrationResult(
+            success: false,
+            finalPhase: .failed,
+            issues: ["Installation did not complete"],
+            recommendations: ["Try running the installation again"]
+        )
+    }
+    
+    private func createProgressBar(progress: Double) -> String {
+        let width = 20
+        let completed = Int(progress * Double(width))
+        let remaining = width - completed
+        
+        let completedBar = String(repeating: "█", count: completed)
+        let remainingBar = String(repeating: "░", count: remaining)
+        let percentage = String(format: "%3.0f", progress * 100)
+        
+        return "[\(completedBar)\(remainingBar)] \(percentage)%"
+    }
+    
+    private func getPhaseDescription(phase: OrchestrationPhase) -> String {
+        switch phase {
+        case .bundleDetection:
+            return "Bundle Detection"
+        case .systemExtensionSubmission:
+            return "System Registration"
+        case .serviceIntegration:
+            return "Service Integration"
+        case .installationVerification:
+            return "Verification"
+        case .completed:
+            return "Completed"
+        case .failed:
+            return "Failed"
+        }
+    }
+    
+    private func printVerboseResults(result: OrchestrationResult) {
+        print("")
+        print("Installation Details:")
+        print("  Duration: \(String(format: "%.2f", result.duration)) seconds")
+        print("  Final Phase: \(result.finalPhase.rawValue)")
+        
+        if let bundleResult = result.bundleDetectionResult {
+            print("  Bundle Path: \(bundleResult.bundlePath ?? "unknown")")
+            print("  Bundle ID: \(bundleResult.bundleIdentifier ?? "unknown")")
+            print("  Environment: \(bundleResult.detectionEnvironment)")
+        }
+        
+        if let submissionResult = result.submissionResult {
+            print("  Submission Status: \(submissionResult.status)")
+        }
+        
+        if let serviceResult = result.serviceIntegrationResult {
+            print("  Service Integration: \(serviceResult.success ? "OK" : "Issues found")")
+        }
+        
+        if let verificationResult = result.verificationResult {
+            print("  Installation Status: \(verificationResult.status)")
+        }
+    }
+    
+    private func printHelp() {
+        print("Usage: usbipd install-system-extension [options]")
+        print("")
+        print("Install and register the System Extension with macOS.")
+        print("This may require user approval in System Preferences.")
+        print("")
+        print("Options:")
+        print("  -v, --verbose           Show detailed installation information")
+        print("  --skip-verification     Skip final installation verification")
+        print("  -h, --help              Show this help message")
+    }
+}
+
 // OutputFormatter is now defined in OutputFormatter.swift

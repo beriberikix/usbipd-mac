@@ -79,7 +79,8 @@ public class CommandLineParser {
             StatusCommand(deviceClaimManager: nil, outputFormatter: outputFormatter),
             AttachCommand(),
             DetachCommand(),
-            DaemonCommand(server: server, serverConfig: serverConfig)
+            DaemonCommand(server: server, serverConfig: serverConfig),
+            InstallSystemExtensionCommand()
         ]
         
         for command in commands {
