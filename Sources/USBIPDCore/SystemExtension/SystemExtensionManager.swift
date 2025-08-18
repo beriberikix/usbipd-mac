@@ -42,6 +42,18 @@ public class SystemExtensionManager {
     /// Request processing delegates
     public weak var requestDelegate: SystemExtensionRequestDelegate?
     
+    /// Enhanced bundle detector for production environments
+    private let bundleDetector: SystemExtensionBundleDetector
+    
+    /// Installation orchestrator for automatic installation workflows
+    private let installationOrchestrator: InstallationOrchestrator
+    
+    /// Current installation status (cached)
+    private var cachedInstallationStatus: OrchestrationResult?
+    
+    /// Last installation status check time
+    private var lastInstallationStatusCheck: Date?
+    
     // MARK: - Initialization
     
     /// Initialize with default components
@@ -57,6 +69,8 @@ public class SystemExtensionManager {
             ipcHandler: XPCIPCHandler(),
             statusMonitor: ComprehensiveStatusMonitor(),
             config: SystemExtensionManagerConfig(),
+            bundleDetector: SystemExtensionBundleDetector(),
+            installationOrchestrator: InstallationOrchestrator(),
             logger: logger
         )
     }
@@ -67,18 +81,24 @@ public class SystemExtensionManager {
     ///   - ipcHandler: IPC communication implementation
     ///   - statusMonitor: Optional status monitoring
     ///   - config: Manager configuration
+    ///   - bundleDetector: Enhanced bundle detector for production environments
+    ///   - installationOrchestrator: Installation orchestrator for automatic workflows
     ///   - logger: Logger instance
     public init(
         deviceClaimer: DeviceClaimer,
         ipcHandler: IPCHandler,
         statusMonitor: StatusMonitor? = nil,
         config: SystemExtensionManagerConfig = SystemExtensionManagerConfig(),
+        bundleDetector: SystemExtensionBundleDetector = SystemExtensionBundleDetector(),
+        installationOrchestrator: InstallationOrchestrator = InstallationOrchestrator(),
         logger: Logger
     ) {
         self.deviceClaimer = deviceClaimer
         self.ipcHandler = ipcHandler
         self.statusMonitor = statusMonitor
         self.config = config
+        self.bundleDetector = bundleDetector
+        self.installationOrchestrator = installationOrchestrator
         self.logger = logger
         self.queue = DispatchQueue(
             label: "com.usbipd.mac.system-extension.manager",
@@ -86,10 +106,16 @@ public class SystemExtensionManager {
         )
         self.statistics = SystemExtensionStatistics()
         
+        // Perform initial bundle detection
+        let bundleDetectionResult = bundleDetector.detectBundle()
+        
         logger.info("SystemExtensionManager initialized", context: [
             "autoStart": config.autoStart,
             "healthCheckInterval": config.healthCheckInterval,
-            "restoreStateOnStart": config.restoreStateOnStart
+            "restoreStateOnStart": config.restoreStateOnStart,
+            "bundleDetected": bundleDetectionResult.found,
+            "bundlePath": bundleDetectionResult.bundlePath ?? "none",
+            "detectionEnvironment": "\(bundleDetectionResult.detectionEnvironment)"
         ])
     }
     
@@ -320,6 +346,8 @@ public class SystemExtensionManager {
         return queue.sync {
             let claimedDevices = deviceClaimer.getAllClaimedDevices()
             let healthMetrics = getHealthMetrics()
+            let installationStatus = getCurrentInstallationStatus()
+            let bundleInfo = getBundleInfo()
             
             return SystemExtensionStatus(
                 isRunning: state == .running,
@@ -328,8 +356,184 @@ public class SystemExtensionManager {
                 errorCount: statistics.totalErrors,
                 memoryUsage: getMemoryUsage(),
                 version: "1.0.0", // System Extension version
-                healthMetrics: healthMetrics
+                healthMetrics: healthMetrics,
+                installationStatus: installationStatus,
+                bundleInfo: bundleInfo
             )
+        }
+    }
+    
+    // MARK: - Installation Status Integration
+    
+    /// Get current installation status using enhanced verification
+    /// - Returns: Current installation status
+    private func getCurrentInstallationStatus() -> SystemExtensionInstallationStatus {
+        // Check if we have cached status that's still fresh (within last 30 seconds)
+        let cacheTimeout: TimeInterval = 30.0
+        if let lastCheck = lastInstallationStatusCheck,
+           let cachedStatus = cachedInstallationStatus,
+           Date().timeIntervalSince(lastCheck) < cacheTimeout {
+            
+            // Return cached status based on the orchestration result
+            return mapOrchestrationResultToInstallationStatus(cachedStatus)
+        }
+        
+        // Perform fresh installation status check
+        Task {
+            await refreshInstallationStatus()
+        }
+        
+        // Return best-effort status based on current state and bundle detection
+        let bundleDetectionResult = bundleDetector.detectBundle()
+        
+        if !bundleDetectionResult.found {
+            return .notInstalled
+        }
+        
+        if state == .running {
+            return .installed
+        }
+        
+        // Default to unknown if we can't determine status
+        return .unknown
+    }
+    
+    /// Refresh installation status asynchronously
+    private func refreshInstallationStatus() async {
+        // Use the installation verification manager directly for quick status check
+        let verificationManager = InstallationVerificationManager()
+        let verificationResult = await verificationManager.verifyInstallation()
+        
+        // Create a simplified orchestration result based on verification
+        let orchestrationResult = OrchestrationResult(
+            success: verificationResult.status.isOperational,
+            finalPhase: verificationResult.status.isOperational ? .completed : .failed,
+            verificationResult: verificationResult,
+            issues: verificationResult.discoveredIssues.map { $0.description },
+            recommendations: verificationResult.discoveredIssues.compactMap { $0.remediation }
+        )
+        
+        // Cache the result
+        await MainActor.run {
+            self.cachedInstallationStatus = orchestrationResult
+            self.lastInstallationStatusCheck = Date()
+        }
+    }
+    
+    /// Map orchestration result to installation status enum
+    private func mapOrchestrationResultToInstallationStatus(_ result: OrchestrationResult) -> SystemExtensionInstallationStatus {
+        if result.success {
+            switch result.finalPhase {
+            case .completed:
+                return .installed
+            case .failed:
+                return .installationFailed
+            case .systemExtensionSubmission, .serviceIntegration, .installationVerification:
+                return .installing
+            case .bundleDetection:
+                return .notInstalled
+            }
+        } else {
+            switch result.finalPhase {
+            case .bundleDetection:
+                return .notInstalled
+            case .failed:
+                return .installationFailed
+            default:
+                return .installing
+            }
+        }
+    }
+    
+    /// Get enhanced bundle information using the enhanced bundle detector
+    /// - Returns: Bundle information if available
+    private func getBundleInfo() -> SystemExtensionBundle? {
+        let detectionResult = bundleDetector.detectBundle()
+        
+        guard detectionResult.found,
+              let bundlePath = detectionResult.bundlePath,
+              let bundleIdentifier = detectionResult.bundleIdentifier else {
+            return nil
+        }
+        
+        let bundleContents = BundleContents(
+            infoPlistPath: "\(bundlePath)/Contents/Info.plist",
+            executablePath: "\(bundlePath)/Contents/MacOS/USBIPDSystemExtension",
+            entitlementsPath: nil,
+            resourceFiles: [],
+            isValid: true,
+            bundleSize: 0 // Would need actual file size calculation
+        )
+        
+        return SystemExtensionBundle(
+            bundlePath: bundlePath,
+            bundleIdentifier: bundleIdentifier,
+            displayName: "USB/IP System Extension",
+            version: detectionResult.homebrewMetadata?.version ?? "unknown",
+            buildNumber: "1.0.0",
+            executableName: "USBIPDSystemExtension",
+            teamIdentifier: nil,
+            contents: bundleContents,
+            codeSigningInfo: nil,
+            creationTime: detectionResult.homebrewMetadata?.installationDate ?? Date()
+        )
+    }
+    
+    // MARK: - Automatic Installation Integration
+    
+    /// Perform automatic installation if needed and configured
+    /// This integrates with the installation orchestrator for automatic workflows
+    public func performAutomaticInstallationIfNeeded() async -> Bool {
+        logger.info("Checking if automatic installation is needed")
+        
+        // Check if bundle is detected and if installation is needed
+        let bundleDetectionResult = bundleDetector.detectBundle()
+        
+        if !bundleDetectionResult.found {
+            logger.info("No bundle detected, automatic installation not possible")
+            return false
+        }
+        
+        // Check current installation status
+        let currentStatus = getCurrentInstallationStatus()
+        
+        // Only proceed with automatic installation for certain status conditions
+        switch currentStatus {
+        case .notInstalled, .installationFailed, .requiresReinstall:
+            logger.info("Automatic installation needed", context: [
+                "currentStatus": currentStatus.rawValue,
+                "bundlePath": bundleDetectionResult.bundlePath ?? "unknown"
+            ])
+            
+            // Use the installation orchestrator to perform the installation
+            let result = await installationOrchestrator.performCompleteInstallation()
+            
+            // Cache the result
+            cachedInstallationStatus = result
+            lastInstallationStatusCheck = Date()
+            
+            if result.success {
+                logger.info("Automatic installation completed successfully")
+                return true
+            } else {
+                logger.warning("Automatic installation failed", context: [
+                    "finalPhase": result.finalPhase.rawValue,
+                    "issues": result.issues.joined(separator: ", ")
+                ])
+                return false
+            }
+            
+        case .installed, .installing, .pendingApproval:
+            logger.debug("Automatic installation not needed", context: [
+                "currentStatus": currentStatus.rawValue
+            ])
+            return true
+            
+        case .unknown, .invalidBundle:
+            logger.warning("Cannot perform automatic installation", context: [
+                "currentStatus": currentStatus.rawValue
+            ])
+            return false
         }
     }
     
