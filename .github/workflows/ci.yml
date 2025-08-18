@@ -118,7 +118,7 @@ jobs:
       - name: 🍺 Test Homebrew Formula
         run: |
           echo "Testing Homebrew formula syntax..."
-          brew audit --new-formula Formula/usbipd-mac.rb
+          brew audit --new Formula/usbipd-mac.rb
           
           echo "Testing formula installation..."
           brew install --build-from-source Formula/usbipd-mac.rb
