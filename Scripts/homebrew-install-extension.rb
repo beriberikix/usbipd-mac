@@ -208,11 +208,147 @@ class HomebrewSystemExtensionInstaller
   def attempt_automatic_installation
     puts "🚀 Attempting automatic installation..."
     
-    # For automatic installation, we would typically use the System Extension APIs
-    # However, this requires the main application to be running
-    puts "💡 Automatic installation requires the main usbipd application"
-    puts "   Try running: sudo usbipd --install-system-extension"
-    puts "   Or start the service: sudo brew services start usbipd-mac"
+    # Check if usbipd CLI is available
+    usbipd_path = find_usbipd_executable
+    unless usbipd_path
+      puts "❌ Error: usbipd executable not found"
+      puts "   Make sure usbipd-mac is properly installed via Homebrew"
+      return false
+    end
+    
+    puts "📋 Using usbipd executable: #{usbipd_path}" if @verbose
+    
+    # Execute the new CLI installation command
+    puts "⚙️  Running: #{usbipd_path} install-system-extension..."
+    
+    # Use system() to execute the command and capture the exit status
+    success = system("#{usbipd_path} install-system-extension --verbose")
+    
+    if success
+      puts "✅ Automatic installation completed successfully"
+      
+      # Verify installation using enhanced verification
+      verification_result = verify_installation_status
+      if verification_result[:success]
+        puts "✅ Installation verification passed"
+        if @verbose && verification_result[:details]
+          puts "📊 Verification details:"
+          verification_result[:details].each { |detail| puts "   • #{detail}" }
+        end
+      else
+        puts "⚠️  Installation completed but verification found issues:"
+        verification_result[:issues].each { |issue| puts "   • #{issue}" }
+        if verification_result[:recommendations]
+          puts "💡 Recommendations:"
+          verification_result[:recommendations].each { |rec| puts "   → #{rec}" }
+        end
+      end
+      
+      return true
+    else
+      exit_code = $?.exitstatus
+      puts "❌ Automatic installation failed (exit code: #{exit_code})"
+      puts "💡 Fallback to manual installation instructions:"
+      show_manual_installation_instructions
+      return false
+    end
+  rescue => e
+    puts "❌ Error during automatic installation: #{e.message}"
+    puts "💡 Fallback to manual installation instructions:"
+    show_manual_installation_instructions
+    return false
+  end
+
+  def find_usbipd_executable
+    # Check common Homebrew installation paths for the usbipd executable
+    possible_paths = [
+      "#{@homebrew_prefix}/bin/usbipd",
+      "#{@homebrew_prefix}/opt/#{FORMULA_NAME}/bin/usbipd",
+      "/usr/local/bin/usbipd",  # Intel Mac Homebrew path
+      "/opt/homebrew/bin/usbipd" # Apple Silicon Mac Homebrew path
+    ]
+    
+    possible_paths.each do |path|
+      return path if File.exist?(path) && File.executable?(path)
+    end
+    
+    # Try to find it in PATH
+    which_result = `which usbipd 2>/dev/null`.strip
+    return which_result unless which_result.empty?
+    
+    nil
+  end
+  
+  def verify_installation_status
+    # Enhanced verification using comprehensive status checking
+    result = {
+      success: false,
+      details: [],
+      issues: [],
+      recommendations: []
+    }
+    
+    begin
+      # Check if System Extension is registered with macOS
+      systemextensionsctl_output = `systemextensionsctl list 2>/dev/null`
+      if systemextensionsctl_output.include?(BUNDLE_ID)
+        result[:details] << "System Extension is registered with macOS"
+        result[:success] = true
+      else
+        result[:issues] << "System Extension not found in macOS registry"
+        result[:recommendations] << "Try restarting the installation process"
+        result[:recommendations] << "Check System Preferences > Security & Privacy for approval prompts"
+      end
+      
+      # Check bundle integrity
+      if @bundle_path && File.exist?(@bundle_path)
+        result[:details] << "System Extension bundle found at #{@bundle_path}"
+        
+        # Verify bundle structure
+        required_files = [
+          'Contents/Info.plist',
+          'Contents/MacOS/USBIPDSystemExtension'
+        ]
+        
+        missing_files = required_files.select { |file| !File.exist?(File.join(@bundle_path, file)) }
+        if missing_files.empty?
+          result[:details] << "Bundle structure is valid"
+        else
+          result[:issues] << "Bundle missing required files: #{missing_files.join(', ')}"
+          result[:recommendations] << "Reinstall usbipd-mac via Homebrew"
+        end
+      else
+        result[:issues] << "System Extension bundle not found"
+        result[:recommendations] << "Reinstall usbipd-mac via Homebrew"
+      end
+      
+      # Check service status if possible
+      if system("brew services list | grep -q usbipd-mac")
+        brew_status = `brew services list | grep usbipd-mac`.strip
+        if brew_status.include?('started')
+          result[:details] << "Homebrew service is running"
+        elsif brew_status.include?('stopped')
+          result[:details] << "Homebrew service is stopped (this is normal)"
+        end
+      end
+      
+      # Check developer mode status
+      if check_developer_mode
+        result[:details] << "Developer mode is enabled"
+      else
+        result[:issues] << "Developer mode is disabled"
+        result[:recommendations] << "Enable developer mode: sudo systemextensionsctl developer on"
+      end
+      
+    rescue => e
+      result[:issues] << "Verification failed: #{e.message}"
+      result[:recommendations] << "Run diagnostics: usbipd-install-extension doctor"
+    end
+    
+    # Overall success determination
+    result[:success] = result[:issues].empty? || (result[:issues].size == 1 && result[:issues].first.include?("Developer mode"))
+    
+    result
   end
 
   def show_manual_installation_instructions
