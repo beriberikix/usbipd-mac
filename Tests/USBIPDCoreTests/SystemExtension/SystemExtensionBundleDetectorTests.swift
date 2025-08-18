@@ -298,6 +298,179 @@ final class SystemExtensionBundleDetectorTests: XCTestCase, TestSuite {
         // Then: Bundle identifier should be consistent
         XCTAssertEqual(SystemExtensionBundleDetector.bundleIdentifier, "com.usbipd.mac.SystemExtension")
     }
+    
+    // MARK: - Enhanced Production Bundle Detection Tests
+    
+    func testDetectProductionBundleInHomebrewPath() throws {
+        // Skip System Extension operations in CI environment
+        #if CI_ENVIRONMENT
+        throw XCTSkip("Skipping Homebrew bundle detection in CI environment")
+        #endif
+        
+        // Given: Mock Homebrew file manager with valid bundle
+        let mockFileManager = MockHomebrewFileManager()
+        mockFileManager.setupValidHomebrewBundle()
+        let detector = SystemExtensionBundleDetector(fileManager: mockFileManager)
+        
+        // When: Detecting production bundle
+        let result = detector.detectProductionBundle()
+        
+        // Then: Bundle should be found in Homebrew environment
+        XCTAssertTrue(result.found, "Bundle should be detected in Homebrew environment")
+        XCTAssertNotNil(result.bundlePath, "Bundle path should be provided")
+        XCTAssertEqual(result.bundleIdentifier, SystemExtensionBundleDetector.bundleIdentifier)
+        
+        // Verify environment details
+        switch result.detectionEnvironment {
+        case .homebrew(let cellarPath, let version):
+            XCTAssertTrue(cellarPath.contains("homebrew"), "Should detect Homebrew cellar path")
+            XCTAssertEqual(version, "v1.0.0", "Should extract version from path")
+        default:
+            XCTFail("Should detect Homebrew environment")
+        }
+    }
+    
+    func testDetectProductionBundleWithHomebrewMetadata() throws {
+        // Skip System Extension operations in CI environment
+        #if CI_ENVIRONMENT
+        throw XCTSkip("Skipping Homebrew metadata parsing in CI environment")
+        #endif
+        
+        // Given: Mock Homebrew file manager with metadata
+        let mockFileManager = MockHomebrewFileManager()
+        mockFileManager.setupValidHomebrewBundleWithMetadata()
+        let detector = SystemExtensionBundleDetector(fileManager: mockFileManager)
+        
+        // When: Detecting production bundle
+        let result = detector.detectProductionBundle()
+        
+        // Then: Bundle should be found with metadata
+        XCTAssertTrue(result.found, "Bundle should be detected")
+        XCTAssertNotNil(result.homebrewMetadata, "Homebrew metadata should be parsed")
+        
+        let metadata = result.homebrewMetadata!
+        XCTAssertEqual(metadata.version, "v1.0.0")
+        XCTAssertEqual(metadata.installationPrefix, "/opt/homebrew")
+        XCTAssertEqual(metadata.formulaRevision, "abc123")
+    }
+    
+    func testDetectProductionBundleNoHomebrewInstallation() throws {
+        // Given: Mock file manager with no Homebrew installation
+        let mockFileManager = MockHomebrewFileManager()
+        // Don't set up any Homebrew paths
+        let detector = SystemExtensionBundleDetector(fileManager: mockFileManager)
+        
+        // When: Detecting production bundle
+        let result = detector.detectProductionBundle()
+        
+        // Then: Detection should fail appropriately
+        XCTAssertFalse(result.found, "Bundle should not be detected without Homebrew installation")
+        XCTAssertTrue(result.issues.contains { $0.contains("No Homebrew installation paths found") }, 
+                     "Should report missing Homebrew installation")
+        XCTAssertEqual(result.detectionEnvironment, .unknown, "Environment should be unknown")
+    }
+    
+    func testMultiEnvironmentDetectionPriority() throws {
+        // Skip System Extension operations in CI environment
+        #if CI_ENVIRONMENT
+        throw XCTSkip("Skipping multi-environment detection in CI environment")
+        #endif
+        
+        // Given: Mock file manager with both Homebrew and development bundles
+        let mockFileManager = MockMultiEnvironmentFileManager()
+        mockFileManager.setupBothEnvironments()
+        let detector = SystemExtensionBundleDetector(fileManager: mockFileManager)
+        
+        // When: Detecting bundle (should prefer production over development)
+        let result = detector.detectBundle()
+        
+        // Then: Should find Homebrew bundle first (production priority)
+        XCTAssertTrue(result.found, "Bundle should be detected")
+        switch result.detectionEnvironment {
+        case .homebrew:
+            // Expected - production has priority
+            break
+        case .development:
+            XCTFail("Should prefer Homebrew bundle over development bundle")
+        default:
+            XCTFail("Should detect either Homebrew or development environment")
+        }
+    }
+    
+    func testDetectBundleWithEnvironmentFallback() throws {
+        // Skip System Extension operations in CI environment
+        #if CI_ENVIRONMENT
+        throw XCTSkip("Skipping environment fallback detection in CI environment")
+        #endif
+        
+        // Given: Mock file manager with only development bundle (no Homebrew)
+        let mockFileManager = MockDevelopmentOnlyFileManager()
+        mockFileManager.setupDevelopmentBundle(baseDirectory: tempDirectory)
+        let detector = SystemExtensionBundleDetector(fileManager: mockFileManager)
+        
+        // When: Detecting bundle
+        let result = detector.detectBundle()
+        
+        // Then: Should fall back to development environment
+        XCTAssertTrue(result.found, "Bundle should be detected in development environment")
+        switch result.detectionEnvironment {
+        case .development(let buildPath):
+            XCTAssertTrue(buildPath.contains(".build"), "Should detect development build path")
+        default:
+            XCTFail("Should detect development environment")
+        }
+    }
+    
+    func testHomebrewMetadataParsingWithInvalidJSON() throws {
+        // Given: Mock file manager with invalid metadata file
+        let mockFileManager = MockHomebrewFileManager()
+        mockFileManager.setupHomebrewBundleWithInvalidMetadata()
+        let detector = SystemExtensionBundleDetector(fileManager: mockFileManager)
+        
+        // When: Detecting production bundle
+        let result = detector.detectProductionBundle()
+        
+        // Then: Should handle parsing error gracefully
+        XCTAssertTrue(result.found, "Bundle should still be detected despite metadata parsing error")
+        XCTAssertNotNil(result.homebrewMetadata, "Should provide fallback metadata")
+        
+        let metadata = result.homebrewMetadata!
+        XCTAssertEqual(metadata.version, "v1.0.0", "Should extract version from path as fallback")
+        XCTAssertTrue(metadata.additionalInfo.keys.contains("parse_error"), "Should include parse error in additional info")
+    }
+    
+    func testDetectionResultEnvironmentDetails() throws {
+        // Given: Various detection environments
+        let homebrewResult = SystemExtensionBundleDetector.DetectionResult(
+            found: true,
+            bundlePath: "/opt/homebrew/Cellar/usbipd-mac/v1.0.0/Library/SystemExtensions/test.systemextension",
+            bundleIdentifier: SystemExtensionBundleDetector.bundleIdentifier,
+            detectionEnvironment: .homebrew(cellarPath: "/opt/homebrew/Cellar/usbipd-mac/v1.0.0", version: "v1.0.0")
+        )
+        
+        let developmentResult = SystemExtensionBundleDetector.DetectionResult(
+            found: true,
+            bundlePath: "/project/.build/debug/test.systemextension",
+            bundleIdentifier: SystemExtensionBundleDetector.bundleIdentifier,
+            detectionEnvironment: .development(buildPath: "/project/.build/debug")
+        )
+        
+        // When/Then: Environment details should be preserved
+        switch homebrewResult.detectionEnvironment {
+        case .homebrew(let cellarPath, let version):
+            XCTAssertTrue(cellarPath.contains("homebrew"))
+            XCTAssertEqual(version, "v1.0.0")
+        default:
+            XCTFail("Should maintain Homebrew environment details")
+        }
+        
+        switch developmentResult.detectionEnvironment {
+        case .development(let buildPath):
+            XCTAssertTrue(buildPath.contains(".build"))
+        default:
+            XCTFail("Should maintain development environment details")
+        }
+    }
 }
 
 // MARK: - Test Helper Classes
@@ -354,5 +527,283 @@ private class TestFileManagerAdapter: FileManager {
             return false
         }
         return super.fileExists(atPath: path, isDirectory: isDirectory)
+    }
+}
+
+/// Mock file manager for Homebrew environment testing
+private class MockHomebrewFileManager: FileManager {
+    private var homebrewPaths: [String: Bool] = [:]
+    private var directoryContents: [String: [String]] = [:]
+    private var fileContents: [String: Data] = [:]
+    
+    override var currentDirectoryPath: String {
+        return "/tmp/test"
+    }
+    
+    func setupValidHomebrewBundle() {
+        let homebrewPath = "/opt/homebrew/Cellar/usbipd-mac"
+        let versionPath = "\(homebrewPath)/v1.0.0"
+        let systemExtensionsPath = "\(versionPath)/Library/SystemExtensions"
+        let bundlePath = "\(systemExtensionsPath)/usbipd-mac.systemextension"
+        let contentsPath = "\(bundlePath)/Contents"
+        let infoPlistPath = "\(contentsPath)/Info.plist"
+        let macOSPath = "\(contentsPath)/MacOS"
+        let executablePath = "\(macOSPath)/usbipd-mac"
+        
+        // Set up directory structure
+        homebrewPaths[homebrewPath] = true
+        homebrewPaths[versionPath] = true
+        homebrewPaths[systemExtensionsPath] = true
+        homebrewPaths[bundlePath] = true
+        homebrewPaths[contentsPath] = true
+        homebrewPaths[macOSPath] = true
+        homebrewPaths[infoPlistPath] = false
+        homebrewPaths[executablePath] = false
+        
+        // Set up directory contents
+        directoryContents[homebrewPath] = ["v1.0.0"]
+        directoryContents[versionPath] = ["Library"]
+        directoryContents["\(versionPath)/Library"] = ["SystemExtensions"]
+        directoryContents[systemExtensionsPath] = ["usbipd-mac.systemextension"]
+        directoryContents[bundlePath] = ["Contents"]
+        directoryContents[contentsPath] = ["Info.plist", "MacOS"]
+        directoryContents[macOSPath] = ["usbipd-mac"]
+        
+        // Create valid Info.plist content
+        let infoPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.usbipd.mac.SystemExtension",
+            "CFBundleExecutable": "usbipd-mac",
+            "CFBundleVersion": "1.0.0"
+        ]
+        if let plistData = try? PropertyListSerialization.data(fromPropertyList: infoPlist, format: .xml, options: 0) {
+            fileContents[infoPlistPath] = plistData
+        }
+    }
+    
+    func setupValidHomebrewBundleWithMetadata() {
+        setupValidHomebrewBundle()
+        
+        // Add Homebrew metadata file
+        let metadataPath = "/opt/homebrew/Cellar/usbipd-mac/v1.0.0/Library/SystemExtensions/usbipd-mac.systemextension/Contents/HomebrewMetadata.json"
+        homebrewPaths[metadataPath] = false
+        
+        let metadata = [
+            "version": "v1.0.0",
+            "installationDate": "2023-01-01T12:00:00Z",
+            "formulaRevision": "abc123",
+            "installationPrefix": "/opt/homebrew"
+        ]
+        
+        if let metadataData = try? JSONSerialization.data(withJSONObject: metadata, options: []) {
+            fileContents[metadataPath] = metadataData
+        }
+    }
+    
+    func setupHomebrewBundleWithInvalidMetadata() {
+        setupValidHomebrewBundle()
+        
+        // Add invalid metadata file
+        let metadataPath = "/opt/homebrew/Cellar/usbipd-mac/v1.0.0/Library/SystemExtensions/usbipd-mac.systemextension/Contents/HomebrewMetadata.json"
+        homebrewPaths[metadataPath] = false
+        fileContents[metadataPath] = "{ invalid json".data(using: .utf8)!
+    }
+    
+    override func fileExists(atPath path: String) -> Bool {
+        return homebrewPaths[path] ?? false
+    }
+    
+    override func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool {
+        let exists = homebrewPaths[path] ?? false
+        if exists {
+            isDirectory?.pointee = ObjCBool(homebrewPaths[path] == true)
+        }
+        return exists
+    }
+    
+    override func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: DirectoryEnumerationOptions) throws -> [URL] {
+        let contents = directoryContents[url.path] ?? []
+        return contents.map { url.appendingPathComponent($0) }
+    }
+    
+    override func contents(atPath path: String) -> Data? {
+        return fileContents[path]
+    }
+}
+
+/// Mock file manager for multi-environment testing
+private class MockMultiEnvironmentFileManager: FileManager {
+    private var allPaths: [String: Bool] = [:]
+    private var directoryContents: [String: [String]] = [:]
+    private var fileContents: [String: Data] = [:]
+    
+    override var currentDirectoryPath: String {
+        return "/tmp/test"
+    }
+    
+    func setupBothEnvironments() {
+        // Set up Homebrew environment
+        setupHomebrewEnvironment()
+        // Set up development environment
+        setupDevelopmentEnvironment()
+    }
+    
+    private func setupHomebrewEnvironment() {
+        let homebrewPath = "/opt/homebrew/Cellar/usbipd-mac"
+        let versionPath = "\(homebrewPath)/v1.0.0"
+        let systemExtensionsPath = "\(versionPath)/Library/SystemExtensions"
+        let bundlePath = "\(systemExtensionsPath)/usbipd-mac.systemextension"
+        let contentsPath = "\(bundlePath)/Contents"
+        let infoPlistPath = "\(contentsPath)/Info.plist"
+        let macOSPath = "\(contentsPath)/MacOS"
+        let executablePath = "\(macOSPath)/usbipd-mac"
+        
+        allPaths[homebrewPath] = true
+        allPaths[versionPath] = true
+        allPaths[systemExtensionsPath] = true
+        allPaths[bundlePath] = true
+        allPaths[contentsPath] = true
+        allPaths[macOSPath] = true
+        allPaths[infoPlistPath] = false
+        allPaths[executablePath] = false
+        
+        directoryContents[homebrewPath] = ["v1.0.0"]
+        directoryContents[versionPath] = ["Library"]
+        directoryContents["\(versionPath)/Library"] = ["SystemExtensions"]
+        directoryContents[systemExtensionsPath] = ["usbipd-mac.systemextension"]
+        directoryContents[bundlePath] = ["Contents"]
+        directoryContents[contentsPath] = ["Info.plist", "MacOS"]
+        directoryContents[macOSPath] = ["usbipd-mac"]
+        
+        let infoPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.usbipd.mac.SystemExtension",
+            "CFBundleExecutable": "usbipd-mac",
+            "CFBundleVersion": "1.0.0"
+        ]
+        if let plistData = try? PropertyListSerialization.data(fromPropertyList: infoPlist, format: .xml, options: 0) {
+            fileContents[infoPlistPath] = plistData
+        }
+    }
+    
+    private func setupDevelopmentEnvironment() {
+        let buildPath = "/tmp/test/.build"
+        let debugPath = "\(buildPath)/debug"
+        let bundlePath = "\(debugPath)/usbipd-mac.systemextension"
+        let contentsPath = "\(bundlePath)/Contents"
+        let infoPlistPath = "\(contentsPath)/Info.plist"
+        let macOSPath = "\(contentsPath)/MacOS"
+        let executablePath = "\(macOSPath)/usbipd-mac"
+        
+        allPaths[buildPath] = true
+        allPaths[debugPath] = true
+        allPaths[bundlePath] = true
+        allPaths[contentsPath] = true
+        allPaths[macOSPath] = true
+        allPaths[infoPlistPath] = false
+        allPaths[executablePath] = false
+        
+        directoryContents[buildPath] = ["debug"]
+        directoryContents[debugPath] = ["usbipd-mac.systemextension"]
+        directoryContents[bundlePath] = ["Contents"]
+        directoryContents[contentsPath] = ["Info.plist", "MacOS"]
+        directoryContents[macOSPath] = ["usbipd-mac"]
+        
+        let infoPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.usbipd.mac.SystemExtension",
+            "CFBundleExecutable": "usbipd-mac",
+            "CFBundleVersion": "1.0.0"
+        ]
+        if let plistData = try? PropertyListSerialization.data(fromPropertyList: infoPlist, format: .xml, options: 0) {
+            fileContents[infoPlistPath] = plistData
+        }
+    }
+    
+    override func fileExists(atPath path: String) -> Bool {
+        return allPaths[path] ?? false
+    }
+    
+    override func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool {
+        let exists = allPaths[path] ?? false
+        if exists {
+            isDirectory?.pointee = ObjCBool(allPaths[path] == true)
+        }
+        return exists
+    }
+    
+    override func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: DirectoryEnumerationOptions) throws -> [URL] {
+        let contents = directoryContents[url.path] ?? []
+        return contents.map { url.appendingPathComponent($0) }
+    }
+    
+    override func contents(atPath path: String) -> Data? {
+        return fileContents[path]
+    }
+}
+
+/// Mock file manager for development-only environment testing
+private class MockDevelopmentOnlyFileManager: FileManager {
+    private var developmentPaths: [String: Bool] = [:]
+    private var directoryContents: [String: [String]] = [:]
+    private var fileContents: [String: Data] = [:]
+    private var baseDirectory = "/tmp/test"
+    
+    override var currentDirectoryPath: String {
+        return baseDirectory
+    }
+    
+    func setupDevelopmentBundle(baseDirectory: URL) {
+        self.baseDirectory = baseDirectory.path
+        let buildPath = "\(baseDirectory.path)/.build"
+        let debugPath = "\(buildPath)/debug"
+        let bundlePath = "\(debugPath)/usbipd-mac.systemextension"
+        let contentsPath = "\(bundlePath)/Contents"
+        let infoPlistPath = "\(contentsPath)/Info.plist"
+        let macOSPath = "\(contentsPath)/MacOS"
+        let executablePath = "\(macOSPath)/usbipd-mac"
+        
+        developmentPaths[buildPath] = true
+        developmentPaths[debugPath] = true
+        developmentPaths[bundlePath] = true
+        developmentPaths[contentsPath] = true
+        developmentPaths[macOSPath] = true
+        developmentPaths[infoPlistPath] = false
+        developmentPaths[executablePath] = false
+        
+        // No Homebrew paths - will return false for /opt/homebrew/Cellar/usbipd-mac
+        
+        directoryContents[buildPath] = ["debug"]
+        directoryContents[debugPath] = ["usbipd-mac.systemextension"]
+        directoryContents[bundlePath] = ["Contents"]
+        directoryContents[contentsPath] = ["Info.plist", "MacOS"]
+        directoryContents[macOSPath] = ["usbipd-mac"]
+        
+        let infoPlist: [String: Any] = [
+            "CFBundleIdentifier": "com.usbipd.mac.SystemExtension",
+            "CFBundleExecutable": "usbipd-mac",
+            "CFBundleVersion": "1.0.0"
+        ]
+        if let plistData = try? PropertyListSerialization.data(fromPropertyList: infoPlist, format: .xml, options: 0) {
+            fileContents[infoPlistPath] = plistData
+        }
+    }
+    
+    override func fileExists(atPath path: String) -> Bool {
+        return developmentPaths[path] ?? false
+    }
+    
+    override func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool {
+        let exists = developmentPaths[path] ?? false
+        if exists {
+            isDirectory?.pointee = ObjCBool(developmentPaths[path] == true)
+        }
+        return exists
+    }
+    
+    override func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: DirectoryEnumerationOptions) throws -> [URL] {
+        let contents = directoryContents[url.path] ?? []
+        return contents.map { url.appendingPathComponent($0) }
+    }
+    
+    override func contents(atPath path: String) -> Data? {
+        return fileContents[path]
     }
 }
