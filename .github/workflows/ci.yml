@@ -100,8 +100,8 @@ jobs:
       - name: 🧪 Run Test Suite
         uses: ./.github/actions/run-test-suite
         with:
-          environment: ${{ env.TEST_ENVIRONMENT }}
-          enable_qemu: ${{ env.ENABLE_QEMU_TESTS }}
+          test-environment: ${{ env.TEST_ENVIRONMENT }}
+          enable-qemu-tests: ${{ env.ENABLE_QEMU_TESTS }}
 
   homebrew-validation:
     name: Homebrew Formula Validation
