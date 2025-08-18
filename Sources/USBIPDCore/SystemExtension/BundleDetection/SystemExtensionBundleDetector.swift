@@ -9,6 +9,14 @@ public struct SystemExtensionBundleDetector {
     /// Static bundle identifier for consistent usage across the application
     public static let bundleIdentifier = "com.usbipd.mac.SystemExtension"
     
+    /// Detection environment type
+    public enum DetectionEnvironment {
+        case development(buildPath: String)
+        case homebrew(cellarPath: String, version: String?)
+        case manual(bundlePath: String)
+        case unknown
+    }
+    
     /// Result of bundle detection operation
     public struct DetectionResult {
         /// Whether a valid bundle was found
@@ -26,18 +34,60 @@ public struct SystemExtensionBundleDetector {
         /// Detection timestamp
         public let detectionTime: Date
         
+        /// Environment where bundle was detected
+        public let detectionEnvironment: DetectionEnvironment
+        
+        /// Homebrew metadata (if detected in Homebrew environment)
+        public let homebrewMetadata: HomebrewMetadata?
+        
         public init(
             found: Bool,
             bundlePath: String? = nil,
             bundleIdentifier: String? = nil,
             issues: [String] = [],
-            detectionTime: Date = Date()
+            detectionTime: Date = Date(),
+            detectionEnvironment: DetectionEnvironment = .unknown,
+            homebrewMetadata: HomebrewMetadata? = nil
         ) {
             self.found = found
             self.bundlePath = bundlePath
             self.bundleIdentifier = bundleIdentifier
             self.issues = issues
             self.detectionTime = detectionTime
+            self.detectionEnvironment = detectionEnvironment
+            self.homebrewMetadata = homebrewMetadata
+        }
+    }
+    
+    /// Metadata information for Homebrew-installed bundles
+    public struct HomebrewMetadata: Codable {
+        /// Homebrew package version
+        public let version: String?
+        
+        /// Installation timestamp
+        public let installationDate: Date?
+        
+        /// Homebrew formula revision
+        public let formulaRevision: String?
+        
+        /// Installation prefix path
+        public let installationPrefix: String?
+        
+        /// Additional metadata from Homebrew
+        public let additionalInfo: [String: String]
+        
+        public init(
+            version: String? = nil,
+            installationDate: Date? = nil,
+            formulaRevision: String? = nil,
+            installationPrefix: String? = nil,
+            additionalInfo: [String: String] = [:]
+        ) {
+            self.version = version
+            self.installationDate = installationDate
+            self.formulaRevision = formulaRevision
+            self.installationPrefix = installationPrefix
+            self.additionalInfo = additionalInfo
         }
     }
     
@@ -71,7 +121,11 @@ public struct SystemExtensionBundleDetector {
         let buildDirectory = currentDirectory.appendingPathComponent(".build")
         guard fileManager.fileExists(atPath: buildDirectory.path) else {
             issues.append("No .build directory found at \(buildDirectory.path)")
-            return DetectionResult(found: false, issues: issues)
+            return DetectionResult(
+                found: false, 
+                issues: issues,
+                detectionEnvironment: .development(buildPath: buildDirectory.path)
+            )
         }
         
         // Search for System Extension bundles in .build directory
@@ -86,7 +140,8 @@ public struct SystemExtensionBundleDetector {
                         found: true,
                         bundlePath: bundlePath.path,
                         bundleIdentifier: Self.bundleIdentifier,
-                        issues: validationResult.issues
+                        issues: validationResult.issues,
+                        detectionEnvironment: .development(buildPath: searchPath.path)
                     )
                 } else {
                     issues.append(contentsOf: validationResult.issues)
@@ -95,7 +150,11 @@ public struct SystemExtensionBundleDetector {
         }
         
         issues.append("No valid System Extension bundle found in development or production environments")
-        return DetectionResult(found: false, issues: issues)
+        return DetectionResult(
+            found: false, 
+            issues: issues,
+            detectionEnvironment: .development(buildPath: buildDirectory.path)
+        )
     }
     
     /// Detect System Extension bundle in production Homebrew environment
@@ -108,7 +167,11 @@ public struct SystemExtensionBundleDetector {
         
         if homebrewPaths.isEmpty {
             issues.append("No Homebrew installation paths found at /opt/homebrew/Cellar/usbipd-mac/")
-            return DetectionResult(found: false, issues: issues)
+            return DetectionResult(
+                found: false, 
+                issues: issues,
+                detectionEnvironment: .unknown
+            )
         }
         
         // Search each Homebrew path for System Extension bundles
@@ -117,11 +180,19 @@ public struct SystemExtensionBundleDetector {
                 // Validate the found bundle
                 let validationResult = validateBundle(at: bundlePath)
                 if validationResult.isValid {
+                    // Extract version from path (e.g., /opt/homebrew/Cellar/usbipd-mac/v1.0.0/...)
+                    let versionFromPath = extractVersionFromHomebrewPath(homebrewPath)
+                    
+                    // Parse Homebrew metadata from bundle
+                    let homebrewMetadata = parseHomebrewMetadata(bundlePath: bundlePath)
+                    
                     return DetectionResult(
                         found: true,
                         bundlePath: bundlePath.path,
                         bundleIdentifier: Self.bundleIdentifier,
-                        issues: validationResult.issues
+                        issues: validationResult.issues,
+                        detectionEnvironment: .homebrew(cellarPath: homebrewPath.path, version: versionFromPath),
+                        homebrewMetadata: homebrewMetadata
                     )
                 } else {
                     issues.append(contentsOf: validationResult.issues)
@@ -130,7 +201,11 @@ public struct SystemExtensionBundleDetector {
         }
         
         issues.append("No valid System Extension bundle found in Homebrew installation paths")
-        return DetectionResult(found: false, issues: issues)
+        return DetectionResult(
+            found: false, 
+            issues: issues,
+            detectionEnvironment: .homebrew(cellarPath: "/opt/homebrew/Cellar/usbipd-mac", version: nil)
+        )
     }
     
     /// Get list of Homebrew search paths for System Extension bundles
@@ -173,6 +248,64 @@ public struct SystemExtensionBundleDetector {
         }
         
         return searchPaths
+    }
+    
+    /// Extract version from Homebrew path
+    /// - Parameter homebrewPath: Path to Homebrew installation directory
+    /// - Returns: Version string if found in path
+    private func extractVersionFromHomebrewPath(_ homebrewPath: URL) -> String? {
+        let pathComponents = homebrewPath.pathComponents
+        
+        // Look for version pattern in path like: /opt/homebrew/Cellar/usbipd-mac/v1.0.0/...
+        for component in pathComponents {
+            if component.hasPrefix("v") && component.count > 1 {
+                return component
+            }
+            // Also check for semantic version patterns without 'v' prefix
+            if component.range(of: "^\\d+\\.\\d+\\.\\d+", options: .regularExpression) != nil {
+                return component
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Parse Homebrew metadata from bundle
+    /// - Parameter bundlePath: Path to System Extension bundle
+    /// - Returns: HomebrewMetadata if found and parseable
+    private func parseHomebrewMetadata(bundlePath: URL) -> HomebrewMetadata? {
+        // Look for HomebrewMetadata.json in bundle Contents directory
+        let metadataPath = bundlePath.appendingPathComponent("Contents/HomebrewMetadata.json")
+        
+        guard fileManager.fileExists(atPath: metadataPath.path) else {
+            // No metadata file found - this is not an error, just return nil
+            return nil
+        }
+        
+        do {
+            let metadataData = try Data(contentsOf: metadataPath)
+            let decoder = JSONDecoder()
+            
+            // Configure decoder for date parsing
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+            decoder.dateDecodingStrategy = .formatted(dateFormatter)
+            
+            let metadata = try decoder.decode(HomebrewMetadata.self, from: metadataData)
+            return metadata
+        } catch {
+            // If we can't parse the metadata, return a basic metadata object with version from path
+            let parentPath = bundlePath.deletingLastPathComponent().deletingLastPathComponent()
+            let version = extractVersionFromHomebrewPath(parentPath)
+            
+            return HomebrewMetadata(
+                version: version,
+                installationDate: nil,
+                formulaRevision: nil,
+                installationPrefix: "/opt/homebrew",
+                additionalInfo: ["parse_error": error.localizedDescription]
+            )
+        }
     }
     
     /// Get current working directory
