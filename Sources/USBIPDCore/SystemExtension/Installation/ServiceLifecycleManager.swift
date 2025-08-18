@@ -184,7 +184,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
             checkName: "Homebrew Services Status",
             passed: brewStatus.isAvailable,
             message: brewStatus.isAvailable ? "Brew services is available" : "Brew services not available",
-            severity: brewStatus.isAvailable ? .info : .warning,
+            severity: brewStatus.isAvailable ? CheckSeverity.info : CheckSeverity.warning,
             details: brewStatus.statusOutput
         ))
         
@@ -195,7 +195,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
             checkName: "Service Registration",
             passed: registration.isRegistered,
             message: registration.isRegistered ? "Service is registered with launchd" : "Service not registered",
-            severity: registration.isRegistered ? .info : .error,
+            severity: registration.isRegistered ? CheckSeverity.info : CheckSeverity.error,
             details: registration.registrationInfo
         ))
         
@@ -259,7 +259,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
             isRegisteredWithLaunchd: launchdResult.success,
             orphanedProcessCount: orphanedProcesses.count,
             hasPortConflicts: !portConflicts.isEmpty,
-            lastError: !launchdResult.success ? launchdResult.error : nil,
+            lastError: !launchdResult.success ? launchdResult.error?.localizedDescription : nil,
             statusDetails: ServiceStatusDetails(
                 launchdOutput: launchdResult.output,
                 brewServicesOutput: brewResult.output,
@@ -660,7 +660,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
                     checkName: "Service Configuration",
                     passed: true,
                     message: "Service plist found at \(path)",
-                    severity: .info,
+                    severity: CheckSeverity.info,
                     details: path
                 )
             }
@@ -671,7 +671,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
             checkName: "Service Configuration",
             passed: false,
             message: "No service plist found",
-            severity: .warning,
+            severity: CheckSeverity.warning,
             details: "Checked paths: \(plistPaths.joined(separator: ", "))"
         )
     }
@@ -685,7 +685,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
                 checkName: "Port Availability",
                 passed: true,
                 message: "Port 3240 is available",
-                severity: .info,
+                severity: CheckSeverity.info,
                 details: "No conflicts detected"
             )
         } else {
@@ -694,7 +694,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
                 checkName: "Port Availability",
                 passed: false,
                 message: "Port 3240 conflicts detected",
-                severity: .error,
+                severity: CheckSeverity.error,
                 details: "Conflicts: \(conflicts.map { "\($0.process) (PID: \($0.pid))" }.joined(separator: ", "))"
             )
         }
@@ -709,7 +709,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
                 checkName: "Process Health",
                 passed: true,
                 message: "No orphaned processes detected",
-                severity: .info,
+                severity: CheckSeverity.info,
                 details: "Process tree is clean"
             )
         } else {
@@ -718,7 +718,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
                 checkName: "Process Health",
                 passed: false,
                 message: "\(orphaned.count) orphaned processes detected",
-                severity: .warning,
+                severity: CheckSeverity.warning,
                 details: "Orphaned PIDs: \(orphaned.map { String($0.pid) }.joined(separator: ", "))"
             )
         }

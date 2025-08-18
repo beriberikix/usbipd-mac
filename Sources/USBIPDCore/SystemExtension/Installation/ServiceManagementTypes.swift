@@ -289,7 +289,7 @@ public struct DetailedServiceStatus {
     public let hasPortConflicts: Bool
     
     /// Last error encountered
-    public let lastError: Error?
+    public let lastError: String?
     
     /// Detailed status information
     public let statusDetails: ServiceStatusDetails
@@ -303,7 +303,7 @@ public struct DetailedServiceStatus {
         isRegisteredWithLaunchd: Bool,
         orphanedProcessCount: Int,
         hasPortConflicts: Bool,
-        lastError: Error? = nil,
+        lastError: String? = nil,
         statusDetails: ServiceStatusDetails
     ) {
         self.isRunning = isRunning
@@ -407,7 +407,7 @@ public struct ServiceValidationCheck {
     public let message: String
     
     /// Severity of the check result
-    public let severity: ValidationSeverity
+    public let severity: ServiceValidationSeverity
     
     /// Additional details about the check
     public let details: String?
@@ -417,7 +417,7 @@ public struct ServiceValidationCheck {
         checkName: String,
         passed: Bool,
         message: String,
-        severity: ValidationSeverity,
+        severity: ServiceValidationSeverity,
         details: String? = nil
     ) {
         self.checkID = checkID
@@ -429,20 +429,8 @@ public struct ServiceValidationCheck {
     }
 }
 
-/// Validation check severity levels
-public enum ValidationSeverity: String, CaseIterable {
-    /// Informational - no action required
-    case info = "info"
-    
-    /// Warning - action recommended
-    case warning = "warning"
-    
-    /// Error - action required
-    case error = "error"
-    
-    /// Critical - immediate action required
-    case critical = "critical"
-}
+/// Validation check severity levels - using CheckSeverity from InstallationVerificationTypes
+public typealias ServiceValidationSeverity = CheckSeverity
 
 // MARK: - Process and Conflict Types
 

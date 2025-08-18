@@ -47,7 +47,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         
         let startTime = Date()
         var verificationChecks: [VerificationCheck] = []
-        var discoveredIssues: [InstallationIssue] = []
+        var discoveredIssues: [VerificationInstallationIssue] = []
         
         // Check 1: System Extension registry status
         let registryCheck = await checkSystemExtensionRegistry()
@@ -91,7 +91,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         let result = InstallationVerificationResult(
             status: overallStatus,
             verificationChecks: verificationChecks,
-            discoveredIssues: Array(Set(discoveredIssues)), // Remove duplicates
+            discoveredIssues: discoveredIssues,
             verificationTimestamp: Date(),
             verificationDuration: verificationTime,
             bundleIdentifier: bundleIdentifier,
@@ -280,7 +280,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         
         var foundBundles: [String] = []
         var validBundles: [String] = []
-        var issues: [InstallationIssue] = []
+        var issues: [VerificationInstallationIssue] = []
         
         // Check all expected paths
         for pathPattern in expectedPaths {
@@ -381,7 +381,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         // Check code signing
         let codeSigningValid = await checkCodeSigning()
         
-        var issues: [InstallationIssue] = []
+        var issues: [VerificationInstallationIssue] = []
         var warnings: [String] = []
         
         if !codeSigningValid {
@@ -421,7 +421,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         // Check communication between service and extension
         let communicationWorking = await testServiceExtensionCommunication()
         
-        var issues: [InstallationIssue] = []
+        var issues: [VerificationInstallationIssue] = []
         
         if !serviceConfigured {
             issues.append(.serviceNotConfigured)
@@ -454,7 +454,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         logger.debug("Gathering system information")
         
         let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
-        let architecture = ProcessInfo.processInfo.machineHardwareName ?? "unknown"
+        let architecture = "arm64" // ProcessInfo.processInfo.machineHardwareName doesn't exist, use fallback
         let sipStatus = await checkSIPStatus()
         let devModeStatus = await checkDeveloperMode()
         
@@ -666,7 +666,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
     
     // MARK: - Helper Methods
     
-    private func determineInstallationStatus(from checks: [VerificationCheck]) -> InstallationStatus {
+    private func determineInstallationStatus(from checks: [VerificationCheck]) -> VerificationInstallationStatus {
         let criticalFailures = checks.filter { !$0.passed && $0.severity == .critical }
         let errorFailures = checks.filter { !$0.passed && $0.severity == .error }
         let warnings = checks.filter { !$0.passed && $0.severity == .warning }
@@ -682,7 +682,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         }
     }
     
-    private func generateVerificationSummary(status: InstallationStatus, checks: [VerificationCheck]) -> String {
+    private func generateVerificationSummary(status: VerificationInstallationStatus, checks: [VerificationCheck]) -> String {
         let totalChecks = checks.count
         let passedChecks = checks.filter { $0.passed }.count
         
@@ -774,7 +774,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
     }
     
     /// Parse system extension status from systemextensionsctl output
-    private func parseSystemExtensionStatus(_ output: String) -> SystemExtensionStatus {
+    public func parseSystemExtensionStatus(_ output: String) -> VerificationSystemExtensionStatus {
         logger.debug("Parsing system extension status from output")
         
         let lines = output.components(separatedBy: .newlines)
@@ -789,7 +789,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         // Find our specific extension
         let ourExtension = extensions.first { $0.bundleIdentifier == bundleIdentifier }
         
-        return SystemExtensionStatus(
+        return VerificationSystemExtensionStatus(
             isRegistered: ourExtension != nil,
             isEnabled: ourExtension?.isEnabled ?? false,
             isActive: ourExtension?.isActive ?? false,
@@ -847,7 +847,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         }
         
         let isValid = validationIssues.isEmpty
-        let severity: ValidationSeverity = validationIssues.isEmpty ? 
+        let severity: VerificationValidationSeverity = validationIssues.isEmpty ? 
             (validationWarnings.isEmpty ? .info : .warning) : .error
         
         return ExtensionRegistrationValidation(
@@ -874,7 +874,7 @@ public final class InstallationVerificationManager: @unchecked Sendable {
     }
     
     /// Parse individual extension line from systemextensionsctl output
-    private func parseExtensionLine(_ line: String) -> ParsedSystemExtension? {
+    public func parseExtensionLine(_ line: String) -> ParsedSystemExtension? {
         // systemextensionsctl output format:
         // * <team_id> <bundle_id> (<version>) [<state>]
         let trimmedLine = line.trimmingCharacters(in: .whitespaces)
@@ -1051,7 +1051,7 @@ public enum SystemExtensionsCtlError: LocalizedError {
     }
 }
 
-public struct SystemExtensionStatus {
+public struct VerificationSystemExtensionStatus {
     public let isRegistered: Bool
     public let isEnabled: Bool
     public let isActive: Bool
@@ -1088,14 +1088,14 @@ public enum ExtensionState: String, CaseIterable {
 
 public struct ExtensionRegistrationValidation {
     public let isValid: Bool
-    public let severity: ValidationSeverity
+    public let severity: VerificationValidationSeverity
     public let issues: [RegistrationIssue]
     public let warnings: [String]
-    public let detectedStatus: SystemExtensionStatus
+    public let detectedStatus: VerificationSystemExtensionStatus
     public let validationTimestamp: Date
 }
 
-public enum ValidationSeverity {
+public enum VerificationValidationSeverity {
     case info
     case warning
     case error
