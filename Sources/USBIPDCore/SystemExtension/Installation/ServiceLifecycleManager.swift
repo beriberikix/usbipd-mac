@@ -390,6 +390,178 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
         }
     }
     
+    /// Validate end-to-end service integration
+    /// - Returns: Comprehensive validation result
+    public func validateServiceIntegration() async -> ServiceIntegrationValidationResult {
+        logger.info("Starting end-to-end service integration validation")
+        
+        var validationSteps: [ServiceValidationStep] = []
+        var overallSuccess = true
+        
+        // Step 1: Check service registration
+        logger.debug("Validating service registration")
+        let registrationResult = await integrateWithLaunchd()
+        let registrationStep = ServiceValidationStep(
+            stepName: "Service Registration",
+            stepID: "registration",
+            success: registrationResult.success,
+            message: registrationResult.success ? "Service properly registered" : "Service registration issues detected",
+            details: registrationResult.recommendations.joined(separator: "; "),
+            issues: registrationResult.issues
+        )
+        validationSteps.append(registrationStep)
+        if !registrationResult.success {
+            overallSuccess = false
+        }
+        
+        // Step 2: Check service health
+        logger.debug("Validating service health")
+        let healthResult = await verifyServiceManagement()
+        let healthStep = ServiceValidationStep(
+            stepName: "Service Health",
+            stepID: "health",
+            success: healthResult.overallHealth == .healthy || healthResult.overallHealth == .degraded,
+            message: "Service health: \(healthResult.overallHealth.rawValue)",
+            details: "Performed \(healthResult.validationChecks.count) health checks",
+            issues: healthResult.validationChecks.compactMap { check in
+                check.passed ? nil : ServiceIssue.healthCheckFailed
+            }
+        )
+        validationSteps.append(healthStep)
+        if healthResult.overallHealth == .unhealthy || healthResult.overallHealth == .critical {
+            overallSuccess = false
+        }
+        
+        // Step 3: Check service status
+        logger.debug("Validating service status")
+        let statusResult = await detectServiceStatus()
+        let statusStep = ServiceValidationStep(
+            stepName: "Service Status",
+            stepID: "status",
+            success: !statusResult.hasOrphanedProcesses && !statusResult.hasPortConflicts,
+            message: statusResult.isRunning ? "Service is running" : "Service is not running",
+            details: "Orphaned processes: \(statusResult.orphanedProcessCount), Port conflicts: \(statusResult.hasPortConflicts)",
+            issues: {
+                var issues: [ServiceIssue] = []
+                if statusResult.hasOrphanedProcesses {
+                    issues.append(.orphanedProcesses)
+                }
+                if statusResult.hasPortConflicts {
+                    issues.append(.portConflicts)
+                }
+                return issues
+            }()
+        )
+        validationSteps.append(statusStep)
+        if statusResult.hasOrphanedProcesses || statusResult.hasPortConflicts {
+            overallSuccess = false
+        }
+        
+        // Step 4: Test service operations
+        logger.debug("Validating service operations")
+        var operationSuccess = true
+        var operationDetails: [String] = []
+        
+        // Test service status check (this should always work)
+        let serviceWasRunning = statusResult.isRunning
+        
+        // If service is running, test stop/start cycle
+        if serviceWasRunning {
+            let stopResult = await stopService()
+            if stopResult.success {
+                operationDetails.append("Service stop: successful")
+                
+                // Wait a moment and start again
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                
+                let startResult = await startService()
+                if startResult.success {
+                    operationDetails.append("Service start: successful")
+                } else {
+                    operationDetails.append("Service start: failed - \(startResult.error?.localizedDescription ?? "Unknown error")")
+                    operationSuccess = false
+                }
+            } else {
+                operationDetails.append("Service stop: failed - \(stopResult.error?.localizedDescription ?? "Unknown error")")
+                operationSuccess = false
+            }
+        } else {
+            // Service not running, just test start
+            let startResult = await startService()
+            if startResult.success {
+                operationDetails.append("Service start: successful")
+                
+                // Stop it again to restore original state
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                let stopResult = await stopService()
+                if stopResult.success {
+                    operationDetails.append("Service stop: successful (restored original state)")
+                } else {
+                    operationDetails.append("Service stop: failed during cleanup - \(stopResult.error?.localizedDescription ?? "Unknown error")")
+                }
+            } else {
+                operationDetails.append("Service start: failed - \(startResult.error?.localizedDescription ?? "Unknown error")")
+                operationSuccess = false
+            }
+        }
+        
+        let operationStep = ServiceValidationStep(
+            stepName: "Service Operations",
+            stepID: "operations",
+            success: operationSuccess,
+            message: operationSuccess ? "Service operations working correctly" : "Service operation issues detected",
+            details: operationDetails.joined(separator: "; "),
+            issues: operationSuccess ? [] : [.serviceStartFailed]
+        )
+        validationSteps.append(operationStep)
+        if !operationSuccess {
+            overallSuccess = false
+        }
+        
+        // Step 5: Check brew services integration
+        logger.debug("Validating brew services integration")
+        let brewStatus = await checkBrewServicesStatus()
+        let brewStep = ServiceValidationStep(
+            stepName: "Brew Services Integration",
+            stepID: "brew_integration",
+            success: brewStatus.isAvailable && brewStatus.formulaManaged,
+            message: brewStatus.isAvailable ? "Brew services available" : "Brew services not available",
+            details: "Formula managed: \(brewStatus.formulaManaged)",
+            issues: brewStatus.isAvailable ? [] : [.homebrewFormulaNotFound]
+        )
+        validationSteps.append(brewStep)
+        if !brewStatus.isAvailable {
+            overallSuccess = false
+        }
+        
+        // Generate recommendations
+        var recommendations: [String] = []
+        let allIssues = validationSteps.flatMap { $0.issues }
+        
+        for issue in Set(allIssues) {
+            recommendations.append(contentsOf: issue.recoveryActions)
+        }
+        
+        // Remove duplicates and sort
+        recommendations = Array(Set(recommendations)).sorted()
+        
+        let result = ServiceIntegrationValidationResult(
+            overallSuccess: overallSuccess,
+            validationSteps: validationSteps,
+            recommendations: recommendations,
+            timestamp: Date(),
+            summary: generateValidationSummary(steps: validationSteps, success: overallSuccess)
+        )
+        
+        logger.info("End-to-end service integration validation completed", context: [
+            "success": overallSuccess,
+            "steps": validationSteps.count,
+            "issues": allIssues.count
+        ])
+        
+        return result
+    }
+    
     // MARK: - Private Helpers
     
     private func checkLaunchdRegistration() async -> LaunchdRegistrationStatus {
@@ -566,6 +738,28 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
         } else {
             return .healthy
         }
+    }
+    
+    private func generateValidationSummary(steps: [ServiceValidationStep], success: Bool) -> String {
+        let totalSteps = steps.count
+        let successfulSteps = steps.filter { $0.success }.count
+        let failedSteps = totalSteps - successfulSteps
+        
+        var summary = "Service integration validation completed: \(successfulSteps)/\(totalSteps) steps passed"
+        
+        if success {
+            summary += ". Service integration is functioning correctly."
+        } else {
+            summary += ". \(failedSteps) issue(s) detected requiring attention."
+            
+            // Add details about failed steps
+            let failedStepNames = steps.filter { !$0.success }.map { $0.stepName }
+            if !failedStepNames.isEmpty {
+                summary += " Failed steps: \(failedStepNames.joined(separator: ", "))."
+            }
+        }
+        
+        return summary
     }
     
     // MARK: - Command Execution

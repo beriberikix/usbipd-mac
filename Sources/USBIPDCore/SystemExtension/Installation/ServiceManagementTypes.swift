@@ -537,3 +537,74 @@ internal struct BrewServicesStatus {
         self.statusOutput = statusOutput
     }
 }
+
+// MARK: - Integration Validation Types
+
+/// Result of comprehensive service integration validation
+public struct ServiceIntegrationValidationResult {
+    /// Whether overall validation was successful
+    public let overallSuccess: Bool
+    
+    /// Individual validation steps performed
+    public let validationSteps: [ServiceValidationStep]
+    
+    /// Recommendations for resolving issues
+    public let recommendations: [String]
+    
+    /// Timestamp when validation was performed
+    public let timestamp: Date
+    
+    /// Summary of validation results
+    public let summary: String
+    
+    public init(
+        overallSuccess: Bool,
+        validationSteps: [ServiceValidationStep],
+        recommendations: [String],
+        timestamp: Date,
+        summary: String
+    ) {
+        self.overallSuccess = overallSuccess
+        self.validationSteps = validationSteps
+        self.recommendations = recommendations
+        self.timestamp = timestamp
+        self.summary = summary
+    }
+}
+
+/// Individual validation step in service integration validation
+public struct ServiceValidationStep {
+    /// Name of the validation step
+    public let stepName: String
+    
+    /// Unique identifier for the step
+    public let stepID: String
+    
+    /// Whether the step was successful
+    public let success: Bool
+    
+    /// Message describing the step result
+    public let message: String
+    
+    /// Additional details about the step
+    public let details: String?
+    
+    /// Issues found during this step
+    public let issues: [ServiceIssue]
+    
+    public init(
+        stepName: String,
+        stepID: String,
+        success: Bool,
+        message: String,
+        details: String? = nil,
+        issues: [ServiceIssue] = []
+    ) {
+        self.stepName = stepName
+        self.stepID = stepID
+        self.success = success
+        self.message = message
+        self.details = details
+        self.issues = issues
+    }
+}
