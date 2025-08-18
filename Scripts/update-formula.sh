@@ -497,23 +497,63 @@ update_formula() {
     fi
     
     # Update formula with actual values
-    sed "s/VERSION_PLACEHOLDER/$VERSION/g" "$FORMULA_FILE" | \
-        sed "s/SHA256_PLACEHOLDER/$SHA256_CHECKSUM/g" > "$temp_file"
+    log_info "Updating VERSION_PLACEHOLDER with $VERSION"
+    if ! sed "s|VERSION_PLACEHOLDER|$VERSION|g" "$FORMULA_FILE" > "$temp_file.tmp"; then
+        log_error "Failed to replace VERSION_PLACEHOLDER in formula"
+        log_error "sed command: sed \"s|VERSION_PLACEHOLDER|$VERSION|g\" \"$FORMULA_FILE\""
+        rm -f "$temp_file" "$temp_file.tmp"
+        exit $EXIT_UPDATE_FAILED
+    fi
+    log_info "VERSION_PLACEHOLDER replacement completed"
+    
+    log_info "Updating SHA256_PLACEHOLDER with $SHA256_CHECKSUM"
+    if ! sed "s|SHA256_PLACEHOLDER|$SHA256_CHECKSUM|g" "$temp_file.tmp" > "$temp_file"; then
+        log_error "Failed to replace SHA256_PLACEHOLDER in formula"
+        log_error "sed command: sed \"s|SHA256_PLACEHOLDER|$SHA256_CHECKSUM|g\" \"$temp_file.tmp\""
+        rm -f "$temp_file" "$temp_file.tmp"
+        exit $EXIT_UPDATE_FAILED
+    fi
+    log_info "SHA256_PLACEHOLDER replacement completed"
+    
+    rm -f "$temp_file.tmp"
     
     # Update System Extension placeholders if applicable
     if [ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
-        sed "s/SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER/$SYSTEM_EXTENSION_CHECKSUM/g" "$temp_file" > "$temp_file.tmp"
+        if ! sed "s|SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER|$SYSTEM_EXTENSION_CHECKSUM|g" "$temp_file" > "$temp_file.tmp"; then
+            log_error "Failed to replace SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER in formula"
+            rm -f "$temp_file" "$temp_file.tmp"
+            exit $EXIT_UPDATE_FAILED
+        fi
         mv "$temp_file.tmp" "$temp_file"
     fi
     
     # Verify the update was successful
+    log_info "Verifying that all placeholders were replaced"
+    log_info "Temp file: $temp_file"
+    log_info "Temp file exists: $(test -f "$temp_file" && echo "YES" || echo "NO")"
+    if [ -f "$temp_file" ]; then
+        log_info "Temp file size: $(wc -c < "$temp_file") bytes"
+    fi
+    
     local remaining_placeholders
-    remaining_placeholders=$(grep -o "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" "$temp_file" | wc -l)
+    local grep_output
+    grep_output=$(grep -o "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" "$temp_file" 2>/dev/null || true)
+    remaining_placeholders=$(echo "$grep_output" | wc -l)
+    
+    # If grep_output is empty, wc -l returns 1, so we need to handle this case
+    if [ -z "$grep_output" ]; then
+        remaining_placeholders=0
+    fi
+    
+    log_info "Remaining placeholders: $remaining_placeholders"
     if [ "$remaining_placeholders" -gt 0 ]; then
         log_error "Failed to replace all required placeholders in formula"
+        log_error "Remaining placeholders found in temp file:"
+        grep -n "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" "$temp_file" || true
         rm -f "$temp_file"
         exit $EXIT_UPDATE_FAILED
     fi
+    log_info "All required placeholders have been replaced successfully"
     
     # Check for remaining System Extension placeholders (warning only)
     if [ "$INCLUDE_SYSTEM_EXTENSION" = true ]; then
