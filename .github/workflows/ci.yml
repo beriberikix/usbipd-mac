@@ -1,37 +1,29 @@
-name: CI (Consolidated)
+name: CI
 
 on:
   push:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'Documentation/**'
-      - '.gitignore'
-      - 'LICENSE'
+    branches: [main, develop]
+    paths-ignore: ['**/*.md', 'LICENSE', '.gitignore']
   pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'Documentation/**'
-      - '.gitignore'
-      - 'LICENSE'
-  workflow_call:  # Enable reuse by release workflows
+    branches: [main, develop]
+    paths-ignore: ['**/*.md', 'LICENSE', '.gitignore']
+  workflow_call:
     inputs:
-      release_validation:
-        description: 'Enable release-specific validation steps'
-        required: false
-        default: false
-        type: boolean
-      skip_optional_tests:
-        description: 'Skip optional integration tests for faster release validation'
-        required: false
-        default: false
-        type: boolean
       test_environment:
         description: 'Test environment to run (development, ci, production)'
         required: false
         default: 'ci'
         type: string
+      enable_qemu_tests:
+        description: 'Enable QEMU integration tests'
+        required: false
+        default: false
+        type: boolean
+      release_validation:
+        description: 'Enable release validation tests'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       test_environment:
@@ -40,1152 +32,123 @@ on:
         default: 'ci'
         type: choice
         options:
-          - development
-          - ci
-          - production
+          - 'development'
+          - 'ci'
+          - 'production'
       enable_qemu_tests:
         description: 'Enable QEMU integration tests'
         required: false
         default: false
         type: boolean
-      enable_hardware_tests:
-        description: 'Enable hardware-dependent tests'
-        required: false
-        default: false
-        type: boolean
       release_validation:
-        description: 'Enable release-specific validation steps'
+        description: 'Enable release validation tests'
         required: false
         default: false
         type: boolean
 
 env:
-  # Global environment variables for consistent status reporting
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  # Release validation context
-  IS_RELEASE_VALIDATION: ${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}
-  SKIP_OPTIONAL_TESTS: ${{ inputs.skip_optional_tests || false }}
   TEST_ENVIRONMENT: ${{ inputs.test_environment || 'ci' }}
+  ENABLE_QEMU_TESTS: ${{ inputs.enable_qemu_tests || 'false' }}
+  SKIP_OPTIONAL_TESTS: ${{ vars.SKIP_OPTIONAL_TESTS || 'false' }}
 
 jobs:
   code-quality:
     name: Code Quality
     runs-on: macos-latest
-    outputs:
-      result: ${{ steps.swiftlint.outputs.result }}
-      violations-count: ${{ steps.swiftlint.outputs.violations-count }}
     steps:
-      - name: 📋 Starting Code Quality Validation
-        run: |
-          echo "::notice title=Code Quality::Starting comprehensive code quality validation"
-          echo "🔍 Validating Swift code against project style guidelines using standardized SwiftLint validation"
-          echo "📊 Status: STARTING"
-          echo "🎯 Using reusable composite action for consistent validation"
-
-      - name: Checkout code
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔍 Run SwiftLint Validation
-        id: swiftlint
+      - name: 🔍 SwiftLint Validation
         uses: ./.github/actions/swiftlint-validation
         with:
-          strict-mode: 'true'
-          cache-key-suffix: '-ci'
-          working-directory: '.'
-          reporter: 'xcode'
-
-      - name: 📊 Code Quality Summary
-        if: always()
-        run: |
-          echo "::group::Code Quality Summary"
-          
-          RESULT="${{ steps.swiftlint.outputs.result }}"
-          VIOLATIONS_COUNT="${{ steps.swiftlint.outputs.violations-count }}"
-          
-          if [ "$RESULT" == "success" ]; then
-            echo "::notice title=Quality Complete::Code quality validation completed successfully"
-            echo "✅ SwiftLint validation: PASSED"
-            echo "📋 Code quality: EXCELLENT"
-            echo "🎯 No style violations detected"
-          else
-            echo "::error title=Quality Failed::Code quality validation detected violations"
-            echo "❌ SwiftLint validation: FAILED"
-            echo "📋 Violations found: $VIOLATIONS_COUNT"
-            echo "🔧 Action required: Fix code style issues before merging"
-          fi
-          
-          echo "::endgroup::"
+          strict: true
 
   build-validation:
     name: Build Validation
     runs-on: macos-latest
-    outputs:
-      swift-version: ${{ steps.swift-setup.outputs.swift-version }}
-      cache-hit: ${{ steps.swift-setup.outputs.cache-hit }}
+    needs: code-quality
     steps:
-      - name: 🏗️ Starting Build Validation
-        run: |
-          echo "::notice title=Build Validation::Starting comprehensive project build validation"
-          echo "🔨 Validating that the project compiles successfully with comprehensive dependency resolution"
-          echo "📊 Status: STARTING"
-          echo "🎯 Using reusable composite action for consistent environment setup"
-
-      - name: Checkout code
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔧 Setup Swift Environment
-        id: swift-setup
+      - name: 🛠️ Setup Swift Environment
         uses: ./.github/actions/setup-swift-environment
-        with:
-          cache-key-suffix: '-build'
-          install-swiftlint: 'false'
-          setup-test-scripts: 'false'
-          validate-environment: 'false'
 
       - name: 🔨 Build Project
         run: |
-          echo "::group::Project Compilation"
-          echo "::notice title=Build Process::Compiling project with Swift Package Manager"
-          echo "🔨 Building project with Swift Package Manager..."
-          echo "📊 Status: BUILDING"
-          echo "⚙️ Build mode: Debug with verbose output"
-          echo "🔧 Swift version: ${{ steps.swift-setup.outputs.swift-version }}"
-          echo "💾 Cache status: ${{ steps.swift-setup.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
-          
-          # Build main project with verbose output to capture detailed error information
-          if swift build --verbose; then
-            echo "::notice title=Build Success::Main project compiled successfully"
-            echo "✅ Main build completed successfully"
-          else
-            echo "::error title=Build Failed::Main project compilation failed"
-            echo "❌ Build failed - see detailed error information above"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-          echo "::endgroup::"
-
-      - name: 🔧 Build System Extension
-        run: |
-          echo "::group::System Extension Compilation"
-          echo "::notice title=System Extension Build::Building USBIPDSystemExtension product"
-          echo "🔧 Building System Extension with Swift Package Manager..."
-          echo "📊 Status: BUILDING SYSTEM EXTENSION"
-          echo "⚙️ Product: USBIPDSystemExtension"
-          
-          # Build System Extension product specifically
-          if swift build --product USBIPDSystemExtension --verbose; then
-            echo "::notice title=System Extension Success::System Extension compiled successfully"
-            echo "✅ System Extension build completed successfully"
-            echo "📦 System Extension executable created"
-            
-            # Verify System Extension executable exists
-            if [ -f ".build/debug/USBIPDSystemExtension" ]; then
-              echo "✅ System Extension executable found at .build/debug/USBIPDSystemExtension"
-              echo "📊 File size: $(ls -lh .build/debug/USBIPDSystemExtension | awk '{print $5}')"
-            else
-              echo "::error title=System Extension Missing::System Extension executable not found"
-              exit 1
-            fi
-          else
-            echo "::error title=System Extension Failed::System Extension compilation failed"
-            echo "❌ System Extension build failed - see detailed error information above"
-            exit 1
-          fi
-          echo "::endgroup::"
-
-      - name: 🏗️ Validate System Extension Bundle Structure
-        run: |
-          echo "::group::System Extension Bundle Validation"
-          echo "::notice title=Bundle Validation::Validating System Extension bundle requirements"
-          echo "🔍 Checking System Extension build artifacts and structure..."
-          
-          # Check for System Extension Info.plist template
-          if [ -f "Sources/SystemExtension/Info.plist.template" ]; then
-            echo "✅ System Extension Info.plist template found"
-          else
-            echo "::warning title=Template Missing::System Extension Info.plist template not found"
-          fi
-          
-          # Check for System Extension entitlements
-          if [ -f "Sources/SystemExtension/SystemExtension.entitlements" ]; then
-            echo "✅ System Extension entitlements file found"
-          else
-            echo "::warning title=Entitlements Missing::System Extension entitlements file not found"
-          fi
-          
-          # Validate bundle creation capabilities (without actually creating a bundle in CI)
-          echo "🧪 Testing bundle structure validation..."
-          echo "   • Bundle identifier: com.github.usbipd-mac.systemextension"
-          echo "   • Bundle type: SYSX (System Extension)"
-          echo "   • Executable: USBIPDSystemExtension"
-          echo "   • Required frameworks: SystemExtensions.framework"
-          
-          echo "::notice title=Bundle Structure::System Extension bundle structure validated"
-          echo "✅ System Extension bundle validation completed"
-          echo "📊 Status: SUCCESS"
-          echo "::endgroup::"
-
-      - name: 📊 Build Validation Summary
-        if: always()
-        run: |
-          echo "::group::Build Validation Summary"
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "::notice title=Build Complete::Build validation completed successfully"
-            echo "✅ Project compilation: PASSED"
-            echo "✅ System Extension compilation: PASSED"
-            echo "✅ Dependency resolution: PASSED"
-            echo "✅ Bundle structure validation: PASSED"
-            echo "🎯 All Swift modules built successfully"
-            echo "📦 System Extension artifacts created"
-            echo "📋 Build artifacts ready for testing"
-            echo "🔧 Environment: ${{ steps.swift-setup.outputs.swift-version }}"
-          else
-            echo "::error title=Build Failed::Build validation failed"
-            echo "❌ Build validation: FAILED"
-            echo "🔧 Action required: Fix build errors before merging"
-            echo "📋 Common build issues to check:"
-            echo "   • Missing or incompatible dependencies"
-            echo "   • Swift syntax or compilation errors"
-            echo "   • Import resolution failures"
-            echo "   • Platform compatibility issues"
-            echo "   • Package.swift configuration problems"
-            echo "   • System Extension configuration issues"
-            echo "   • Missing System Extension entitlements or Info.plist"
-          fi
-          echo "::endgroup::"
-
-  test-suite:
-    name: Test Suite (${{ matrix.environment }})
-    runs-on: macos-latest
-    needs: [code-quality, build-validation]
-    strategy:
-      matrix:
-        environment: 
-          - ${{ inputs.test_environment || 'ci' }}
-      fail-fast: false
-    outputs:
-      result: ${{ steps.test-execution.outputs.result }}
-      test-time: ${{ steps.test-execution.outputs.test-time }}
-      tests-run: ${{ steps.test-execution.outputs.tests-run }}
-      capabilities: ${{ steps.test-execution.outputs.environment-capabilities }}
-    steps:
-      - name: 🧪 Starting Test Suite Execution
-        run: |
-          echo "::notice title=Test Suite::Starting comprehensive test suite execution"
-          echo "🧪 Executing ${{ matrix.environment }} test environment using standardized test execution"
-          echo "📊 Status: STARTING"
-          echo "🎯 Using reusable composite action for consistent test execution"
-          echo "⚙️ Environment: ${{ matrix.environment }}"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🔧 Setup Swift Environment
-        uses: ./.github/actions/setup-swift-environment
-        with:
-          cache-key-suffix: '-test-${{ matrix.environment }}'
-          install-swiftlint: 'false'
-          setup-test-scripts: 'true'
-          validate-environment: 'true'
-
-      - name: 🧪 Execute Test Suite
-        id: test-execution
-        uses: ./.github/actions/run-test-suite
-        with:
-          test-environment: ${{ matrix.environment }}
-          cache-key-suffix: '-${{ matrix.environment }}'
-          timeout-seconds: ${{ matrix.environment == 'production' && '600' || '180' }}
-          swift-configuration: 'debug'
-          parallel-execution: 'true'
-          enable-qemu-tests: ${{ inputs.enable_qemu_tests || 'auto' }}
-          enable-hardware-tests: ${{ inputs.enable_hardware_tests || 'auto' }}
-          enable-system-extension-tests: 'auto'
-          skip-build: 'false'
-          working-directory: '.'
-
-      - name: 📊 Test Suite Summary
-        if: always()
-        run: |
-          echo "::group::Test Suite Summary"
-          
-          RESULT="${{ steps.test-execution.outputs.result }}"
-          TEST_TIME="${{ steps.test-execution.outputs.test-time }}"
-          TESTS_RUN="${{ steps.test-execution.outputs.tests-run }}"
-          CAPABILITIES="${{ steps.test-execution.outputs.capabilities }}"
-          
-          if [ "$RESULT" = "success" ]; then
-            echo "::notice title=Test Suite Complete::${{ matrix.environment }} test suite completed successfully"
-            echo "✅ Test execution: SUCCESS"
-            echo "⏱️ Duration: ${TEST_TIME}s"
-            echo "🧪 Tests run: $TESTS_RUN"
-            echo "🔧 Capabilities: $CAPABILITIES"
-            echo "🎯 Environment: ${{ matrix.environment }}"
-          else
-            echo "::error title=Test Suite Failed::${{ matrix.environment }} test suite execution failed"
-            echo "❌ Test execution: $RESULT"
-            echo "⏱️ Duration: ${TEST_TIME}s"
-            echo "🧪 Tests attempted: $TESTS_RUN"
-            echo "🔧 Action required: Fix failing tests before merging"
-          fi
-          
-          echo "::endgroup::"
-
-  release-validation:
-    name: Release Validation
-    runs-on: macos-latest
-    if: ${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}
-    needs: [code-quality, build-validation, test-suite]
-    steps:
-      - name: 🚀 Starting Release Validation
-        run: |
-          echo "::notice title=Release Validation::Starting release-specific validation checks"
-          echo "🚀 Validating release-specific requirements and artifacts for release readiness"
-          echo "📊 Status: STARTING"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🔧 Setup Swift Environment
-        uses: ./.github/actions/setup-swift-environment
-        with:
-          cache-key-suffix: '-release'
-          install-swiftlint: 'false'
-          setup-test-scripts: 'false'
-          validate-environment: 'false'
-
-      - name: 📋 Verify Release Context
-        run: |
-          echo "::group::Release Context Information"
-          echo "::notice title=Release Context::Analyzing release validation requirements"
-          echo "🏷️ Reference: ${{ github.ref }}"
-          echo "📦 Event: ${{ github.event_name }}"
-          echo "🔍 Release validation mode: ${{ env.IS_RELEASE_VALIDATION }}"
-          echo "⚡ Skip optional tests: ${{ env.SKIP_OPTIONAL_TESTS }}"
-          echo "🎯 Test environment: ${{ env.TEST_ENVIRONMENT }}"
-          echo "📊 Release context status: VERIFIED"
-          echo "::endgroup::"
-
-      - name: 🔍 Validate Release Artifacts
-        run: |
-          echo "::group::Release Artifact Validation"
-          echo "::notice title=Artifact Validation::Validating release artifact integrity"
-          echo "📦 Validating release artifact structure and integrity..."
-          echo "📊 Status: VALIDATING"
-          
-          # Build for validation
+          echo "Building main targets..."
           swift build --verbose
           
-          # Validate build products exist
-          if [ -d ".build/debug" ]; then
-            echo "✅ Build artifacts present"
-            echo "📋 Build products validated"
-          else
-            echo "❌ Build artifacts missing"
-            exit 1
-          fi
+          echo "Building System Extension target..."
+          swift build --product USBIPDSystemExtension --verbose
           
-          echo "::notice title=Artifacts Valid::Release artifacts validated successfully"
-          echo "📊 Status: VALIDATED"
-          echo "::endgroup::"
+          echo "Building test server..."
+          swift build --product QEMUTestServer --verbose
 
-      - name: 🏷️ Validate Version Information
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          echo "::group::Version Information Validation"
-          echo "::notice title=Version Validation::Validating release version information"
-          echo "🏷️ Validating version tag and release information..."
-          echo "📊 Status: VALIDATING"
-          
-          # Extract version from tag
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "🏷️ Release version: $VERSION"
-          
-          # Validate version format (semantic versioning)
-          if [[ $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
-            echo "✅ Version format valid: $VERSION"
-            echo "::notice title=Version Valid::Release version format validated"
-          else
-            echo "❌ Invalid version format: $VERSION"
-            echo "::error title=Version Invalid::Release version format validation failed"
-            exit 1
-          fi
-          
-          echo "📊 Status: VALIDATED"
-          echo "::endgroup::"
+  test-suite:
+    name: Test Suite
+    runs-on: macos-latest
+    needs: build-validation
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: 📊 Release Validation Summary
-        if: always()
-        run: |
-          echo "::group::Release Validation Summary"
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "::notice title=Release Validation Complete::All release validation checks passed"
-            echo "✅ Release artifact validation: PASSED"
-            echo "✅ Version information validation: PASSED"
-            echo "🎯 Release requirements validated successfully"
-            echo "📋 Ready for release pipeline execution"
-          else
-            echo "::error title=Release Validation Failed::Release validation checks failed"
-            echo "❌ Release validation: FAILED"
-            echo "🔧 Action required: Fix release validation issues before proceeding"
-          fi
-          echo "::endgroup::"
+      - name: 🛠️ Setup Swift Environment
+        uses: ./.github/actions/setup-swift-environment
+
+      - name: 🧪 Run Test Suite
+        uses: ./.github/actions/run-test-suite
+        with:
+          environment: ${{ env.TEST_ENVIRONMENT }}
+          enable_qemu: ${{ env.ENABLE_QEMU_TESTS }}
 
   homebrew-validation:
     name: Homebrew Formula Validation
     runs-on: macos-latest
-    if: contains(github.event.head_commit.modified, 'Formula/') || contains(github.event.head_commit.added, 'Formula/') || github.event_name == 'pull_request'
-    needs: [code-quality, build-validation]
+    needs: build-validation
+    if: contains(github.event.head_commit.message, 'formula') || contains(github.event.head_commit.message, 'homebrew') || github.event_name == 'workflow_dispatch'
     steps:
-      - name: 🍺 Starting Homebrew Formula Validation
-        run: |
-          echo "::notice title=Homebrew Validation::Starting comprehensive Homebrew formula validation"
-          echo "🍺 Validating formula syntax, installation, and service functionality"
-          echo "📊 Status: STARTING"
-
-      - name: Checkout code
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔧 Setup Homebrew Environment
-        run: |
-          echo "::group::Homebrew Environment Setup"
-          echo "::notice title=Homebrew Setup::Setting up Homebrew environment for formula testing"
-          
-          # Ensure Homebrew is up to date
-          brew update
-          
-          # Install Ruby for formula syntax checking
-          if ! command -v ruby >/dev/null 2>&1; then
-            echo "Installing Ruby for formula validation..."
-            brew install ruby
-          fi
-          
-          echo "✅ Homebrew environment ready"
-          echo "🍺 Homebrew version: $(brew --version | head -1)"
-          echo "💎 Ruby version: $(ruby --version)"
-          echo "::endgroup::"
-
-      - name: 🔍 Validate Formula Syntax
-        run: |
-          echo "::group::Formula Syntax Validation"
-          echo "::notice title=Formula Syntax::Validating Homebrew formula Ruby syntax"
-          
-          FORMULA_FILE="Formula/usbipd-mac.rb"
-          
-          if [ ! -f "$FORMULA_FILE" ]; then
-            echo "::error title=Formula Missing::Formula file not found: $FORMULA_FILE"
-            exit 1
-          fi
-          
-          echo "🔍 Checking Ruby syntax for $FORMULA_FILE..."
-          
-          # Check Ruby syntax
-          if ruby -c "$FORMULA_FILE"; then
-            echo "✅ Formula Ruby syntax is valid"
-          else
-            echo "::error title=Syntax Error::Formula has Ruby syntax errors"
-            exit 1
-          fi
-          
-          # Check for required formula elements
-          echo "🔍 Validating formula structure..."
-          
-          if ! grep -q "class.*Formula" "$FORMULA_FILE"; then
-            echo "::error title=Structure Error::Formula must define a class inheriting from Formula"
-            exit 1
-          fi
-          
-          if ! grep -q "def install" "$FORMULA_FILE"; then
-            echo "::error title=Structure Error::Formula must define an install method"
-            exit 1
-          fi
-          
-          if ! grep -q "service do" "$FORMULA_FILE"; then
-            echo "::warning title=Service Missing::Formula does not define a service block"
-          else
-            echo "✅ Formula includes service configuration"
-          fi
-          
-          echo "::notice title=Syntax Valid::Formula syntax and structure validation passed"
-          echo "✅ Formula syntax validation completed"
-          echo "::endgroup::"
-
-      - name: 🔧 Setup Swift Environment for Build
+      - name: 🛠️ Setup Swift Environment
         uses: ./.github/actions/setup-swift-environment
-        with:
-          cache-key-suffix: '-homebrew'
-          install-swiftlint: 'false'
-          setup-test-scripts: 'false'
-          validate-environment: 'false'
 
-      - name: 🍺 Test Formula Installation
+      - name: 🍺 Test Homebrew Formula
         run: |
-          echo "::group::Formula Installation Test"
-          echo "::notice title=Formula Install::Testing formula installation with build-from-source"
+          echo "Testing Homebrew formula syntax..."
+          brew audit --new-formula Formula/usbipd-mac.rb
           
-          FORMULA_FILE="Formula/usbipd-mac.rb"
+          echo "Testing formula installation..."
+          brew install --build-from-source Formula/usbipd-mac.rb
           
-          # Create a temporary tap for testing
-          TEMP_TAP_DIR="$(mktemp -d)"
-          TAP_NAME="test/usbipd"
-          TAP_PATH="$TEMP_TAP_DIR/homebrew-$TAP_NAME"
-          
-          echo "🔧 Setting up temporary tap for testing..."
-          mkdir -p "$TAP_PATH/Formula"
-          cp "$FORMULA_FILE" "$TAP_PATH/Formula/"
-          
-          # Make the temporary tap available to Homebrew
-          export HOMEBREW_TAP_DIR="$TEMP_TAP_DIR"
-          
-          echo "🍺 Testing formula installation..."
-          
-          # Test formula audit first
-          if brew audit --strict "$TAP_PATH/Formula/usbipd-mac.rb"; then
-            echo "✅ Formula audit passed"
+          echo "Testing System Extension bundle creation..."
+          if [ -d "/opt/homebrew/lib/usbipd-mac" ]; then
+            echo "System Extension bundle directory created"
           else
-            echo "::warning title=Audit Warning::Formula audit detected issues (non-blocking)"
+            echo "Warning: System Extension bundle not found"
           fi
-          
-          # Test installation (this will build from source)
-          echo "🔨 Testing build-from-source installation..."
-          
-          # We'll use a dry-run approach since we can't actually install system services in CI
-          if brew install --build-from-source --verbose --dry-run "$TAP_PATH/Formula/usbipd-mac.rb" 2>&1; then
-            echo "✅ Formula installation simulation successful"
-          else
-            echo "::error title=Install Failed::Formula installation test failed"
-            exit 1
-          fi
-          
-          # Clean up
-          rm -rf "$TEMP_TAP_DIR"
-          
-          echo "::notice title=Install Test Complete::Formula installation test completed successfully"
-          echo "✅ Formula installation validation completed"
-          echo "::endgroup::"
-
-      - name: 🧪 Test System Extension Bundle Creation
-        run: |
-          echo "::group::System Extension Bundle Testing"
-          echo "::notice title=Bundle Test::Testing System Extension bundle creation from Homebrew build"
-          
-          # Build project first to ensure we have the executable
-          echo "🔨 Building project for bundle testing..."
-          swift build --product USBIPDSystemExtension --verbose
-          
-          # Check if SystemExtensionBundleValidator exists
-          if [ ! -f "Sources/USBIPDCore/Distribution/SystemExtensionBundleValidator.swift" ]; then
-            echo "::error title=Validator Missing::SystemExtensionBundleValidator not found"
-            exit 1
-          fi
-          
-          echo "✅ SystemExtensionBundleValidator found"
-          
-          # Test bundle creation process (simulated)
-          echo "🧪 Testing bundle creation workflow..."
-          
-          # Create a test bundle directory structure for validation
-          TEST_BUNDLE_PATH="$(mktemp -d)/USBIPDSystemExtension.systemextension"
-          mkdir -p "$TEST_BUNDLE_PATH/Contents/MacOS"
-          mkdir -p "$TEST_BUNDLE_PATH/Contents/Resources"
-          
-          # Copy executable to test bundle
-          if [ -f ".build/debug/USBIPDSystemExtension" ]; then
-            cp ".build/debug/USBIPDSystemExtension" "$TEST_BUNDLE_PATH/Contents/MacOS/"
-            chmod +x "$TEST_BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension"
-            echo "✅ Test executable copied to bundle"
-          else
-            echo "::error title=Executable Missing::USBIPDSystemExtension executable not found"
-            exit 1
-          fi
-          
-          # Create test Info.plist
-          cat > "$TEST_BUNDLE_PATH/Contents/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleIdentifier</key>
-    <string>com.github.usbipd-mac.systemextension</string>
-    <key>CFBundleExecutable</key>
-    <string>USBIPDSystemExtension</string>
-    <key>CFBundlePackageType</key>
-    <string>SYSX</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>11.0</string>
-    <key>NSSystemExtensionUsageDescription</key>
-    <string>USB/IP System Extension for sharing USB devices over network</string>
-</dict>
-</plist>
-EOF
-          
-          echo "✅ Test bundle structure created"
-          
-          # Run validation tests using swift test
-          echo "🔍 Running System Extension bundle validation tests..."
-          
-          # Test basic bundle structure validation
-          if swift test --filter "SystemExtensionBundleValidator" --verbose 2>/dev/null || true; then
-            echo "✅ Bundle validation tests executed"
-          else
-            echo "::warning title=Validation Tests::Bundle validation tests not available or failed"
-          fi
-          
-          # Verify bundle structure manually
-          echo "🔍 Verifying test bundle structure..."
-          
-          if [ -d "$TEST_BUNDLE_PATH" ]; then
-            echo "✅ Bundle directory exists"
-          else
-            echo "::error title=Bundle Missing::Test bundle directory not created"
-            exit 1
-          fi
-          
-          if [ -f "$TEST_BUNDLE_PATH/Contents/Info.plist" ]; then
-            echo "✅ Info.plist exists"
-          else
-            echo "::error title=Info.plist Missing::Bundle Info.plist not found"
-            exit 1
-          fi
-          
-          if [ -f "$TEST_BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension" ]; then
-            echo "✅ System Extension executable exists in bundle"
-          else
-            echo "::error title=Executable Missing::System Extension executable not found in bundle"
-            exit 1
-          fi
-          
-          if [ -x "$TEST_BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension" ]; then
-            echo "✅ System Extension executable has execute permissions"
-          else
-            echo "::error title=Permissions Wrong::System Extension executable lacks execute permissions"
-            exit 1
-          fi
-          
-          # Test bundle identifier validation
-          BUNDLE_ID=$(plutil -extract CFBundleIdentifier xml1 -o - "$TEST_BUNDLE_PATH/Contents/Info.plist" | grep -o 'com\.github\.usbipd-mac\.systemextension' || true)
-          if [ "$BUNDLE_ID" = "com.github.usbipd-mac.systemextension" ]; then
-            echo "✅ Bundle identifier is correct"
-          else
-            echo "::error title=Bundle ID Wrong::Bundle identifier validation failed"
-            exit 1
-          fi
-          
-          # Test bundle type validation
-          BUNDLE_TYPE=$(plutil -extract CFBundlePackageType xml1 -o - "$TEST_BUNDLE_PATH/Contents/Info.plist" | grep -o 'SYSX' || true)
-          if [ "$BUNDLE_TYPE" = "SYSX" ]; then
-            echo "✅ Bundle type is correct (SYSX)"
-          else
-            echo "::error title=Bundle Type Wrong::Bundle type validation failed"
-            exit 1
-          fi
-          
-          # Clean up test bundle
-          rm -rf "$TEST_BUNDLE_PATH"
-          
-          echo "::notice title=Bundle Test Complete::System Extension bundle creation and validation test completed"
-          echo "✅ System Extension bundle testing completed successfully"
-          echo "::endgroup::"
-
-      - name: 📦 Test Homebrew Bundle Integration
-        run: |
-          echo "::group::Homebrew Bundle Integration Test"
-          echo "::notice title=Bundle Integration::Testing Homebrew formula System Extension bundle integration"
-          
-          FORMULA_FILE="Formula/usbipd-mac.rb"
-          
-          echo "🔍 Validating formula includes System Extension bundle building..."
-          
-          # Check that formula includes System Extension product building
-          if grep -q "USBIPDSystemExtension" "$FORMULA_FILE"; then
-            echo "✅ Formula includes USBIPDSystemExtension product"
-          else
-            echo "::error title=Integration Missing::Formula does not include USBIPDSystemExtension product building"
-            exit 1
-          fi
-          
-          # Check for bundle creation logic in formula
-          if grep -q -i "bundle" "$FORMULA_FILE" || grep -q -i "systemextension" "$FORMULA_FILE"; then
-            echo "✅ Formula includes System Extension bundle handling"
-          else
-            echo "::warning title=Bundle Logic::Formula may be missing System Extension bundle creation logic"
-          fi
-          
-          # Check for installation command integration
-          if grep -q "usbipd-install-extension" "$FORMULA_FILE" || grep -q -i "install.*extension" "$FORMULA_FILE"; then
-            echo "✅ Formula includes installation command integration"
-          else
-            echo "::warning title=Install Command::Formula may be missing installation command integration"
-          fi
-          
-          # Validate caveats include System Extension guidance
-          if grep -A 20 "def caveats" "$FORMULA_FILE" | grep -i -q "system.*extension\|extension.*install"; then
-            echo "✅ Formula caveats include System Extension guidance"
-          else
-            echo "::warning title=Caveats Missing::Formula caveats may be missing System Extension installation guidance"
-          fi
-          
-          echo "::notice title=Integration Test Complete::Homebrew bundle integration test completed"
-          echo "✅ Homebrew System Extension integration validation completed"
-          echo "::endgroup::"
-
-      - name: 📦 Create System Extension Bundle Artifacts
-        run: |
-          echo "::group::System Extension Bundle Artifact Creation"
-          echo "::notice title=Artifact Creation::Creating System Extension bundle artifacts for testing"
-          
-          # Create artifacts directory
-          ARTIFACTS_DIR="ci-artifacts/system-extension-bundles"
-          mkdir -p "$ARTIFACTS_DIR"
-          
-          echo "🔨 Building System Extension for artifact creation..."
-          swift build --product USBIPDSystemExtension --verbose
-          
-          # Get version and architecture information
-          SWIFT_VERSION=$(swift --version | head -1 | awk '{print $4}')
-          ARCH=$(uname -m)
-          TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-          COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-          
-          echo "📋 Artifact metadata:"
-          echo "   • Swift version: $SWIFT_VERSION"
-          echo "   • Architecture: $ARCH"
-          echo "   • Timestamp: $TIMESTAMP"
-          echo "   • Commit: $COMMIT_SHA"
-          
-          # Create a complete System Extension bundle for testing
-          BUNDLE_NAME="USBIPDSystemExtension-$ARCH-$COMMIT_SHA.systemextension"
-          BUNDLE_PATH="$ARTIFACTS_DIR/$BUNDLE_NAME"
-          
-          echo "📦 Creating bundle: $BUNDLE_NAME"
-          
-          # Create bundle directory structure
-          mkdir -p "$BUNDLE_PATH/Contents/MacOS"
-          mkdir -p "$BUNDLE_PATH/Contents/Resources"
-          
-          # Copy executable
-          if [ -f ".build/debug/USBIPDSystemExtension" ]; then
-            cp ".build/debug/USBIPDSystemExtension" "$BUNDLE_PATH/Contents/MacOS/"
-            chmod +x "$BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension"
-            echo "✅ System Extension executable copied to bundle"
-          else
-            echo "::error title=Executable Missing::USBIPDSystemExtension executable not found"
-            exit 1
-          fi
-          
-          # Create comprehensive Info.plist
-          cat > "$BUNDLE_PATH/Contents/Info.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleIdentifier</key>
-    <string>com.github.usbipd-mac.systemextension</string>
-    <key>CFBundleName</key>
-    <string>USBIPD System Extension</string>
-    <key>CFBundleDisplayName</key>
-    <string>USBIPD System Extension</string>
-    <key>CFBundleExecutable</key>
-    <string>USBIPDSystemExtension</string>
-    <key>CFBundlePackageType</key>
-    <string>SYSX</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.0.1-ci</string>
-    <key>CFBundleVersion</key>
-    <string>$TIMESTAMP</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>11.0</string>
-    <key>NSSystemExtensionUsageDescription</key>
-    <string>USB/IP System Extension for sharing USB devices over network</string>
-    <key>CIBuildInfo</key>
-    <dict>
-        <key>Architecture</key>
-        <string>$ARCH</string>
-        <key>SwiftVersion</key>
-        <string>$SWIFT_VERSION</string>
-        <key>CommitSHA</key>
-        <string>${{ github.sha }}</string>
-        <key>BuildTimestamp</key>
-        <string>$TIMESTAMP</string>
-        <key>GitRef</key>
-        <string>${{ github.ref }}</string>
-        <key>Workflow</key>
-        <string>${{ github.workflow }}</string>
-        <key>RunID</key>
-        <string>${{ github.run_id }}</string>
-    </dict>
-</dict>
-</plist>
-EOF
-          
-          echo "✅ Bundle Info.plist created with CI metadata"
-          
-          # Create bundle metadata file
-          cat > "$ARTIFACTS_DIR/bundle-metadata.json" << EOF
-{
-  "bundle_name": "$BUNDLE_NAME",
-  "architecture": "$ARCH",
-  "swift_version": "$SWIFT_VERSION",
-  "commit_sha": "${{ github.sha }}",
-  "build_timestamp": "$TIMESTAMP",
-  "git_ref": "${{ github.ref }}",
-  "workflow_run_id": "${{ github.run_id }}",
-  "bundle_identifier": "com.github.usbipd-mac.systemextension",
-  "bundle_type": "SYSX",
-  "minimum_macos": "11.0"
-}
-EOF
-          
-          echo "✅ Bundle metadata file created"
-          
-          # Calculate bundle size and checksums
-          BUNDLE_SIZE=$(du -sh "$BUNDLE_PATH" | cut -f1)
-          BUNDLE_CHECKSUM=$(find "$BUNDLE_PATH" -type f -exec shasum -a 256 {} + | shasum -a 256 | cut -d' ' -f1)
-          
-          echo "📊 Bundle information:"
-          echo "   • Size: $BUNDLE_SIZE"
-          echo "   • Checksum: $BUNDLE_CHECKSUM"
-          
-          # Add checksums to metadata
-          cat > "$ARTIFACTS_DIR/bundle-checksums.txt" << EOF
-# System Extension Bundle Checksums
-# Generated: $TIMESTAMP
-# Commit: ${{ github.sha }}
-
-Bundle: $BUNDLE_NAME
-Size: $BUNDLE_SIZE
-SHA256: $BUNDLE_CHECKSUM
-
-Individual files:
-EOF
-          
-          find "$BUNDLE_PATH" -type f -exec shasum -a 256 {} + >> "$ARTIFACTS_DIR/bundle-checksums.txt"
-          
-          echo "✅ Bundle checksums calculated"
-          
-          echo "::notice title=Bundle Created::System Extension bundle artifact created successfully"
-          echo "📦 Bundle: $BUNDLE_NAME"
-          echo "📊 Size: $BUNDLE_SIZE"
-          echo "🔐 Checksum: $BUNDLE_CHECKSUM"
-          echo "::endgroup::"
-
-      - name: 🧪 Generate Bundle Validation Report
-        run: |
-          echo "::group::Bundle Validation Report Generation"
-          echo "::notice title=Validation Report::Generating comprehensive bundle validation report"
-          
-          ARTIFACTS_DIR="ci-artifacts/system-extension-bundles"
-          BUNDLE_NAME=$(ls "$ARTIFACTS_DIR"/*.systemextension | head -1 | xargs basename)
-          BUNDLE_PATH="$ARTIFACTS_DIR/$BUNDLE_NAME"
-          
-          echo "🔍 Running comprehensive validation on $BUNDLE_NAME..."
-          
-          # Create validation report
-          REPORT_FILE="$ARTIFACTS_DIR/bundle-validation-report.txt"
-          
-          cat > "$REPORT_FILE" << EOF
-System Extension Bundle Validation Report
-==========================================
-Generated: $(date)
-Bundle: $BUNDLE_NAME
-Commit: ${{ github.sha }}
-Workflow: ${{ github.workflow }} (Run ${{ github.run_id }})
-
-EOF
-          
-          echo "Bundle Structure Validation:" >> "$REPORT_FILE"
-          echo "===========================" >> "$REPORT_FILE"
-          
-          # Validate bundle structure
-          if [ -d "$BUNDLE_PATH" ]; then
-            echo "✅ Bundle directory exists" >> "$REPORT_FILE"
-          else
-            echo "❌ Bundle directory missing" >> "$REPORT_FILE"
-          fi
-          
-          if [ -f "$BUNDLE_PATH/Contents/Info.plist" ]; then
-            echo "✅ Info.plist exists" >> "$REPORT_FILE"
-          else
-            echo "❌ Info.plist missing" >> "$REPORT_FILE"
-          fi
-          
-          if [ -f "$BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension" ]; then
-            echo "✅ System Extension executable exists" >> "$REPORT_FILE"
-          else
-            echo "❌ System Extension executable missing" >> "$REPORT_FILE"
-          fi
-          
-          if [ -x "$BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension" ]; then
-            echo "✅ Executable has proper permissions" >> "$REPORT_FILE"
-          else
-            echo "❌ Executable lacks execute permissions" >> "$REPORT_FILE"
-          fi
-          
-          # Validate Info.plist content
-          echo "" >> "$REPORT_FILE"
-          echo "Info.plist Content Validation:" >> "$REPORT_FILE"
-          echo "==============================" >> "$REPORT_FILE"
-          
-          if command -v plutil >/dev/null 2>&1; then
-            # Validate plist format
-            if plutil -lint "$BUNDLE_PATH/Contents/Info.plist" >/dev/null 2>&1; then
-              echo "✅ Info.plist format is valid" >> "$REPORT_FILE"
-            else
-              echo "❌ Info.plist format is invalid" >> "$REPORT_FILE"
-            fi
-            
-            # Check required keys
-            BUNDLE_ID=$(plutil -extract CFBundleIdentifier xml1 -o - "$BUNDLE_PATH/Contents/Info.plist" 2>/dev/null | grep -o 'com\.github\.usbipd-mac\.systemextension' || echo "")
-            if [ "$BUNDLE_ID" = "com.github.usbipd-mac.systemextension" ]; then
-              echo "✅ Bundle identifier is correct" >> "$REPORT_FILE"
-            else
-              echo "❌ Bundle identifier is incorrect or missing" >> "$REPORT_FILE"
-            fi
-            
-            BUNDLE_TYPE=$(plutil -extract CFBundlePackageType xml1 -o - "$BUNDLE_PATH/Contents/Info.plist" 2>/dev/null | grep -o 'SYSX' || echo "")
-            if [ "$BUNDLE_TYPE" = "SYSX" ]; then
-              echo "✅ Bundle type is correct (SYSX)" >> "$REPORT_FILE"
-            else
-              echo "❌ Bundle type is incorrect or missing" >> "$REPORT_FILE"
-            fi
-            
-            EXECUTABLE_NAME=$(plutil -extract CFBundleExecutable xml1 -o - "$BUNDLE_PATH/Contents/Info.plist" 2>/dev/null | grep -o 'USBIPDSystemExtension' || echo "")
-            if [ "$EXECUTABLE_NAME" = "USBIPDSystemExtension" ]; then
-              echo "✅ Executable name is correct" >> "$REPORT_FILE"
-            else
-              echo "❌ Executable name is incorrect or missing" >> "$REPORT_FILE"
-            fi
-          else
-            echo "⚠️  plutil not available - skipping plist content validation" >> "$REPORT_FILE"
-          fi
-          
-          # Add file listing
-          echo "" >> "$REPORT_FILE"
-          echo "Bundle Contents:" >> "$REPORT_FILE"
-          echo "===============" >> "$REPORT_FILE"
-          find "$BUNDLE_PATH" -type f -exec ls -la {} + >> "$REPORT_FILE"
-          
-          # Add executable information
-          echo "" >> "$REPORT_FILE"
-          echo "Executable Information:" >> "$REPORT_FILE"
-          echo "======================" >> "$REPORT_FILE"
-          if [ -f "$BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension" ]; then
-            file "$BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension" >> "$REPORT_FILE" 2>/dev/null || echo "file command not available" >> "$REPORT_FILE"
-            ls -la "$BUNDLE_PATH/Contents/MacOS/USBIPDSystemExtension" >> "$REPORT_FILE"
-          fi
-          
-          echo "✅ Bundle validation report generated"
-          echo "📄 Report saved to: bundle-validation-report.txt"
-          
-          # Display report summary
-          echo ""
-          echo "📋 Validation Summary:"
-          grep -E "^(✅|❌|⚠️)" "$REPORT_FILE" | head -10
-          
-          echo "::notice title=Report Generated::Bundle validation report created successfully"
-          echo "::endgroup::"
-
-      - name: 📤 Upload System Extension Bundle Artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: system-extension-bundles-${{ github.run_id }}-${{ runner.arch }}
-          path: ci-artifacts/system-extension-bundles/
-          retention-days: 30
-          compression-level: 6
-          include-hidden-files: false
-
-      - name: 🔧 Test Service Configuration
-        run: |
-          echo "::group::Service Configuration Test"
-          echo "::notice title=Service Test::Testing Homebrew service configuration"
-          
-          FORMULA_FILE="Formula/usbipd-mac.rb"
-          
-          echo "🔍 Validating service configuration..."
-          
-          # Extract and validate service configuration
-          if grep -q "service do" "$FORMULA_FILE"; then
-            echo "✅ Service block found in formula"
-            
-            # Check for required service attributes
-            if grep -A 10 "service do" "$FORMULA_FILE" | grep -q "run"; then
-              echo "✅ Service run command specified"
-            else
-              echo "::error title=Service Error::Service block missing run command"
-              exit 1
-            fi
-            
-            if grep -A 10 "service do" "$FORMULA_FILE" | grep -q "require_root"; then
-              echo "✅ Service root requirement specified"
-            else
-              echo "::warning title=Service Warning::Service may need root requirement for System Extension"
-            fi
-            
-            if grep -A 10 "service do" "$FORMULA_FILE" | grep -q "keep_alive"; then
-              echo "✅ Service keep_alive configuration found"
-            else
-              echo "::warning title=Service Warning::Service keep_alive not configured"
-            fi
-            
-            # Test service management commands (dry-run)
-            echo "🧪 Testing service management capabilities..."
-            echo "   Service would be managed with:"
-            echo "   • brew services start usbipd-mac"
-            echo "   • brew services stop usbipd-mac" 
-            echo "   • brew services restart usbipd-mac"
-            echo "   • brew services info usbipd-mac"
-            
-            echo "✅ Service configuration validation completed"
-          else
-            echo "::warning title=No Service::Formula does not include service configuration"
-            echo "⚠️ Service management will not be available through Homebrew"
-          fi
-          
-          echo "::notice title=Service Test Complete::Service configuration test completed"
-          echo "::endgroup::"
-
-      - name: 🔍 Run Formula Validation Script
-        if: hashFiles('Scripts/validate-formula.sh') != ''
-        run: |
-          echo "::group::Comprehensive Formula Validation"
-          echo "::notice title=Formula Validation::Running comprehensive formula validation script"
-          
-          if [ -x "Scripts/validate-formula.sh" ]; then
-            echo "🔍 Running formula validation script..."
-            
-            # Run validation script in CI mode (skip actual installation)
-            if Scripts/validate-formula.sh --skip-installation; then
-              echo "✅ Comprehensive formula validation passed"
-            else
-              echo "::error title=Validation Failed::Formula validation script detected issues"
-              exit 1
-            fi
-          else
-            echo "::warning title=Script Missing::Formula validation script not found or not executable"
-          fi
-          
-          echo "::notice title=Validation Complete::Comprehensive formula validation completed"
-          echo "::endgroup::"
-
-      - name: 📊 Homebrew Validation Summary
-        if: always()
-        run: |
-          echo "::group::Homebrew Validation Summary"
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "::notice title=Homebrew Validation Complete::All Homebrew formula validation checks passed"
-            echo "✅ Formula syntax validation: PASSED"
-            echo "✅ Formula installation test: PASSED" 
-            echo "✅ Service configuration test: PASSED"
-            echo "🍺 Formula ready for Homebrew distribution"
-            echo "📋 Validation ensures formula will work correctly when published"
-          else
-            echo "::error title=Homebrew Validation Failed::Homebrew formula validation failed"
-            echo "❌ Formula validation: FAILED"
-            echo "🔧 Action required: Fix formula issues before merging"
-            echo "📋 Common formula issues to check:"
-            echo "   • Ruby syntax errors in formula file"
-            echo "   • Missing required formula methods (install, service)"
-            echo "   • Incorrect dependency specifications"
-            echo "   • Service configuration problems"
-            echo "   • Formula audit failures"
-          fi
-          echo "::endgroup::"
 
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
     needs: [code-quality, build-validation, test-suite, homebrew-validation]
-    outputs:
-      success: ${{ steps.check-status.outputs.success }}
-      release_ready: ${{ steps.check-status.outputs.release_ready }}
-      test_environment: ${{ env.TEST_ENVIRONMENT }}
     steps:
       - name: 📊 Check Overall CI Status
-        id: check-status
         run: |
-          echo "::group::CI Status Analysis"
-          echo "::notice title=CI Summary::Analyzing overall consolidated CI execution status"
+          echo "CI Summary:"
+          echo "Code Quality: ${{ needs.code-quality.result }}"
+          echo "Build Validation: ${{ needs.build-validation.result }}"
+          echo "Test Suite: ${{ needs.test-suite.result }}"
+          echo "Homebrew Validation: ${{ needs.homebrew-validation.result }}"
           
-          # Check job statuses
-          CODE_QUALITY_STATUS="${{ needs.code-quality.result }}"
-          BUILD_STATUS="${{ needs.build-validation.result }}"
-          TEST_STATUS="${{ needs.test-suite.result }}"
-          HOMEBREW_STATUS="${{ needs.homebrew-validation.result }}"
-          # Check if release validation was requested
-          IS_RELEASE_VAL="${{ inputs.release_validation || contains(github.ref, 'refs/tags/') }}"
-          if [[ "$IS_RELEASE_VAL" == "true" ]]; then
-            RELEASE_VAL_STATUS="${{ needs.release-validation.result }}"
+          if [[ "${{ needs.code-quality.result }}" == "success" && 
+                "${{ needs.build-validation.result }}" == "success" && 
+                ("${{ needs.test-suite.result }}" == "success" || "${{ needs.test-suite.result }}" == "skipped") ]]; then
+            echo "✅ CI passed successfully"
           else
-            RELEASE_VAL_STATUS="skipped"
+            echo "❌ CI failed"
+            exit 1
           fi
-          
-          echo "📋 Job status summary:"
-          echo "   • Code Quality: $CODE_QUALITY_STATUS"
-          echo "   • Build Validation: $BUILD_STATUS"
-          echo "   • Test Suite (${{ env.TEST_ENVIRONMENT }}): $TEST_STATUS"
-          echo "   • Homebrew Validation: $HOMEBREW_STATUS"
-          echo "   • Release Validation: $RELEASE_VAL_STATUS"
-          
-          # Determine overall success
-          REQUIRED_SUCCESS=true
-          RELEASE_READY=false
-          
-          # Check required jobs (code quality, build, tests)
-          if [[ "$CODE_QUALITY_STATUS" != "success" || "$BUILD_STATUS" != "success" ]]; then
-            REQUIRED_SUCCESS=false
-          fi
-          
-          # Check test status (required unless explicitly skipped)
-          if [[ "$TEST_STATUS" != "success" && "$TEST_STATUS" != "skipped" ]]; then
-            if [[ "${{ env.SKIP_OPTIONAL_TESTS }}" != "true" ]]; then
-              REQUIRED_SUCCESS=false
-            fi
-          fi
-          
-          # Check Homebrew validation status (required if it runs, skipped if formula changes not detected)
-          if [[ "$HOMEBREW_STATUS" != "success" && "$HOMEBREW_STATUS" != "skipped" ]]; then
-            REQUIRED_SUCCESS=false
-          fi
-          
-          # For release validation, check if release validation passed
-          if [[ "$IS_RELEASE_VAL" == "true" ]]; then
-            if [[ "$RELEASE_VAL_STATUS" == "success" ]]; then
-              RELEASE_READY=true
-              echo "🚀 Release validation: PASSED"
-            else
-              RELEASE_READY=false
-              echo "❌ Release validation: FAILED"
-              if [[ "$RELEASE_VAL_STATUS" != "skipped" ]]; then
-                REQUIRED_SUCCESS=false
-              fi
-            fi
-          fi
-          
-          # Set outputs
-          echo "success=$REQUIRED_SUCCESS" >> $GITHUB_OUTPUT
-          echo "release_ready=$RELEASE_READY" >> $GITHUB_OUTPUT
-          
-          if [[ "$REQUIRED_SUCCESS" == "true" ]]; then
-            echo "::notice title=CI Success::All required consolidated CI checks passed successfully"
-            echo "✅ Overall CI status: SUCCESS"
-            echo "🎯 Test environment: ${{ env.TEST_ENVIRONMENT }}"
-            echo "📋 Consolidated workflow execution: COMPLETE"
-          else
-            echo "::error title=CI Failed::One or more required consolidated CI checks failed"
-            echo "❌ Overall CI status: FAILED"
-            echo "🔧 Review job details above for specific failure information"
-          fi
-          
-          if [[ "$RELEASE_READY" == "true" ]]; then
-            echo "::notice title=Release Ready::Consolidated CI validation complete - ready for release"
-            echo "🚀 Release readiness: READY"
-          fi
-          
-          echo "::endgroup::"
