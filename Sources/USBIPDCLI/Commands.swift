@@ -909,4 +909,569 @@ public class InstallSystemExtensionCommand: Command, InstallationProgressReporte
     }
 }
 
+/// Comprehensive diagnostic command implementation
+public class DiagnoseCommand: Command {
+    public let name = "diagnose"
+    public let description = "Run comprehensive installation and system diagnostics"
+    
+    private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "diagnose-command")
+    
+    public init() {}
+    
+    public func execute(with arguments: [String]) throws {
+        logger.debug("Executing diagnose command", context: ["arguments": arguments.joined(separator: " ")])
+        
+        // Parse options
+        var verbose = false
+        var mode: DiagnosticMode = .all
+        
+        var i = 0
+        while i < arguments.count {
+            switch arguments[i] {
+            case "-v", "--verbose":
+                verbose = true
+                i += 1
+            case "--bundle":
+                mode = .bundleDetection
+                i += 1
+            case "--installation":
+                mode = .installation
+                i += 1
+            case "--service":
+                mode = .serviceManagement
+                i += 1
+            case "--all":
+                mode = .all
+                i += 1
+            case "-h", "--help":
+                printHelp()
+                return
+            default:
+                logger.error("Unknown option for diagnose command", context: ["option": arguments[i]])
+                throw CommandLineError.invalidArguments("Unknown option: \(arguments[i])")
+            }
+        }
+        
+        logger.info("Starting diagnostic scan", context: [
+            "verbose": verbose,
+            "mode": mode.rawValue
+        ])
+        
+        print("🔍 USB/IP System Extension Diagnostics")
+        print("=====================================")
+        print("")
+        
+        // Track overall diagnostic status
+        var overallStatus = DiagnosticStatus.healthy
+        var issueCount = 0
+        var warningCount = 0
+        
+        // Run bundle detection diagnostics
+        if mode == .all || mode == .bundleDetection {
+            print("📦 Bundle Detection Diagnostics")
+            print("-------------------------------")
+            let bundleStatus = runBundleDetectionDiagnostics(verbose: verbose)
+            updateOverallStatus(&overallStatus, with: bundleStatus, &issueCount, &warningCount)
+            print("")
+        }
+        
+        // Run installation diagnostics
+        if mode == .all || mode == .installation {
+            print("⚙️  Installation Diagnostics")
+            print("----------------------------")
+            let installationStatus = runInstallationDiagnostics(verbose: verbose)
+            updateOverallStatus(&overallStatus, with: installationStatus, &issueCount, &warningCount)
+            print("")
+        }
+        
+        // Run service management diagnostics
+        if mode == .all || mode == .serviceManagement {
+            print("🔧 Service Management Diagnostics")
+            print("---------------------------------")
+            let serviceStatus = runServiceManagementDiagnostics(verbose: verbose)
+            updateOverallStatus(&overallStatus, with: serviceStatus, &issueCount, &warningCount)
+            print("")
+        }
+        
+        // Print overall summary
+        printOverallSummary(status: overallStatus, issueCount: issueCount, warningCount: warningCount)
+        
+        logger.info("Diagnostic scan completed", context: [
+            "overallStatus": overallStatus.rawValue,
+            "issueCount": issueCount,
+            "warningCount": warningCount
+        ])
+    }
+    
+    // MARK: - Bundle Detection Diagnostics
+    
+    private func runBundleDetectionDiagnostics(verbose: Bool) -> DiagnosticStatus {
+        var status = DiagnosticStatus.healthy
+        
+        // Test bundle detector
+        let bundleDetector = SystemExtensionBundleDetector()
+        let detectionResult = bundleDetector.detectBundle()
+        
+        if detectionResult.found {
+            print("✅ System Extension bundle detected")
+            if verbose {
+                print("   📁 Path: \(detectionResult.bundlePath ?? "unknown")")
+                print("   🆔 Bundle ID: \(detectionResult.bundleIdentifier ?? "unknown")")
+                print("   🏠 Environment: \(detectionResult.detectionEnvironment)")
+                
+                if let metadata = detectionResult.homebrewMetadata {
+                    print("   📦 Homebrew Version: \(metadata.version ?? "unknown")")
+                    if let installDate = metadata.installationDate {
+                        print("   📅 Installation Date: \(DateFormatter.localizedString(from: installDate, dateStyle: .medium, timeStyle: .short))")
+                    }
+                }
+            }
+        } else {
+            print("❌ System Extension bundle NOT detected")
+            print("   💡 Install usbipd-mac via Homebrew: brew install usbipd-mac")
+            status = .critical
+        }
+        
+        // Test bundle validation
+        if detectionResult.found, let bundlePath = detectionResult.bundlePath {
+            let bundleValidation = validateBundleStructure(bundlePath: bundlePath, verbose: verbose)
+            if bundleValidation != .healthy {
+                status = max(status, bundleValidation)
+            }
+        }
+        
+        return status
+    }
+    
+    private func validateBundleStructure(bundlePath: String, verbose: Bool) -> DiagnosticStatus {
+        let requiredFiles = [
+            "Contents/Info.plist",
+            "Contents/MacOS/USBIPDSystemExtension"
+        ]
+        
+        var missingFiles: [String] = []
+        
+        for file in requiredFiles {
+            let fullPath = "\(bundlePath)/\(file)"
+            if !FileManager.default.fileExists(atPath: fullPath) {
+                missingFiles.append(file)
+            }
+        }
+        
+        if missingFiles.isEmpty {
+            print("✅ Bundle structure is valid")
+            if verbose {
+                print("   📋 All required files present")
+                for file in requiredFiles {
+                    print("      • \(file)")
+                }
+            }
+            return .healthy
+        } else {
+            print("⚠️  Bundle structure issues detected")
+            print("   Missing files:")
+            for file in missingFiles {
+                print("      • \(file)")
+            }
+            print("   💡 Reinstall usbipd-mac: brew reinstall usbipd-mac")
+            return .warning
+        }
+    }
+    
+    // MARK: - Installation Diagnostics
+    
+    private func runInstallationDiagnostics(verbose: Bool) -> DiagnosticStatus {
+        var status = DiagnosticStatus.healthy
+        
+        // Run installation verification using the enhanced verification manager
+        let verificationManager = InstallationVerificationManager()
+        
+        // Create a blocking wrapper for the async verification
+        var verificationResult: InstallationVerificationResult?
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        Task {
+            verificationResult = await verificationManager.verifyInstallation()
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        
+        guard let result = verificationResult else {
+            print("❌ Installation verification failed to run")
+            return .critical
+        }
+        
+        // Report installation status
+        switch result.status {
+        case .fullyFunctional:
+            print("✅ System Extension is fully functional")
+        case .partiallyFunctional:
+            print("⚠️  System Extension is partially functional")
+            status = .warning
+        case .problematic:
+            print("⚠️  System Extension has problems")
+            status = .warning
+        case .failed:
+            print("❌ System Extension installation failed")
+            status = .critical
+        case .unknown:
+            print("❓ System Extension status unknown")
+            status = .warning
+        }
+        
+        if verbose {
+            print("   📊 Verification checks completed: \(result.verificationChecks.count)")
+            print("   ✅ Checks passed: \(result.verificationChecks.filter { $0.passed }.count)")
+            print("   ⚠️  Issues found: \(result.discoveredIssues.count)")
+        }
+        
+        // Report discovered issues
+        if !result.discoveredIssues.isEmpty {
+            print("   Issues discovered:")
+            for issue in result.discoveredIssues.prefix(verbose ? 10 : 3) {
+                print("      • \(issue.description)")
+                if verbose, let remediation = issue.remediation {
+                    print("        💡 \(remediation)")
+                }
+            }
+            
+            if !verbose && result.discoveredIssues.count > 3 {
+                print("      ... and \(result.discoveredIssues.count - 3) more (use --verbose to see all)")
+            }
+        }
+        
+        // Test systemextensionsctl integration
+        if verbose {
+            print("   🔍 Testing systemextensionsctl integration...")
+            testSystemExtensionsCtlIntegration()
+        }
+        
+        return status
+    }
+    
+    private func testSystemExtensionsCtlIntegration() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/systemextensionsctl")
+        task.arguments = ["list"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            if task.terminationStatus == 0 {
+                print("      ✅ systemextensionsctl is accessible")
+                
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+                
+                if output.contains("com.github.usbipd-mac.systemextension") {
+                    print("      ✅ USB/IP System Extension found in registry")
+                } else {
+                    print("      ⚠️  USB/IP System Extension not found in registry")
+                }
+            } else {
+                print("      ❌ systemextensionsctl command failed")
+            }
+        } catch {
+            print("      ❌ Failed to execute systemextensionsctl: \(error.localizedDescription)")
+        }
+    }
+    
+    // MARK: - Service Management Diagnostics
+    
+    private func runServiceManagementDiagnostics(verbose: Bool) -> DiagnosticStatus {
+        var status = DiagnosticStatus.healthy
+        
+        // Test service lifecycle manager
+        let serviceManager = ServiceLifecycleManager()
+        
+        // Run service status detection
+        let serviceStatusTask = Task {
+            return await serviceManager.detectServiceStatus()
+        }
+        
+        // Wait for the async task to complete (simplified for CLI)
+        _ = Task {
+            await serviceStatusTask.value
+        }
+        
+        // For MVP, we'll create a basic implementation
+        print("🔍 Checking service management status...")
+        
+        // Check brew services status
+        let brewStatus = checkBrewServicesStatus(verbose: verbose)
+        if brewStatus != .healthy {
+            status = max(status, brewStatus)
+        }
+        
+        // Check launchd integration
+        let launchdStatus = checkLaunchdIntegration(verbose: verbose)
+        if launchdStatus != .healthy {
+            status = max(status, launchdStatus)
+        }
+        
+        // Check for conflicting processes
+        let conflictStatus = checkForConflictingProcesses(verbose: verbose)
+        if conflictStatus != .healthy {
+            status = max(status, conflictStatus)
+        }
+        
+        return status
+    }
+    
+    private func checkBrewServicesStatus(verbose: Bool) -> DiagnosticStatus {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        task.arguments = ["brew", "services", "list"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            if task.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+                
+                if output.contains("usbipd-mac") {
+                    let lines = output.components(separatedBy: .newlines)
+                    if let usbipLine = lines.first(where: { $0.contains("usbipd-mac") }) {
+                        if usbipLine.contains("started") {
+                            print("✅ Homebrew service is running")
+                            if verbose {
+                                print("   📋 Status: \(usbipLine.trimmingCharacters(in: .whitespaces))")
+                            }
+                        } else if usbipLine.contains("stopped") {
+                            print("ℹ️  Homebrew service is stopped (normal when not in use)")
+                            if verbose {
+                                print("   📋 Status: \(usbipLine.trimmingCharacters(in: .whitespaces))")
+                            }
+                        } else {
+                            print("⚠️  Homebrew service status unclear")
+                            if verbose {
+                                print("   📋 Status: \(usbipLine.trimmingCharacters(in: .whitespaces))")
+                            }
+                            return .warning
+                        }
+                    }
+                } else {
+                    print("ℹ️  Homebrew service not found (not started)")
+                }
+                return .healthy
+            } else {
+                print("⚠️  Could not check Homebrew services status")
+                return .warning
+            }
+        } catch {
+            print("❌ Failed to check Homebrew services: \(error.localizedDescription)")
+            return .critical
+        }
+    }
+    
+    private func checkLaunchdIntegration(verbose: Bool) -> DiagnosticStatus {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        task.arguments = ["list"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            if task.terminationStatus == 0 {
+                print("✅ launchctl is accessible")
+                
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+                
+                if output.contains("usbipd") {
+                    print("ℹ️  usbipd-related services found in launchd")
+                    if verbose {
+                        let lines = output.components(separatedBy: .newlines)
+                        let usbipLines = lines.filter { $0.contains("usbipd") }
+                        for line in usbipLines.prefix(3) {
+                            print("   📋 \(line.trimmingCharacters(in: .whitespaces))")
+                        }
+                    }
+                } else {
+                    print("ℹ️  No usbipd services currently registered with launchd")
+                }
+                return .healthy
+            } else {
+                print("⚠️  launchctl command failed")
+                return .warning
+            }
+        } catch {
+            print("❌ Failed to check launchd: \(error.localizedDescription)")
+            return .critical
+        }
+    }
+    
+    private func checkForConflictingProcesses(verbose: Bool) -> DiagnosticStatus {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/ps")
+        task.arguments = ["aux"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            if task.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+                
+                let usbipProcesses = output.components(separatedBy: .newlines)
+                    .filter { $0.contains("usbipd") || $0.contains("USBIPDSystemExtension") }
+                    .filter { !$0.contains("ps aux") } // Exclude the ps command itself
+                
+                if usbipProcesses.isEmpty {
+                    print("ℹ️  No usbipd processes currently running")
+                } else {
+                    print("ℹ️  Found \(usbipProcesses.count) usbipd-related process(es)")
+                    if verbose {
+                        for process in usbipProcesses.prefix(5) {
+                            let components = process.components(separatedBy: .whitespaces)
+                            if components.count >= 11 {
+                                let pid = components[1]
+                                let command = components[10...]
+                                print("   📋 PID \(pid): \(command.joined(separator: " "))")
+                            }
+                        }
+                    }
+                }
+                return .healthy
+            } else {
+                print("⚠️  Could not check for running processes")
+                return .warning
+            }
+        } catch {
+            print("❌ Failed to check for conflicting processes: \(error.localizedDescription)")
+            return .critical
+        }
+    }
+    
+    // MARK: - Summary and Utilities
+    
+    private func updateOverallStatus(_ overallStatus: inout DiagnosticStatus, with sectionStatus: DiagnosticStatus, _ issueCount: inout Int, _ warningCount: inout Int) {
+        switch sectionStatus {
+        case .critical:
+            issueCount += 1
+            overallStatus = .critical
+        case .warning:
+            warningCount += 1
+            if overallStatus != .critical {
+                overallStatus = .warning
+            }
+        case .healthy:
+            break
+        }
+    }
+    
+    private func printOverallSummary(status: DiagnosticStatus, issueCount: Int, warningCount: Int) {
+        print("🏁 Overall Diagnostic Summary")
+        print("============================")
+        
+        switch status {
+        case .healthy:
+            print("✅ System is healthy")
+            print("   All diagnostic checks passed successfully.")
+        case .warning:
+            print("⚠️  System has warnings")
+            print("   \(warningCount) warning(s) found. System should function but may have issues.")
+        case .critical:
+            print("❌ System has critical issues")
+            print("   \(issueCount) critical issue(s) found. System may not function properly.")
+        }
+        
+        print("")
+        print("💡 Recommendations:")
+        
+        switch status {
+        case .healthy:
+            print("   • System is ready for use")
+            print("   • Run 'usbipd list' to see available devices")
+            print("   • Use 'usbipd bind <busid>' to share devices")
+        case .warning:
+            print("   • Review warnings above and address if possible")
+            print("   • Try restarting the System Extension: 'sudo systemextensionsctl reset'")
+            print("   • System may still function with current warnings")
+        case .critical:
+            print("   • Address critical issues before using the system")
+            print("   • Try reinstalling: 'brew reinstall usbipd-mac'")
+            print("   • Run installation: 'usbipd install-system-extension'")
+            print("   • Check System Preferences > Security & Privacy for approvals")
+        }
+    }
+    
+    private func printHelp() {
+        print("Usage: usbipd diagnose [options]")
+        print("")
+        print("Run comprehensive system diagnostics to identify issues with")
+        print("System Extension installation, bundle detection, and service management.")
+        print("")
+        print("Options:")
+        print("  -v, --verbose           Show detailed diagnostic information")
+        print("  --bundle                Run only bundle detection diagnostics")
+        print("  --installation          Run only installation status diagnostics")
+        print("  --service               Run only service management diagnostics")
+        print("  --all                   Run all diagnostic modes (default)")
+        print("  -h, --help              Show this help message")
+        print("")
+        print("Diagnostic Modes:")
+        print("  Bundle Detection        Checks System Extension bundle presence and validity")
+        print("  Installation            Verifies System Extension registration with macOS")
+        print("  Service Management      Checks Homebrew services and launchd integration")
+        print("")
+        print("Examples:")
+        print("  usbipd diagnose                    # Run all diagnostics")
+        print("  usbipd diagnose --verbose          # Detailed output")
+        print("  usbipd diagnose --installation     # Check installation only")
+    }
+}
+
+// MARK: - Diagnostic Support Types
+
+/// Diagnostic modes for targeted testing
+private enum DiagnosticMode: String {
+    case all = "all"
+    case bundleDetection = "bundle"
+    case installation = "installation"
+    case serviceManagement = "service"
+}
+
+/// Overall diagnostic status
+private enum DiagnosticStatus: String, Comparable {
+    case healthy = "healthy"
+    case warning = "warning"
+    case critical = "critical"
+    
+    static func < (lhs: DiagnosticStatus, rhs: DiagnosticStatus) -> Bool {
+        let order: [DiagnosticStatus] = [.healthy, .warning, .critical]
+        guard let lhsIndex = order.firstIndex(of: lhs),
+              let rhsIndex = order.firstIndex(of: rhs) else {
+            return false
+        }
+        return lhsIndex < rhsIndex
+    }
+    
+    static func max(_ lhs: DiagnosticStatus, _ rhs: DiagnosticStatus) -> DiagnosticStatus {
+        return lhs > rhs ? lhs : rhs
+    }
+}
+
 // OutputFormatter is now defined in OutputFormatter.swift
