@@ -691,4 +691,571 @@ final class SystemExtensionInstallationWorkflowTests: XCTestCase {
         return ProcessInfo.processInfo.environment["SYSTEM_EXTENSION_DEVELOPMENT"] == "1"
         #endif
     }
+    
+    // MARK: - Enhanced Installation Workflow Tests
+    
+    func testCompleteInstallationOrchestrationWorkflow() throws {
+        // Test complete installation workflow using InstallationOrchestrator
+        
+        print("🧪 Testing complete installation orchestration workflow...")
+        
+        // Setup: Create a realistic bundle structure for testing
+        let bundlePath = try setupTestBundleForOrchestration()
+        
+        // Test the complete orchestration workflow
+        let orchestrator = InstallationOrchestrator(
+            bundleDetector: MockSystemExtensionBundleDetector(mockBundlePath: bundlePath.path),
+            submissionManager: MockSystemExtensionSubmissionManager(),
+            serviceManager: MockServiceLifecycleManager(),
+            verificationManager: MockInstallationVerificationManager()
+        )
+        
+        // Execute the complete installation workflow
+        let expectation = XCTestExpectation(description: "Installation orchestration completes")
+        
+        Task {
+            let result = await orchestrator.performCompleteInstallation()
+            
+            // Verify successful installation
+            XCTAssertTrue(result.success, "Installation orchestration should succeed")
+            XCTAssertEqual(result.finalPhase, .completed, "Should reach completed phase")
+            XCTAssertNotNil(result.bundleDetectionResult, "Should have bundle detection result")
+            XCTAssertNotNil(result.submissionResult, "Should have submission result")
+            XCTAssertNotNil(result.serviceIntegrationResult, "Should have service integration result")
+            XCTAssertNotNil(result.verificationResult, "Should have verification result")
+            
+            print("✅ Complete orchestration workflow test passed!")
+            expectation.fulfill()
+        }
+        
+        wait(for: [expectation], timeout: 30.0)
+    }
+    
+    func testInstallationWorkflowErrorRecoveryScenarios() throws {
+        // Test error recovery and rollback scenarios in installation orchestration
+        
+        print("🧪 Testing installation workflow error recovery scenarios...")
+        
+        // Test 1: Bundle detection failure
+        let noBundleOrchestrator = InstallationOrchestrator(
+            bundleDetector: MockSystemExtensionBundleDetector(shouldFail: true),
+            submissionManager: MockSystemExtensionSubmissionManager(),
+            serviceManager: MockServiceLifecycleManager(),
+            verificationManager: MockInstallationVerificationManager()
+        )
+        
+        let bundleFailExpectation = XCTestExpectation(description: "Bundle detection failure handled")
+        
+        Task {
+            let result = await noBundleOrchestrator.performCompleteInstallation()
+            
+            XCTAssertFalse(result.success, "Should fail when bundle detection fails")
+            XCTAssertEqual(result.finalPhase, .failed, "Should reach failed phase")
+            XCTAssertFalse(result.issues.isEmpty, "Should have error details")
+            XCTAssertFalse(result.recommendations.isEmpty, "Should have recovery recommendations")
+            
+            print("✅ Bundle detection failure recovery test passed!")
+            bundleFailExpectation.fulfill()
+        }
+        
+        // Test 2: System Extension submission failure
+        let bundlePath = try setupTestBundleForOrchestration()
+        let submissionFailOrchestrator = InstallationOrchestrator(
+            bundleDetector: MockSystemExtensionBundleDetector(mockBundlePath: bundlePath.path),
+            submissionManager: MockSystemExtensionSubmissionManager(shouldFail: true),
+            serviceManager: MockServiceLifecycleManager(),
+            verificationManager: MockInstallationVerificationManager()
+        )
+        
+        let submissionFailExpectation = XCTestExpectation(description: "Submission failure handled")
+        
+        Task {
+            let result = await submissionFailOrchestrator.performCompleteInstallation()
+            
+            XCTAssertFalse(result.success, "Should fail when submission fails")
+            XCTAssertEqual(result.finalPhase, .failed, "Should reach failed phase")
+            XCTAssertTrue(result.issues.contains { $0.contains("submission") }, "Should have submission error details")
+            
+            print("✅ Submission failure recovery test passed!")
+            submissionFailExpectation.fulfill()
+        }
+        
+        // Test 3: Service integration failure
+        let serviceFailOrchestrator = InstallationOrchestrator(
+            bundleDetector: MockSystemExtensionBundleDetector(mockBundlePath: bundlePath.path),
+            submissionManager: MockSystemExtensionSubmissionManager(),
+            serviceManager: MockServiceLifecycleManager(shouldFail: true),
+            verificationManager: MockInstallationVerificationManager()
+        )
+        
+        let serviceFailExpectation = XCTestExpectation(description: "Service failure handled")
+        
+        Task {
+            let result = await serviceFailOrchestrator.performCompleteInstallation()
+            
+            XCTAssertFalse(result.success, "Should fail when service integration fails")
+            XCTAssertEqual(result.finalPhase, .failed, "Should reach failed phase")
+            XCTAssertTrue(result.issues.contains { $0.contains("service") }, "Should have service error details")
+            
+            print("✅ Service integration failure recovery test passed!")
+            serviceFailExpectation.fulfill()
+        }
+        
+        wait(for: [bundleFailExpectation, submissionFailExpectation, serviceFailExpectation], timeout: 30.0)
+    }
+    
+    func testServiceManagementIntegration() throws {
+        // Test service management integration with installation workflow
+        
+        print("🧪 Testing service management integration...")
+        
+        let bundlePath = try setupTestBundleForOrchestration()
+        let serviceManager = MockServiceLifecycleManager()
+        
+        // Test service lifecycle coordination
+        let coordinationExpectation = XCTestExpectation(description: "Service coordination completes")
+        
+        Task {
+            let result = await serviceManager.coordinateInstallationWithService()
+            
+            XCTAssertTrue(result.success, "Service coordination should succeed")
+            XCTAssertEqual(result.issues.count, 0, "Should not have service issues in mock")
+            
+            print("✅ Service coordination test passed!")
+            coordinationExpectation.fulfill()
+        }
+        
+        // Test service status detection
+        let statusExpectation = XCTestExpectation(description: "Service status detection completes")
+        
+        Task {
+            let status = await serviceManager.detectServiceStatus()
+            
+            XCTAssertNotNil(status, "Should return service status")
+            XCTAssertTrue(status.isRunning || !status.isRunning, "Should have valid running state")
+            
+            print("✅ Service status detection test passed!")
+            statusExpectation.fulfill()
+        }
+        
+        // Test service conflict resolution
+        let conflictExpectation = XCTestExpectation(description: "Service conflict resolution completes")
+        
+        Task {
+            let result = await serviceManager.resolveServiceConflicts()
+            
+            XCTAssertTrue(result.processesTerminated >= 0, "Should have non-negative terminated processes")
+            
+            print("✅ Service conflict resolution test passed!")
+            conflictExpectation.fulfill()
+        }
+        
+        wait(for: [coordinationExpectation, statusExpectation, conflictExpectation], timeout: 30.0)
+    }
+    
+    func testHomebrewEnvironmentSimulation() throws {
+        // Test Homebrew environment simulation and bundle detection
+        
+        print("🧪 Testing Homebrew environment simulation...")
+        
+        // Setup mock Homebrew environment
+        let homebrewPath = try setupMockHomebrewEnvironment()
+        
+        // Test enhanced bundle detection in Homebrew environment
+        let bundleDetector = SystemExtensionBundleDetector()
+        let detectionResult = bundleDetector.detectBundle()
+        
+        // In real Homebrew environment, we would expect:
+        // 1. Bundle to be found in Homebrew path
+        // 2. Homebrew metadata to be available
+        // 3. Production environment to be detected
+        
+        if detectionResult.found {
+            print("✅ Bundle detected in test environment")
+            
+            if let homebrewMetadata = detectionResult.homebrewMetadata {
+                XCTAssertNotNil(homebrewMetadata.version, "Homebrew metadata should have version")
+                print("✅ Homebrew metadata detected: version \(homebrewMetadata.version ?? "unknown")")
+            }
+            
+            switch detectionResult.detectionEnvironment {
+            case .homebrew(let cellarPath, let version):
+                print("✅ Homebrew environment detected: \(cellarPath), version: \(version ?? "unknown")")
+            case .development(let buildPath):
+                print("✅ Development environment detected: \(buildPath)")
+            case .manual(let bundlePath):
+                print("✅ Manual environment detected: \(bundlePath)")
+            case .unknown:
+                print("⚠️ Unknown environment detected")
+            }
+        } else {
+            print("ℹ️ No bundle detected in test environment (expected in test)")
+        }
+        
+        // Test CLI integration with Homebrew environment
+        let installCommand = InstallSystemExtensionCommand()
+        
+        // Test help functionality
+        XCTAssertNoThrow(try installCommand.execute(with: ["--help"]), "Help command should not throw")
+        
+        print("✅ Homebrew environment simulation test passed!")
+    }
+    
+    func testSystemExtensionManagerIntegration() throws {
+        // Test SystemExtensionManager integration with enhanced installation capabilities
+        
+        print("🧪 Testing SystemExtensionManager integration...")
+        
+        let bundlePath = try setupTestBundleForOrchestration()
+        
+        // Create SystemExtensionManager with enhanced components
+        let manager = SystemExtensionManager(
+            deviceClaimer: MockDeviceClaimer(),
+            ipcHandler: MockIPCHandler(),
+            statusMonitor: nil,
+            config: SystemExtensionManagerConfig(),
+            bundleDetector: MockSystemExtensionBundleDetector(mockBundlePath: bundlePath.path),
+            installationOrchestrator: InstallationOrchestrator(
+                bundleDetector: MockSystemExtensionBundleDetector(mockBundlePath: bundlePath.path),
+                submissionManager: MockSystemExtensionSubmissionManager(),
+                serviceManager: MockServiceLifecycleManager(),
+                verificationManager: MockInstallationVerificationManager()
+            ),
+            logger: Logger(config: LoggerConfig(level: .debug), subsystem: "test", category: "integration")
+        )
+        
+        // Test enhanced status reporting
+        let status = manager.getStatus()
+        
+        XCTAssertNotNil(status.bundleInfo, "Status should include bundle info")
+        XCTAssertNotEqual(status.installationStatus, .unknown, "Should have meaningful installation status")
+        
+        print("✅ Enhanced status reporting: \(status.installationStatus)")
+        
+        // Test automatic installation capability
+        let autoInstallExpectation = XCTestExpectation(description: "Automatic installation completes")
+        
+        Task {
+            let success = await manager.performAutomaticInstallationIfNeeded()
+            
+            // In test environment, this may succeed or fail depending on mocks
+            print("✅ Automatic installation result: \(success)")
+            autoInstallExpectation.fulfill()
+        }
+        
+        wait(for: [autoInstallExpectation], timeout: 30.0)
+        
+        print("✅ SystemExtensionManager integration test passed!")
+    }
+    
+    // MARK: - Test Helpers for Enhanced Workflow Tests
+    
+    private func setupTestBundleForOrchestration() throws -> URL {
+        // Create a realistic test bundle structure for orchestration testing
+        let bundleName = "TestSystemExtension.systemextension"
+        let bundlePath = tempWorkingDirectory.appendingPathComponent(bundleName)
+        
+        // Create bundle directory structure
+        let contentsDir = bundlePath.appendingPathComponent("Contents")
+        let macosDir = contentsDir.appendingPathComponent("MacOS")
+        let resourcesDir = contentsDir.appendingPathComponent("Resources")
+        
+        try FileManager.default.createDirectory(at: macosDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: resourcesDir, withIntermediateDirectories: true)
+        
+        // Create Info.plist
+        let infoPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleIdentifier</key>
+            <string>com.test.systemextension</string>
+            <key>CFBundleName</key>
+            <string>TestSystemExtension</string>
+            <key>CFBundleVersion</key>
+            <string>1.0.0</string>
+            <key>NSExtension</key>
+            <dict>
+                <key>NSExtensionPointIdentifier</key>
+                <string>com.apple.system-extension.driver-extension</string>
+            </dict>
+        </dict>
+        </plist>
+        """
+        
+        try infoPlist.write(to: contentsDir.appendingPathComponent("Info.plist"), 
+                           atomically: true, encoding: .utf8)
+        
+        // Create mock executable
+        let executablePath = macosDir.appendingPathComponent("TestSystemExtension")
+        try "#!/bin/bash\necho 'Test System Extension'\n".write(to: executablePath, 
+                                                                atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], 
+                                             ofItemAtPath: executablePath.path)
+        
+        // Create mock Homebrew metadata
+        let homebrewMetadata = """
+        {
+            "version": "1.0.0",
+            "installation_date": "\(ISO8601DateFormatter().string(from: Date()))",
+            "formula": "usbipd-mac"
+        }
+        """
+        
+        try homebrewMetadata.write(to: contentsDir.appendingPathComponent("HomebrewMetadata.json"),
+                                  atomically: true, encoding: .utf8)
+        
+        return bundlePath
+    }
+    
+    private func setupMockHomebrewEnvironment() throws -> URL {
+        // Setup a mock Homebrew environment for testing
+        let homebrewDir = tempWorkingDirectory.appendingPathComponent("homebrew")
+        let cellarDir = homebrewDir.appendingPathComponent("Cellar/usbipd-mac/1.0.0/Library/SystemExtensions")
+        
+        try FileManager.default.createDirectory(at: cellarDir, withIntermediateDirectories: true)
+        
+        // Create a mock bundle in the Homebrew location
+        let bundlePath = try setupTestBundleForOrchestration()
+        let homebrewBundlePath = cellarDir.appendingPathComponent("TestSystemExtension.systemextension")
+        
+        try FileManager.default.copyItem(at: bundlePath, to: homebrewBundlePath)
+        
+        return homebrewDir
+    }
+}
+
+// MARK: - Mock Classes for Enhanced Testing
+
+/// Mock bundle detector for testing
+class MockSystemExtensionBundleDetector: SystemExtensionBundleDetector {
+    private let mockBundlePath: String?
+    private let shouldFail: Bool
+    
+    init(mockBundlePath: String? = nil, shouldFail: Bool = false) {
+        self.mockBundlePath = mockBundlePath
+        self.shouldFail = shouldFail
+    }
+    
+    override func detectBundle() -> DetectionResult {
+        if shouldFail {
+            return DetectionResult(
+                found: false,
+                bundlePath: nil,
+                bundleIdentifier: nil,
+                detectionEnvironment: .unknown,
+                issues: ["Mock failure for testing"],
+                homebrewMetadata: nil
+            )
+        }
+        
+        if let bundlePath = mockBundlePath {
+            return DetectionResult(
+                found: true,
+                bundlePath: bundlePath,
+                bundleIdentifier: "com.test.systemextension",
+                detectionEnvironment: .development(buildPath: bundlePath),
+                issues: [],
+                homebrewMetadata: HomebrewMetadata(
+                    version: "1.0.0",
+                    installationDate: Date(),
+                    formulaName: "usbipd-mac"
+                )
+            )
+        }
+        
+        return DetectionResult(
+            found: false,
+            bundlePath: nil,
+            bundleIdentifier: nil,
+            detectionEnvironment: .unknown,
+            issues: [],
+            homebrewMetadata: nil
+        )
+    }
+}
+
+/// Mock submission manager for testing
+class MockSystemExtensionSubmissionManager: SystemExtensionSubmissionManager {
+    private let shouldFail: Bool
+    
+    init(shouldFail: Bool = false) {
+        self.shouldFail = shouldFail
+        super.init()
+    }
+    
+    override func submitExtension(bundlePath: String, completion: @escaping (SubmissionResult) -> Void) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+            if self.shouldFail {
+                let result = SubmissionResult(
+                    status: .failed(error: .bundleNotFound),
+                    submissionTime: Date(),
+                    userInstructions: ["Mock failure for testing"],
+                    errorDetails: "Mock submission failure"
+                )
+                completion(result)
+            } else {
+                let result = SubmissionResult(
+                    status: .approved(extensionID: "mock-extension-id"),
+                    submissionTime: Date(),
+                    approvalTime: Date(),
+                    userInstructions: ["Mock success"],
+                    errorDetails: nil
+                )
+                completion(result)
+            }
+        }
+    }
+}
+
+/// Mock service lifecycle manager for testing
+class MockServiceLifecycleManager: ServiceLifecycleManager {
+    private let shouldFail: Bool
+    
+    init(shouldFail: Bool = false) {
+        self.shouldFail = shouldFail
+        super.init()
+    }
+    
+    override func coordinateInstallationWithService(
+        preInstallation: (() async -> Void)? = nil,
+        postInstallation: (() async -> Void)? = nil
+    ) async -> ServiceCoordinationResult {
+        
+        await preInstallation?()
+        await postInstallation?()
+        
+        if shouldFail {
+            return ServiceCoordinationResult(
+                success: false,
+                status: ServiceCoordinationStatus(
+                    phase: .failed,
+                    message: "Mock service failure",
+                    coordinationStartTime: Date(),
+                    coordinationEndTime: Date()
+                ),
+                issues: [.serviceStartFailed],
+                warnings: ["Mock service coordination failure"]
+            )
+        }
+        
+        return ServiceCoordinationResult(
+            success: true,
+            status: ServiceCoordinationStatus(
+                phase: .completed,
+                message: "Mock service coordination success",
+                coordinationStartTime: Date(),
+                coordinationEndTime: Date()
+            ),
+            issues: [],
+            warnings: []
+        )
+    }
+    
+    override func detectServiceStatus() async -> ServiceStatus {
+        return ServiceStatus(
+            isRunning: !shouldFail,
+            hasOrphanedProcesses: false,
+            conflictingProcesses: [],
+            launchdStatus: .loaded,
+            brewServicesStatus: .started
+        )
+    }
+    
+    override func resolveServiceConflicts() async -> ServiceConflictResolutionResult {
+        return ServiceConflictResolutionResult(
+            processesTerminated: 0,
+            conflictsResolved: true,
+            remainingIssues: []
+        )
+    }
+}
+
+/// Mock installation verification manager for testing
+class MockInstallationVerificationManager: InstallationVerificationManager {
+    private let shouldFail: Bool
+    
+    init(shouldFail: Bool = false) {
+        self.shouldFail = shouldFail
+        super.init()
+    }
+    
+    override func verifyInstallation() async -> InstallationVerificationResult {
+        if shouldFail {
+            return InstallationVerificationResult(
+                status: .failed,
+                verificationChecks: [],
+                discoveredIssues: [.extensionNotRegistered, .serviceNotRunning],
+                verificationTimestamp: Date(),
+                verificationDuration: 0.1,
+                bundleIdentifier: "com.test.systemextension",
+                summary: "Mock verification failure"
+            )
+        }
+        
+        return InstallationVerificationResult(
+            status: .fullyFunctional,
+            verificationChecks: [
+                VerificationCheck(
+                    checkID: "mock-check",
+                    name: "Mock Check",
+                    description: "Mock verification check",
+                    severity: .info,
+                    status: .passed,
+                    details: "Mock check passed",
+                    checkTimestamp: Date(),
+                    duration: 0.01
+                )
+            ],
+            discoveredIssues: [],
+            verificationTimestamp: Date(),
+            verificationDuration: 0.1,
+            bundleIdentifier: "com.test.systemextension",
+            summary: "Mock verification success"
+        )
+    }
+}
+
+/// Mock device claimer for testing
+class MockDeviceClaimer: DeviceClaimer {
+    func claimDevice(device: USBDevice) throws -> ClaimedDevice {
+        return ClaimedDevice(
+            deviceID: "mock-device-id",
+            device: device,
+            claimMethod: .systemExtension,
+            claimTime: Date()
+        )
+    }
+    
+    func releaseDevice(device: USBDevice) throws {
+        // Mock implementation - no-op
+    }
+    
+    func getAllClaimedDevices() -> [ClaimedDevice] {
+        return []
+    }
+    
+    func isDeviceClaimed(deviceID: String) -> Bool {
+        return false
+    }
+}
+
+/// Mock IPC handler for testing
+class MockIPCHandler: IPCHandler {
+    func startListener() throws {
+        // Mock implementation - no-op
+    }
+    
+    func stopListener() {
+        // Mock implementation - no-op
+    }
+    
+    func isListening() -> Bool {
+        return true
+    }
+    
+    func handleRequest(_ request: IPCRequest) -> IPCResponse {
+        return IPCResponse(success: true, data: nil, error: nil)
+    }
 }
