@@ -8,12 +8,12 @@ The implementation leverages existing components like `SystemExtensionBundleDete
 
 ## Tasks
 
-- [-] 0. Setup git workflow and commit specs
+- [x] 0. Setup git workflow and commit specs
   - Create feature branch and commit specification documents
   - Set up proper git workflow for the implementation
   - _Requirements: All_
 
-- [ ] 0.1 Create feature branch and commit specs
+- [x] 0.1 Create feature branch and commit specs
   - Create new git branch `feature/system-extension-installation-fix` from main
   - Add and commit all spec documents (.spec-workflow/specs/system-extension-installation-fix/)
   - Git commit message: "feat: Add System Extension installation fix specification\n\nAdd comprehensive spec for fixing critical System Extension installation\nissues in Homebrew production environments:\n- Bundle detection for production paths\n- Actual System Extension registration with macOS\n- Service management integration\n- Installation verification and diagnostics"
@@ -21,12 +21,12 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing git repository structure_
   - _Requirements: All_
 
-- [ ] 1. Enhance bundle detection for production environments
+- [x] 1. Enhance bundle detection for production environments
   - Extend existing SystemExtensionBundleDetector to support Homebrew installation paths
   - Add multi-environment detection capabilities (development + production)
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 1.1 Add Homebrew path detection to SystemExtensionBundleDetector.swift
+- [x] 1.1 Add Homebrew path detection to SystemExtensionBundleDetector.swift
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift (modify existing)
   - Add `getHomebrewSearchPaths()` method to detect `/opt/homebrew/Cellar/usbipd-mac/*/Library/SystemExtensions/`
   - Add `detectProductionBundle()` method for Homebrew-specific validation
@@ -36,7 +36,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing bundle validation logic, FileManager patterns_
   - _Requirements: 1.1, 1.2_
 
-- [ ] 1.2 Add production bundle metadata handling
+- [x] 1.2 Add production bundle metadata handling
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift (continue from 1.1)
   - Add `HomebrewMetadata` struct for parsing bundle metadata
   - Add parsing of `Contents/HomebrewMetadata.json` for version and installation info
@@ -46,7 +46,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing DetectionResult struct, JSON parsing patterns_
   - _Requirements: 1.3, 1.4_
 
-- [ ] 1.3 Create unit tests for enhanced bundle detection
+- [x] 1.3 Create unit tests for enhanced bundle detection
   - File: Tests/USBIPDCoreTests/SystemExtension/SystemExtensionBundleDetectorTests.swift (modify existing)
   - Add test cases for Homebrew path detection with mock file system
   - Add test cases for production metadata parsing
@@ -56,12 +56,12 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing test utilities, mock file system patterns_
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 2. Implement actual System Extension submission to macOS
+- [x] 2. Implement actual System Extension submission to macOS
   - Create System Extension submission manager that calls OSSystemExtensionManager.shared.submitRequest()
   - Add approval monitoring and user guidance capabilities
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 2.1 Create SystemExtensionSubmissionManager.swift
+- [x] 2.1 Create SystemExtensionSubmissionManager.swift
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionSubmissionManager.swift (new file)
   - Implement `SystemExtensionSubmissionManager` class conforming to `OSSystemExtensionRequestDelegate`
   - Add `submitExtension(bundlePath:)` method that calls `OSSystemExtensionManager.shared.submitRequest()`
@@ -72,7 +72,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: SystemExtensionInstaller patterns, Logger from Common_
   - _Requirements: 2.1, 2.2_
 
-- [ ] 2.2 Implement OSSystemExtensionRequestDelegate methods
+- [x] 2.2 Implement OSSystemExtensionRequestDelegate methods
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionSubmissionManager.swift (continue from 2.1)
   - Implement `requestNeedsUserApproval(_:)` with clear user instructions
   - Implement `request(_:didFinishWithResult:)` with completion handling
@@ -83,7 +83,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing OSSystemExtensionRequestDelegate patterns_
   - _Requirements: 2.2, 2.4, 2.5_
 
-- [ ] 2.3 Create submission result types and error handling
+- [x] 2.3 Create submission result types and error handling
   - File: Sources/USBIPDCore/SystemExtension/Installation/SystemExtensionSubmissionTypes.swift (new file)
   - Define `SystemExtensionSubmissionStatus` enum with all possible states
   - Define `SubmissionResult` struct with detailed status information
@@ -94,7 +94,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing error handling patterns from Common_
   - _Requirements: 2.3, 2.5_
 
-- [ ] 2.4 Create unit tests for SystemExtensionSubmissionManager
+- [x] 2.4 Create unit tests for SystemExtensionSubmissionManager
   - File: Tests/USBIPDCoreTests/SystemExtension/SystemExtensionSubmissionManagerTests.swift (new file)
   - Add test cases for successful submission workflow
   - Add test cases for all OSSystemExtensionError scenarios
@@ -105,12 +105,12 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing test utilities, mock patterns from test suites_
   - _Requirements: 2.1, 2.2, 2.5_
 
-- [ ] 3. Implement service management integration
+- [x] 3. Implement service management integration
   - Create service lifecycle manager for launchd integration
   - Ensure proper coordination with brew services management
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 3.1 Create ServiceLifecycleManager.swift
+- [x] 3.1 Create ServiceLifecycleManager.swift
   - File: Sources/USBIPDCore/SystemExtension/Installation/ServiceLifecycleManager.swift (new file)
   - Implement `ServiceLifecycleManager` class for launchd coordination
   - Add `integrateWithLaunchd()` method for service registration verification
@@ -121,7 +121,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Process patterns from main.swift, service management utilities_
   - _Requirements: 3.1, 3.2_
 
-- [ ] 3.2 Implement service status detection and management
+- [x] 3.2 Implement service status detection and management
   - File: Sources/USBIPDCore/SystemExtension/Installation/ServiceLifecycleManager.swift (continue from 3.1)
   - Add `detectServiceStatus()` method using launchctl and brew services commands
   - Add `resolveServiceConflicts()` method for orphaned process cleanup
@@ -131,7 +131,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Process execution patterns, existing service coordination_
   - _Requirements: 3.3, 3.4_
 
-- [ ] 3.3 Create service status types and diagnostic data
+- [x] 3.3 Create service status types and diagnostic data
   - File: Sources/USBIPDCore/SystemExtension/Installation/ServiceManagementTypes.swift (new file)
   - Define `ServiceIntegrationStatus` struct with launchd and brew services status
   - Define `ServiceIssue` enum for specific service management problems
@@ -141,7 +141,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing result and status patterns from codebase_
   - _Requirements: 3.2, 3.4_
 
-- [ ] 3.4 Create unit tests for ServiceLifecycleManager
+- [x] 3.4 Create unit tests for ServiceLifecycleManager
   - File: Tests/USBIPDCoreTests/SystemExtension/ServiceLifecycleManagerTests.swift (new file)
   - Add test cases for service status detection with mocked Process execution
   - Add test cases for service conflict resolution scenarios
@@ -151,12 +151,12 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing Process mocking patterns, test utilities_
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 4. Implement installation verification and diagnostics
+- [x] 4. Implement installation verification and diagnostics
   - Create comprehensive installation verification system
   - Add diagnostic reporting for troubleshooting
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 4.1 Create InstallationVerificationManager.swift
+- [x] 4.1 Create InstallationVerificationManager.swift
   - File: Sources/USBIPDCore/SystemExtension/Installation/InstallationVerificationManager.swift (new file)
   - Implement `InstallationVerificationManager` class for status verification
   - Add `verifyInstallation()` method using systemextensionsctl command execution
@@ -167,7 +167,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: SystemExtensionDiagnostics patterns, Process execution_
   - _Requirements: 4.1, 4.2_
 
-- [ ] 4.2 Implement systemextensionsctl integration and parsing
+- [x] 4.2 Implement systemextensionsctl integration and parsing
   - File: Sources/USBIPDCore/SystemExtension/Installation/InstallationVerificationManager.swift (continue from 4.1)
   - Add `executeSystemExtensionsCtl()` method for command execution
   - Add `parseSystemExtensionStatus()` method for output parsing
@@ -178,7 +178,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Process execution patterns, string parsing utilities_
   - _Requirements: 4.1, 4.3_
 
-- [ ] 4.3 Create installation verification types and diagnostic data
+- [x] 4.3 Create installation verification types and diagnostic data
   - File: Sources/USBIPDCore/SystemExtension/Installation/InstallationVerificationTypes.swift (new file)
   - Define `InstallationVerificationResult` struct with comprehensive status
   - Define `InstallationStatus` enum for overall functional status
@@ -189,7 +189,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing diagnostic patterns from SystemExtensionDiagnostics_
   - _Requirements: 4.2, 4.3_
 
-- [ ] 4.4 Create unit tests for InstallationVerificationManager
+- [x] 4.4 Create unit tests for InstallationVerificationManager
   - File: Tests/USBIPDCoreTests/SystemExtension/InstallationVerificationManagerTests.swift (new file)
   - Add test cases for systemextensionsctl output parsing
   - Add test cases for installation status verification
@@ -200,12 +200,12 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing test utilities, Process mocking patterns_
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 5. Create installation orchestration and integration
+- [x] 5. Create installation orchestration and integration
   - Integrate all components into unified installation workflow
   - Update CLI commands and service coordination
   - _Requirements: 5.1, 5.2_
 
-- [ ] 5.1 Create InstallationOrchestrator.swift
+- [x] 5.1 Create InstallationOrchestrator.swift
   - File: Sources/USBIPDCore/SystemExtension/Installation/InstallationOrchestrator.swift (new file)
   - Implement `InstallationOrchestrator` class coordinating all installation components
   - Add `performCompleteInstallation()` method for end-to-end installation workflow
@@ -217,7 +217,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: ServerCoordinator patterns, existing component integration_
   - _Requirements: 5.1, 5.2_
 
-- [ ] 5.2 Update CLI integration in main.swift for installation support
+- [x] 5.2 Update CLI integration in main.swift for installation support
   - File: Sources/USBIPDCLI/main.swift (modify existing)
   - Add `--install-system-extension` command line option
   - Add installation workflow integration with InstallationOrchestrator
@@ -328,6 +328,90 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - Purpose: Ensure all components work together reliably
   - _Leverage: Existing test infrastructure, CI pipeline patterns_
   - _Requirements: All_
+
+- [ ] 8.1.1 Fix USBIPDCoreTests compilation errors (Cleanup Task)
+  - File: Tests/USBIPDCoreTests/Protocol/USBRequestProcessorTests.swift (fix existing)
+  - Fix type ambiguity issues in USBSubmitProcessor initialization
+  - Resolve optional unwrapping issues in deviceCommunicator calls
+  - Update mock interface method calls to match current API
+  - Git commit message: "fix: Resolve USBRequestProcessorTests compilation errors\n\nFix pre-existing test compilation issues:\n- Resolve type ambiguity in USBSubmitProcessor initialization\n- Fix optional unwrapping for deviceCommunicator calls\n- Update mock interface method signatures\n- Restore USBRequestProcessorTests functionality"
+  - Purpose: Fix broken Protocol tests that were preventing USBIPDCoreTests execution
+  - _Leverage: Existing test patterns, mock interface updates_
+  - _Requirements: Test infrastructure cleanup_
+
+- [ ] 8.1.2 Fix SystemExtension test infrastructure (Cleanup Task)
+  - File: Tests/USBIPDCoreTests/SystemExtension/SystemExtensionBundleDetectorTests.swift (fix existing)
+  - File: Tests/USBIPDCoreTests/SystemExtension/AutomaticInstallationManagerTests.swift (fix existing)
+  - Add missing TestSuite, TestEnvironmentConfig, TestEnvironmentCapabilities imports
+  - Fix TestEnvironmentDetector usage and environment validation calls
+  - Update mock class visibility and method overrides for current API
+  - Git commit message: "fix: Restore SystemExtension test infrastructure\n\nFix pre-existing SystemExtension test issues:\n- Add missing test environment types and imports\n- Fix TestEnvironmentDetector integration\n- Update mock class inheritance and method signatures\n- Restore SystemExtensionBundleDetectorTests functionality"
+  - Purpose: Restore SystemExtension test infrastructure that was broken by API changes
+  - _Leverage: Existing TestSuite patterns, environment detection_
+  - _Requirements: Test infrastructure cleanup_
+
+- [ ] 8.1.3 Fix Device and Core test compilation errors (Cleanup Task)
+  - File: Tests/USBIPDCoreTests/Device/USBDeviceCommunicatorTransferTests.swift (fix existing)
+  - File: Tests/USBIPDCoreTests/EncodingTests.swift (fix existing)
+  - File: Tests/USBIPDCoreTests/Distribution/HomebrewInstallationTests.swift (fix existing)
+  - Fix missing type definitions (USBIPDeviceInfo, AutomaticInstallationManager)
+  - Update method signatures and enum cases to match current API
+  - Resolve mock interface method mismatches
+  - Fix class inheritance issues in mock implementations
+  - Git commit message: "fix: Resolve Device and Core test compilation errors\n\nFix pre-existing test compilation issues:\n- Add missing type definitions and imports\n- Update API calls to match current method signatures\n- Fix mock class inheritance and method implementations\n- Restore Device and Core test functionality"
+  - Purpose: Fix remaining compilation errors blocking USBIPDCoreTests execution
+  - _Leverage: Current API definitions, existing mock patterns_
+  - _Requirements: Test infrastructure cleanup_
+
+- [ ] 8.1.4 Fix CLI command compilation warnings (Cleanup Task)  
+  - File: Sources/USBIPDCLI/Commands.swift (fix existing InstallSystemExtensionCommand)
+  - Remove unreachable catch block in runAsyncInstallation() method
+  - The async function doesn't throw, so the catch block causes compiler warnings
+  - Update error handling to use Result type or proper async throwing pattern
+  - Git commit message: "fix: Remove unreachable catch block in InstallSystemExtensionCommand\n\nFix compilation warnings in CLI installation command:\n- Remove unreachable catch block in runAsyncInstallation()\n- Update async error handling pattern\n- Eliminate compiler warnings about unreachable code"
+  - Purpose: Fix compiler warnings in CLI installation command implementation
+  - _Leverage: Swift async/await patterns, Result type handling_
+  - _Requirements: Task 5.2 completed_
+
+- [ ] 8.1.5 Fix SystemExtensionBundleConfig integration (Cleanup Task)
+  - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift
+  - Fix SystemExtensionBundleConfig.from(detectionResult:) method call in main.swift
+  - Ensure proper integration between DetectionResult and SystemExtensionBundleConfig
+  - Add missing conversion logic if SystemExtensionBundleConfig doesn't exist
+  - Git commit message: "fix: Integrate SystemExtensionBundleConfig with enhanced bundle detection\n\nFix bundle configuration integration:\n- Implement SystemExtensionBundleConfig.from(detectionResult:) conversion\n- Ensure proper DetectionResult to BundleConfig mapping\n- Add support for Homebrew metadata in bundle configuration"
+  - Purpose: Fix integration between enhanced bundle detection and server configuration
+  - _Leverage: Existing bundle configuration patterns, DetectionResult structure_
+  - _Requirements: Task 1.2 completed_
+
+- [ ] 8.1.6 Add missing extension to VerificationInstallationIssue (Cleanup Task)
+  - File: Sources/USBIPDCore/SystemExtension/Installation/InstallationVerificationTypes.swift
+  - Complete implementation of remediation property for all VerificationInstallationIssue cases
+  - Some enum cases return nil for remediation - add specific recovery actions
+  - Ensure all installation issues have actionable remediation steps
+  - Git commit message: "fix: Complete VerificationInstallationIssue remediation implementations\n\nAdd missing remediation steps for installation issues:\n- Complete remediation property for all enum cases\n- Add specific recovery actions for each issue type\n- Ensure comprehensive troubleshooting guidance"
+  - Purpose: Provide complete remediation guidance for all verification issues
+  - _Leverage: Existing remediation patterns, user guidance best practices_
+  - _Requirements: Task 4.3 completed_
+
+- [ ] 8.1.7 Consolidate type naming conflicts (Cleanup Task)
+  - File: Sources/USBIPDCore/SystemExtension/Installation/InstallationOrchestrator.swift
+  - Consider renaming OrchestrationPhase, OrchestrationResult, OrchestrationError to more intuitive names
+  - The current names were used to avoid conflicts with existing InstallationPhase, InstallationResult in SystemExtensionModels.swift
+  - Evaluate if existing types should be renamed or if current orchestration types are appropriate
+  - Git commit message: "refactor: Consolidate installation type naming and reduce conflicts\n\nImprove type naming consistency:\n- Evaluate orchestration vs installation type naming\n- Reduce naming conflicts between existing and new types\n- Maintain clear semantic boundaries between components"
+  - Purpose: Improve code clarity and reduce type naming confusion
+  - _Leverage: Existing type patterns, semantic naming conventions_
+  - _Requirements: Task 5.1 completed_
+
+- [ ] 8.1.8 Validate test infrastructure restoration (Cleanup Task)
+  - Run swift test --filter USBIPDCoreTests to verify all compilation errors resolved
+  - Execute InstallationVerificationManagerTests specifically to confirm new tests work
+  - Run swift test to ensure no regressions in existing working tests
+  - Update Package.swift USBIPDCoreTests target configuration if needed
+  - Git commit message: "test: Validate restored USBIPDCoreTests infrastructure\n\nConfirm test infrastructure restoration:\n- Verify all USBIPDCoreTests compilation errors resolved\n- Validate InstallationVerificationManagerTests execution\n- Ensure no regressions in existing test suites\n- Confirm Package.swift test target configuration"
+  - Purpose: Ensure test cleanup successfully restored full test suite functionality
+  - _Leverage: Swift test execution, Package.swift configuration_
+  - _Requirements: All cleanup tasks completed_
 
 - [ ] 8.2 Update project documentation and help text
   - File: README.md, Documentation/ (modify existing)
