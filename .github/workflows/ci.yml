@@ -118,10 +118,11 @@ jobs:
       - name: 🍺 Test Homebrew Formula
         run: |
           echo "Testing Homebrew formula syntax..."
-          brew audit --new Formula/usbipd-mac.rb
-          
-          echo "Testing formula installation..."
+          # Install formula from local path first to make it available for audit
           brew install --build-from-source Formula/usbipd-mac.rb
+          
+          echo "Testing formula audit..."
+          brew audit --new usbipd-mac
           
           echo "Testing System Extension bundle creation..."
           if [ -d "/opt/homebrew/lib/usbipd-mac" ]; then
