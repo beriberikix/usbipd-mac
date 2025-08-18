@@ -497,16 +497,14 @@ update_formula() {
     fi
     
     # Update formula with actual values
-    local sed_commands="$FORMULA_FILE"
-    sed_commands=$(sed "s/VERSION_PLACEHOLDER/$VERSION/g" "$sed_commands")
-    sed_commands=$(echo "$sed_commands" | sed "s/SHA256_PLACEHOLDER/$SHA256_CHECKSUM/g")
+    sed "s/VERSION_PLACEHOLDER/$VERSION/g" "$FORMULA_FILE" | \
+        sed "s/SHA256_PLACEHOLDER/$SHA256_CHECKSUM/g" > "$temp_file"
     
     # Update System Extension placeholders if applicable
     if [ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
-        sed_commands=$(echo "$sed_commands" | sed "s/SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER/$SYSTEM_EXTENSION_CHECKSUM/g")
+        sed "s/SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER/$SYSTEM_EXTENSION_CHECKSUM/g" "$temp_file" > "$temp_file.tmp"
+        mv "$temp_file.tmp" "$temp_file"
     fi
-    
-    echo "$sed_commands" > "$temp_file"
     
     # Verify the update was successful
     local remaining_placeholders
