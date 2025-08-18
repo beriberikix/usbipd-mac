@@ -406,11 +406,34 @@ test_formula_installation() {
         ((installation_errors++))
     fi
     
+    # Check for System Extension product building
+    if grep -A 30 "def install" "$FORMULA_FILE" | grep -q "USBIPDSystemExtension"; then
+        log_success "✓ Install method includes System Extension product building"
+    else
+        log_error "✗ Install method missing System Extension product building"
+        ((installation_errors++))
+    fi
+    
     if grep -A 20 "def install" "$FORMULA_FILE" | grep -q "bin.install"; then
         log_success "✓ Install method includes binary installation"
     else
         log_error "✗ Install method missing binary installation"
         ((installation_errors++))
+    fi
+    
+    # Check for System Extension bundle creation
+    if grep -A 50 "def install" "$FORMULA_FILE" | grep -q -i "systemextension"; then
+        log_success "✓ Install method includes System Extension bundle creation"
+    else
+        log_error "✗ Install method missing System Extension bundle creation"
+        ((installation_errors++))
+    fi
+    
+    # Check for System Extension management scripts
+    if grep -A 80 "def install" "$FORMULA_FILE" | grep -q "usbipd-install-extension\|usbipd-sysext"; then
+        log_success "✓ Install method includes System Extension management commands"
+    else
+        log_warning "⚠ Install method may be missing System Extension management commands"
     fi
     
     # Clean up test formula
@@ -423,6 +446,104 @@ test_formula_installation() {
     else
         log_error "Formula installation validation failed: $installation_errors errors"
         return $EXIT_INSTALLATION_FAILED
+    fi
+}
+
+# Validate System Extension integration
+validate_system_extension_integration() {
+    log_step "Validating System Extension integration"
+    
+    local sysext_errors=0
+    
+    # Check for System Extension product in build commands
+    if grep -q "USBIPDSystemExtension" "$FORMULA_FILE"; then
+        log_success "✓ System Extension product building included"
+    else
+        log_error "✗ System Extension product building missing"
+        ((sysext_errors++))
+    fi
+    
+    # Check for System Extension bundle creation
+    if grep -i -q "systemextension" "$FORMULA_FILE"; then
+        log_success "✓ System Extension bundle creation logic found"
+    else
+        log_error "✗ System Extension bundle creation logic missing"
+        ((sysext_errors++))
+    fi
+    
+    # Check for proper bundle identifier
+    if grep -q "com.github.usbipd-mac.systemextension" "$FORMULA_FILE"; then
+        log_success "✓ System Extension bundle identifier found"
+    else
+        log_warning "⚠ System Extension bundle identifier may be missing"
+    fi
+    
+    # Check for System Extension management scripts
+    if grep -q "usbipd-install-extension\|usbipd-sysext" "$FORMULA_FILE"; then
+        log_success "✓ System Extension management commands included"
+    else
+        log_warning "⚠ System Extension management commands may be missing"
+    fi
+    
+    # Check for post_install hook
+    if grep -q "def post_install" "$FORMULA_FILE"; then
+        log_success "✓ Post-install hook found"
+        
+        # Check for developer mode detection in post_install
+        if grep -A 20 "def post_install" "$FORMULA_FILE" | grep -q "developer.*mode\|systemextensionsctl"; then
+            log_success "✓ Post-install includes developer mode detection"
+        else
+            log_warning "⚠ Post-install may be missing developer mode detection"
+        fi
+        
+        # Check for automatic installation attempt
+        if grep -A 30 "def post_install" "$FORMULA_FILE" | grep -q "automatic.*install\|extension.*install"; then
+            log_success "✓ Post-install includes automatic installation attempt"
+        else
+            log_warning "⚠ Post-install may be missing automatic installation attempt"
+        fi
+    else
+        log_warning "⚠ Formula missing post_install hook for System Extension setup"
+    fi
+    
+    # Check caveats for System Extension guidance
+    if grep -q "def caveats" "$FORMULA_FILE"; then
+        log_success "✓ Caveats method found"
+        
+        if grep -A 50 "def caveats" "$FORMULA_FILE" | grep -i -q "system.*extension\|extension.*install"; then
+            log_success "✓ Caveats include System Extension guidance"
+        else
+            log_warning "⚠ Caveats may be missing System Extension installation guidance"
+        fi
+    else
+        log_warning "⚠ Formula missing caveats for System Extension user guidance"
+    fi
+    
+    # Check for macOS version dependency (System Extensions require Big Sur+)
+    if grep -q ":macos.*big_sur\|:macos.*11" "$FORMULA_FILE"; then
+        log_success "✓ macOS Big Sur+ dependency specified for System Extension support"
+    else
+        log_error "✗ Formula missing macOS Big Sur+ dependency (required for System Extensions)"
+        ((sysext_errors++))
+    fi
+    
+    # Check service configuration for System Extension compatibility
+    if grep -q "service do" "$FORMULA_FILE"; then
+        # Check for require_root (needed for System Extension operation)
+        if grep -A 10 "service do" "$FORMULA_FILE" | grep -q "require_root true"; then
+            log_success "✓ Service requires root (compatible with System Extension)"
+        else
+            log_warning "⚠ Service may need root requirement for System Extension operation"
+        fi
+    fi
+    
+    # Report System Extension integration validation results
+    if [[ $sysext_errors -eq 0 ]]; then
+        log_success "System Extension integration validation passed"
+        return $EXIT_SUCCESS
+    else
+        log_error "System Extension integration validation failed: $sysext_errors errors"
+        return $EXIT_VALIDATION_FAILED
     fi
 }
 
@@ -556,8 +677,9 @@ VALIDATION PROCESS:
   3. Run Homebrew audit for formula compliance
   4. Validate style and best practices
   5. Test formula installation readiness
-  6. Validate checksum integrity configuration
-  7. Generate comprehensive validation report
+  6. Validate System Extension integration
+  7. Validate checksum integrity configuration
+  8. Generate comprehensive validation report
 
 This utility ensures Homebrew formula meets quality and security standards
 before publication to users.
@@ -670,6 +792,18 @@ main() {
                 log_error "Installation test failed"
             else
                 log_warning "Installation test failed (continuing due to dry-run mode)"
+            fi
+        fi
+    fi
+    
+    # System Extension integration validation
+    if [[ "$validation_exit_code" -eq $EXIT_SUCCESS ]] || [[ "$DRY_RUN" == "true" ]]; then
+        if ! validate_system_extension_integration; then
+            validation_exit_code=$EXIT_VALIDATION_FAILED
+            if [[ "$DRY_RUN" == "false" ]]; then
+                log_error "System Extension integration validation failed"
+            else
+                log_warning "System Extension integration validation failed (continuing due to dry-run mode)"
             fi
         fi
     fi

@@ -202,8 +202,8 @@ public class StatusCommand: Command {
     }
     
     private func displayAutomaticInstallationStatus(coordinator: ServerCoordinator, showDetailed: Bool) {
-        // Get automatic installation status
-        guard let installationStatus = coordinator.getAutomaticInstallationStatus() else {
+        // Get automatic installation status (disabled in current implementation)
+        // guard let installationStatus = coordinator.getAutomaticInstallationStatus() else {
             // No automatic installation available
             print("")
             print("System Extension Installation")
@@ -219,8 +219,12 @@ public class StatusCommand: Command {
             print("2. Enable automatic installation in configuration")
             print("3. Restart the daemon to detect and install System Extension")
             return
-        }
+        // }
         
+        // Remaining automatic installation status display code is commented out
+        // since AutomaticInstallationManager is not available in current implementation
+        
+        /*
         print("")
         print("System Extension Installation")
         print("============================")
@@ -361,8 +365,11 @@ public class StatusCommand: Command {
         }
         
         print("")
+        */
     }
     
+    // Function commented out since AutomaticInstallationManager is not available
+    /*
     private func getStateSymbol(for state: AutomaticInstallationManager.InstallationState) -> String {
         switch state {
         case .idle:
@@ -383,6 +390,7 @@ public class StatusCommand: Command {
             return "⏳"
         }
     }
+    */
     
     private func displaySystemExtensionLifecycleStatus(coordinator: ServerCoordinator, showDetailed: Bool) {
         let status = coordinator.getSystemExtensionStatus()

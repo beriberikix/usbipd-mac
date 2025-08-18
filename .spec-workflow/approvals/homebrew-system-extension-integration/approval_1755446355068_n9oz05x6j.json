@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755446355068_n9oz05x6j",
+  "title": "Tasks Phase: homebrew-system-extension-integration - Ready for Review",
+  "filePath": ".spec-workflow/specs/homebrew-system-extension-integration/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-17T15:59:15.068Z",
+  "category": "spec",
+  "categoryName": "homebrew-system-extension-integration",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow git workflow. Git commit at the end of each phase with helpful message. First task should create a feature branch and commit specs and create PR. Last task should ensure CI passes.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Git commit at the end of each phase with helpful message. First task should create a feature branch and commit specs and create PR. Last task should ensure CI passes.\",\n      \"timestamp\": \"2025-08-17T16:00:48.707Z\",\n      \"id\": \"comment_1755446448707_2cf1g5bzd\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Git commit at the end of each phase with helpful message. First task should create a feature branch and commit specs and create PR. Last task should ensure CI passes.\\n\\n\",\n  \"timestamp\": \"2025-08-17T16:00:55.838Z\"\n}",
+  "respondedAt": "2025-08-17T16:00:55.848Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Git commit at the end of each phase with helpful message. First task should create a feature branch and commit specs and create PR. Last task should ensure CI passes.",
+      "timestamp": "2025-08-17T16:00:48.707Z",
+      "id": "comment_1755446448707_2cf1g5bzd"
+    }
+  ]
+}
