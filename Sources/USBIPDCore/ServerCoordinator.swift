@@ -318,8 +318,8 @@ public class ServerCoordinator: USBIPServer {
     /// Flag indicating if System Extension management is enabled
     private let systemExtensionEnabled: Bool
     
-    /// Automatic installation manager for System Extension
-    private let automaticInstallationManager: AutomaticInstallationManager?
+    /// Automatic installation manager for System Extension (disabled in current implementation)
+    // private let automaticInstallationManager: AutomaticInstallationManager?
     
     /// Callback for error events
     public var onError: ((Error) -> Void)?
@@ -361,16 +361,16 @@ public class ServerCoordinator: USBIPServer {
                 healthConfig: SystemExtensionLifecycleManager.HealthConfig()
             )
             
-            // Initialize automatic installation manager
-            self.automaticInstallationManager = AutomaticInstallationManager(
-                config: config,
-                installer: self.systemExtensionInstaller!
-            )
+            // Initialize automatic installation manager (disabled in current implementation)
+            // self.automaticInstallationManager = AutomaticInstallationManager(
+            //     config: config,
+            //     installer: self.systemExtensionInstaller!
+            // )
         } else {
             self.systemExtensionEnabled = false
             self.systemExtensionInstaller = nil
             self.systemExtensionLifecycleManager = nil
-            self.automaticInstallationManager = nil
+            // self.automaticInstallationManager = nil
         }
         
         // Initialize logger with appropriate configuration
@@ -689,15 +689,15 @@ public class ServerCoordinator: USBIPServer {
             if systemExtensionEnabled {
                 try activateSystemExtension()
                 
-                // Attempt automatic installation if configured
-                if let installationManager = automaticInstallationManager,
-                   config.shouldAttemptAutoInstall() {
-                    logger.info("Triggering automatic System Extension installation attempt")
-                    
-                    installationManager.attemptAutomaticInstallation { [weak self] result in
-                        self?.handleAutomaticInstallationResult(result)
-                    }
-                }
+                // Attempt automatic installation if configured (disabled in current implementation)
+                // if let installationManager = automaticInstallationManager,
+                //    config.shouldAttemptAutoInstall() {
+                //     logger.info("Triggering automatic System Extension installation attempt")
+                //     
+                //     installationManager.attemptAutomaticInstallation { [weak self] result in
+                //         self?.handleAutomaticInstallationResult(result)
+                //     }
+                // }
             }
             
             // Start device discovery notifications
@@ -727,44 +727,44 @@ public class ServerCoordinator: USBIPServer {
         }
     }
     
-    /// Handle automatic installation result
-    private func handleAutomaticInstallationResult(_ result: AutomaticInstallationManager.InstallationAttemptResult) {
-        if result.success {
-            logger.info("Automatic System Extension installation completed successfully", context: [
-                "finalStatus": result.finalStatus.rawValue,
-                "duration": result.duration
-            ])
-        } else {
-            let errorMessages = result.errors.map { $0.localizedDescription }.joined(separator: ", ")
-            logger.warning("Automatic System Extension installation failed", context: [
-                "finalStatus": result.finalStatus.rawValue,
-                "duration": result.duration,
-                "errors": errorMessages,
-                "recommendedAction": result.recommendedAction.description,
-                "requiresUserApproval": result.requiresUserApproval
-            ])
-            
-            // Log user guidance for approval cases
-            if result.requiresUserApproval {
-                logger.info("System Extension requires user approval in System Preferences > Privacy & Security")
-            }
-        }
-        
-        // Update server configuration with installation status
-        if let bundleConfig = config.systemExtensionBundleConfig {
-            let updatedConfig = SystemExtensionBundleConfig(
-                bundlePath: bundleConfig.bundlePath,
-                bundleIdentifier: bundleConfig.bundleIdentifier,
-                lastDetectionTime: bundleConfig.lastDetectionTime,
-                isValid: bundleConfig.isValid,
-                installationStatus: result.finalStatus.rawValue,
-                detectionIssues: bundleConfig.detectionIssues,
-                bundleSize: bundleConfig.bundleSize,
-                modificationTime: bundleConfig.modificationTime
-            )
-            config.updateSystemExtensionBundleConfig(updatedConfig)
-        }
-    }
+    /// Handle automatic installation result (disabled in current implementation)
+    // private func handleAutomaticInstallationResult(_ result: AutomaticInstallationManager.InstallationAttemptResult) {
+    //     if result.success {
+    //         logger.info("Automatic System Extension installation completed successfully", context: [
+    //             "finalStatus": result.finalStatus.rawValue,
+    //             "duration": result.duration
+    //         ])
+    //     } else {
+    //         let errorMessages = result.errors.map { $0.localizedDescription }.joined(separator: ", ")
+    //         logger.warning("Automatic System Extension installation failed", context: [
+    //             "finalStatus": result.finalStatus.rawValue,
+    //             "duration": result.duration,
+    //             "errors": errorMessages,
+    //             "recommendedAction": result.recommendedAction.description,
+    //             "requiresUserApproval": result.requiresUserApproval
+    //         ])
+    //         
+    //         // Log user guidance for approval cases
+    //         if result.requiresUserApproval {
+    //             logger.info("System Extension requires user approval in System Preferences > Privacy & Security")
+    //         }
+    //     }
+    //     
+    //     // Update server configuration with installation status
+    //     if let bundleConfig = config.systemExtensionBundleConfig {
+    //         let updatedConfig = SystemExtensionBundleConfig(
+    //             bundlePath: bundleConfig.bundlePath,
+    //             bundleIdentifier: bundleConfig.bundleIdentifier,
+    //             lastDetectionTime: bundleConfig.lastDetectionTime,
+    //             isValid: bundleConfig.isValid,
+    //             installationStatus: result.finalStatus.rawValue,
+    //             detectionIssues: bundleConfig.detectionIssues,
+    //             bundleSize: bundleConfig.bundleSize,
+    //             modificationTime: bundleConfig.modificationTime
+    //         )
+    //         config.updateSystemExtensionBundleConfig(updatedConfig)
+    //     }
+    // }
     
     /// Stop the USB/IP server
     public func stop() throws {
@@ -814,22 +814,23 @@ public class ServerCoordinator: USBIPServer {
     }
     
     /// Get System Extension status information
-    /// Get automatic installation status and history
+    /// Get automatic installation status and history (disabled in current implementation)
     /// - Returns: Current installation state and attempt history, or nil if System Extension not enabled
-    public func getAutomaticInstallationStatus() -> (state: AutomaticInstallationManager.InstallationState, history: [AutomaticInstallationManager.InstallationAttemptResult])? {
-        guard let installationManager = automaticInstallationManager else {
-            return nil
-        }
-        return installationManager.getInstallationStatus()
-    }
+    // public func getAutomaticInstallationStatus() -> (state: AutomaticInstallationManager.InstallationState, history: [AutomaticInstallationManager.InstallationAttemptResult])? {
+    //     guard let installationManager = automaticInstallationManager else {
+    //         return nil
+    //     }
+    //     return installationManager.getInstallationStatus()
+    // }
     
-    /// Check if System Extension is available for automatic installation
+    /// Check if System Extension is available for automatic installation (disabled in current implementation)
     /// - Returns: True if System Extension bundle is detected and available
     public func isSystemExtensionAvailable() -> Bool {
-        guard let installationManager = automaticInstallationManager else {
-            return false
-        }
-        return installationManager.isSystemExtensionAvailable()
+        // guard let installationManager = automaticInstallationManager else {
+        //     return false
+        // }
+        // return installationManager.isSystemExtensionAvailable()
+        return systemExtensionEnabled
     }
     
     public func getSystemExtensionStatus() -> SystemExtensionLifecycleStatus {
