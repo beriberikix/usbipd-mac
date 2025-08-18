@@ -3,7 +3,7 @@ class UsbipdMac < Formula
   homepage "https://github.com/beriberikix/usbipd-mac"
   url "https://github.com/beriberikix/usbipd-mac/archive/v0.0.5.tar.gz"
   version "v0.0.5"
-  sha256 "d5558cd419c8d46bdc958064cb97f963d1ea793866414c025906ec15033512ed"
+  sha256 "a12a5d5b56017cb1e4168424e45e91e2a5218aa6f47adfee6c074cbe1a9510d2"
   license "MIT"
   
   depends_on :macos => :big_sur
@@ -49,7 +49,7 @@ class UsbipdMac < Formula
         <key>CFBundleShortVersionString</key>
         <string>#{version}</string>
         <key>CFBundleVersion</key>
-        <string>#{version.gsub(".", "")}</string>
+        <string>#{version.to_s.gsub(".", "")}</string>
         <key>CFBundleInfoDictionaryVersion</key>
         <string>6.0</string>
         <key>LSMinimumSystemVersion</key>
