@@ -294,7 +294,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         try validateFormulaSystemExtensionIntegration()
         
         // Test 1.4: Test formula installation dry run
-        try testFormulaInstallationDryRun()
+        try validateFormulaInstallationDryRun()
         
         logger.info("✅ Homebrew setup and formula validation passed")
     }
@@ -412,7 +412,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Formula System Extension integration validation passed")
     }
     
-    func testFormulaInstallationDryRun() throws {
+    private func validateFormulaInstallationDryRun() throws {
         logger.info("Testing formula installation dry run")
         
         guard let tapRepo = createdTapRepository else {
@@ -442,21 +442,21 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.info("Phase 2: Testing System Extension bundle creation and validation")
         
         // Test 2.1: Create Homebrew bundle configuration
-        try testHomebrewBundleConfigurationCreation()
+        try validateHomebrewBundleConfigurationCreation()
         
         // Test 2.2: System Extension bundle creation with Homebrew config
-        try testSystemExtensionBundleCreationWithHomebrewConfig()
+        try validateSystemExtensionBundleCreationWithHomebrewConfig()
         
         // Test 2.3: Bundle structure and content validation
-        try testBundleStructureAndContentValidation()
+        try validateBundleStructureAndContent()
         
         // Test 2.4: Bundle compatibility validation
-        try testBundleCompatibilityValidation()
+        try validateBundleCompatibility()
         
         logger.info("✅ System Extension bundle creation and validation passed")
     }
     
-    func testHomebrewBundleConfigurationCreation() throws {
+    private func validateHomebrewBundleConfigurationCreation() throws {
         logger.info("Testing Homebrew bundle configuration creation")
         
         // Create mock executable for testing
@@ -486,7 +486,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Homebrew bundle configuration creation passed")
     }
     
-    func testSystemExtensionBundleCreationWithHomebrewConfig() throws {
+    private func validateSystemExtensionBundleCreationWithHomebrewConfig() throws {
         logger.info("Testing System Extension bundle creation with Homebrew config")
         
         let mockExecutable = try createMockSystemExtensionExecutable()
@@ -520,7 +520,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ System Extension bundle creation with Homebrew config passed")
     }
     
-    func testBundleStructureAndContentValidation() throws {
+    private func validateBundleStructureAndContent() throws {
         logger.info("Testing bundle structure and content validation")
         
         // Use the bundle created in previous test
@@ -564,7 +564,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Bundle structure and content validation passed")
     }
     
-    func testBundleCompatibilityValidation() throws {
+    private func validateBundleCompatibility() throws {
         logger.info("Testing bundle compatibility validation")
         
         // Create bundle for compatibility testing
@@ -602,18 +602,18 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.info("Phase 3: Testing developer mode detection and configuration")
         
         // Test 3.1: Developer mode detection
-        try testDeveloperModeDetection()
+        try validateDeveloperModeDetection()
         
         // Test 3.2: Installation strategy determination
-        try testInstallationStrategyDetermination()
+        try validateInstallationStrategyDetermination()
         
         // Test 3.3: User guidance generation
-        try testUserGuidanceGeneration()
+        try validateUserGuidanceGeneration()
         
         logger.info("✅ Developer mode detection and configuration passed")
     }
     
-    func testDeveloperModeDetection() throws {
+    private func validateDeveloperModeDetection() throws {
         logger.info("Testing developer mode detection")
         
         // Test developer mode detection (may fail in restricted environments)
@@ -639,7 +639,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Developer mode detection passed")
     }
     
-    func testInstallationStrategyDetermination() throws {
+    private func validateInstallationStrategyDetermination() throws {
         logger.info("Testing installation strategy determination")
         
         // Test strategy determination for different scenarios
@@ -661,7 +661,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Installation strategy determination passed")
     }
     
-    func testUserGuidanceGeneration() throws {
+    private func validateUserGuidanceGeneration() throws {
         logger.info("Testing user guidance generation")
         
         // Test guidance generation for different error scenarios
@@ -689,21 +689,21 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.info("Phase 4: Testing automatic installation workflow")
         
         // Test 4.1: Bundle detection and preparation
-        try testBundleDetectionAndPreparation()
+        try validateBundleDetectionAndPreparation()
         
         // Test 4.2: Automatic installation attempt
-        try testAutomaticInstallationAttempt()
+        try validateAutomaticInstallationAttempt()
         
         // Test 4.3: Installation status monitoring
-        try testInstallationStatusMonitoring()
+        try validateInstallationStatusMonitoring()
         
         // Test 4.4: Installation progress reporting
-        try testInstallationProgressReporting()
+        try validateInstallationProgressReporting()
         
         logger.info("✅ Automatic installation workflow passed")
     }
     
-    func testBundleDetectionAndPreparation() throws {
+    private func validateBundleDetectionAndPreparation() throws {
         logger.info("Testing bundle detection and preparation")
         
         // Create a test bundle for detection
@@ -737,7 +737,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Bundle detection and preparation passed")
     }
     
-    func testAutomaticInstallationAttempt() throws {
+    private func validateAutomaticInstallationAttempt() throws {
         logger.info("Testing automatic installation attempt")
         
         // Create mock installation manager to avoid actual System Extension installation
@@ -781,7 +781,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Automatic installation attempt passed")
     }
     
-    func testInstallationStatusMonitoring() throws {
+    private func validateInstallationStatusMonitoring() throws {
         logger.info("Testing installation status monitoring")
         
         // Create mock components for status monitoring
@@ -831,7 +831,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Installation status monitoring passed")
     }
     
-    func testInstallationProgressReporting() throws {
+    private func validateInstallationProgressReporting() throws {
         logger.info("Testing installation progress reporting")
         
         // Create mock progress delegate
@@ -868,18 +868,18 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.info("Phase 5: Testing manual installation fallback workflow")
         
         // Test 5.1: Fallback instruction generation
-        try testFallbackInstructionGeneration()
+        try validateFallbackInstructionGeneration()
         
         // Test 5.2: Manual installation script validation
-        try testManualInstallationScriptValidation()
+        try validateManualInstallationScript()
         
         // Test 5.3: User guidance and troubleshooting
-        try testUserGuidanceAndTroubleshooting()
+        try validateUserGuidanceAndTroubleshooting()
         
         logger.info("✅ Manual installation fallback workflow passed")
     }
     
-    func testFallbackInstructionGeneration() throws {
+    private func validateFallbackInstructionGeneration() throws {
         logger.info("Testing fallback instruction generation")
         
         let fallbackScenarios = [
@@ -915,7 +915,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Fallback instruction generation passed")
     }
     
-    func testManualInstallationScriptValidation() throws {
+    private func validateManualInstallationScript() throws {
         logger.info("Testing manual installation script validation")
         
         // Check if manual installation script exists
@@ -946,7 +946,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Manual installation script validation passed")
     }
     
-    func testUserGuidanceAndTroubleshooting() throws {
+    private func validateUserGuidanceAndTroubleshooting() throws {
         logger.info("Testing user guidance and troubleshooting")
         
         // Test comprehensive error handling
@@ -973,18 +973,18 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.info("Phase 6: Testing System Extension integration workflow")
         
         // Test 6.1: System Extension lifecycle management
-        try testSystemExtensionLifecycleManagement()
+        try validateSystemExtensionLifecycleManagement()
         
         // Test 6.2: IPC communication validation
-        try testIPCCommunicationValidation()
+        try validateIPCCommunication()
         
         // Test 6.3: System Extension health monitoring
-        try testSystemExtensionHealthMonitoring()
+        try validateSystemExtensionHealthMonitoring()
         
         logger.info("✅ System Extension integration workflow passed")
     }
     
-    func testSystemExtensionLifecycleManagement() throws {
+    private func validateSystemExtensionLifecycleManagement() throws {
         logger.info("Testing System Extension lifecycle management")
         
         // Mock System Extension installer for lifecycle testing
@@ -1013,7 +1013,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ System Extension lifecycle management passed")
     }
     
-    func testIPCCommunicationValidation() throws {
+    private func validateIPCCommunication() throws {
         logger.info("Testing IPC communication validation")
         
         // Create mock IPC components for testing
@@ -1031,7 +1031,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ IPC communication validation passed")
     }
     
-    func testSystemExtensionHealthMonitoring() throws {
+    private func validateSystemExtensionHealthMonitoring() throws {
         logger.info("Testing System Extension health monitoring")
         
         // Mock System Extension diagnostics
@@ -1061,18 +1061,18 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.info("Phase 7: Testing cross-platform compatibility workflow")
         
         // Test 7.1: Architecture compatibility
-        try testArchitectureCompatibility()
+        try validateArchitectureCompatibility()
         
         // Test 7.2: macOS version compatibility  
-        try testMacOSVersionCompatibility()
+        try validateMacOSVersionCompatibility()
         
         // Test 7.3: Homebrew environment compatibility
-        try testHomebrewEnvironmentCompatibility()
+        try validateHomebrewEnvironmentCompatibility()
         
         logger.info("✅ Cross-platform compatibility workflow passed")
     }
     
-    func testArchitectureCompatibility() throws {
+    private func validateArchitectureCompatibility() throws {
         logger.info("Testing architecture compatibility")
         
         // Test current architecture detection
@@ -1104,7 +1104,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Architecture compatibility passed")
     }
     
-    func testMacOSVersionCompatibility() throws {
+    private func validateMacOSVersionCompatibility() throws {
         logger.info("Testing macOS version compatibility")
         
         // Test macOS version detection
@@ -1117,7 +1117,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ macOS version compatibility passed")
     }
     
-    func testHomebrewEnvironmentCompatibility() throws {
+    private func validateHomebrewEnvironmentCompatibility() throws {
         logger.info("Testing Homebrew environment compatibility")
         
         // Test Homebrew prefix detection
@@ -1137,18 +1137,18 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.info("Phase 8: Testing error recovery and troubleshooting workflow")
         
         // Test 8.1: Error categorization and handling
-        try testErrorCategorizationAndHandling()
+        try validateErrorCategorizationAndHandling()
         
         // Test 8.2: Recovery strategy implementation
-        try testRecoveryStrategyImplementation()
+        try validateRecoveryStrategyImplementation()
         
         // Test 8.3: Diagnostic information collection
-        try testDiagnosticInformationCollection()
+        try validateDiagnosticInformationCollection()
         
         logger.info("✅ Error recovery and troubleshooting workflow passed")
     }
     
-    func testErrorCategorizationAndHandling() throws {
+    private func validateErrorCategorizationAndHandling() throws {
         logger.info("Testing error categorization and handling")
         
         let errorCategories: [(InstallationError, String)] = [
@@ -1175,7 +1175,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Error categorization and handling passed")
     }
     
-    func testRecoveryStrategyImplementation() throws {
+    private func validateRecoveryStrategyImplementation() throws {
         logger.info("Testing recovery strategy implementation")
         
         // Test recovery strategies for different error types
@@ -1210,7 +1210,7 @@ final class HomebrewSystemExtensionWorkflowTests: XCTestCase, TestSuite {
         logger.debug("✅ Recovery strategy implementation passed")
     }
     
-    func testDiagnosticInformationCollection() throws {
+    private func validateDiagnosticInformationCollection() throws {
         logger.info("Testing diagnostic information collection")
         
         // Test system information collection
