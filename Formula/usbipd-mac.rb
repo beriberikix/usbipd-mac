@@ -1,9 +1,9 @@
 class UsbipdMac < Formula
   desc "macOS USB/IP protocol implementation for sharing USB devices over IP"
   homepage "https://github.com/beriberikix/usbipd-mac"
-  url "https://github.com/beriberikix/usbipd-mac/archive/VERSION_PLACEHOLDER.tar.gz"
-  version "VERSION_PLACEHOLDER"
-  sha256 "SHA256_PLACEHOLDER"
+  url "https://github.com/beriberikix/usbipd-mac/archive/v0.0.5.tar.gz"
+  version "v0.0.5"
+  sha256 "d5558cd419c8d46bdc958064cb97f963d1ea793866414c025906ec15033512ed"
   license "MIT"
   
   depends_on :macos => :big_sur
