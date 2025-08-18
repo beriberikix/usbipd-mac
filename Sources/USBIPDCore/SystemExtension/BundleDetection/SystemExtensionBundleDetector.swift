@@ -48,12 +48,20 @@ public struct SystemExtensionBundleDetector {
         self.fileManager = fileManager
     }
     
-    /// Detect System Extension bundle in .build directory structure
+    /// Detect System Extension bundle in both development and production environments
     /// - Returns: Detection result with bundle path if found
     public func detectBundle() -> DetectionResult {
         var issues: [String] = []
         
-        // Get current working directory as starting point
+        // First try production bundle detection (Homebrew)
+        let productionResult = detectProductionBundle()
+        if productionResult.found {
+            return productionResult
+        } else {
+            issues.append(contentsOf: productionResult.issues)
+        }
+        
+        // Fall back to development environment detection
         guard let currentDirectory = getCurrentDirectory() else {
             issues.append("Unable to determine current working directory")
             return DetectionResult(found: false, issues: issues)
@@ -86,8 +94,85 @@ public struct SystemExtensionBundleDetector {
             }
         }
         
-        issues.append("No valid System Extension bundle found in build directory")
+        issues.append("No valid System Extension bundle found in development or production environments")
         return DetectionResult(found: false, issues: issues)
+    }
+    
+    /// Detect System Extension bundle in production Homebrew environment
+    /// - Returns: Detection result with bundle path if found in Homebrew installation
+    public func detectProductionBundle() -> DetectionResult {
+        var issues: [String] = []
+        
+        // Get Homebrew search paths
+        let homebrewPaths = getHomebrewSearchPaths()
+        
+        if homebrewPaths.isEmpty {
+            issues.append("No Homebrew installation paths found at /opt/homebrew/Cellar/usbipd-mac/")
+            return DetectionResult(found: false, issues: issues)
+        }
+        
+        // Search each Homebrew path for System Extension bundles
+        for homebrewPath in homebrewPaths {
+            if let bundlePath = findBundleInPath(homebrewPath) {
+                // Validate the found bundle
+                let validationResult = validateBundle(at: bundlePath)
+                if validationResult.isValid {
+                    return DetectionResult(
+                        found: true,
+                        bundlePath: bundlePath.path,
+                        bundleIdentifier: Self.bundleIdentifier,
+                        issues: validationResult.issues
+                    )
+                } else {
+                    issues.append(contentsOf: validationResult.issues)
+                }
+            }
+        }
+        
+        issues.append("No valid System Extension bundle found in Homebrew installation paths")
+        return DetectionResult(found: false, issues: issues)
+    }
+    
+    /// Get list of Homebrew search paths for System Extension bundles
+    /// - Returns: Array of URLs to search for bundles in Homebrew installations
+    private func getHomebrewSearchPaths() -> [URL] {
+        var searchPaths: [URL] = []
+        
+        // Check for Homebrew installation at /opt/homebrew/Cellar/usbipd-mac/
+        let homebrewCellarPath = URL(fileURLWithPath: "/opt/homebrew/Cellar/usbipd-mac")
+        
+        guard fileManager.fileExists(atPath: homebrewCellarPath.path) else {
+            return searchPaths
+        }
+        
+        do {
+            // Get all version directories in the Cellar
+            let versionDirectories = try fileManager.contentsOfDirectory(
+                at: homebrewCellarPath,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+            
+            for versionDir in versionDirectories {
+                var isDirectory: ObjCBool = false
+                if fileManager.fileExists(atPath: versionDir.path, isDirectory: &isDirectory),
+                   isDirectory.boolValue {
+                    // Check for Library/SystemExtensions/ in this version directory
+                    let systemExtensionsPath = versionDir
+                        .appendingPathComponent("Library")
+                        .appendingPathComponent("SystemExtensions")
+                    
+                    if fileManager.fileExists(atPath: systemExtensionsPath.path) {
+                        searchPaths.append(systemExtensionsPath)
+                    }
+                }
+            }
+        } catch {
+            // If we can't read the directory, just return empty array
+            // The caller will handle this appropriately
+        }
+        
+        return searchPaths
     }
     
     /// Get current working directory
