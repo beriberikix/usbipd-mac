@@ -339,7 +339,7 @@ The implementation leverages existing components like `SystemExtensionBundleDete
   - _Leverage: Existing test patterns, mock interface updates_
   - _Requirements: Test infrastructure cleanup_
 
-- [-] 8.1.2 Fix SystemExtension test infrastructure (Cleanup Task)
+- [x] 8.1.2 Fix SystemExtension test infrastructure (Cleanup Task)
   - File: Tests/USBIPDCoreTests/SystemExtension/SystemExtensionBundleDetectorTests.swift (fix existing)
   - File: Tests/USBIPDCoreTests/SystemExtension/AutomaticInstallationManagerTests.swift (fix existing)
   - Add missing TestSuite, TestEnvironmentConfig, TestEnvironmentCapabilities imports
