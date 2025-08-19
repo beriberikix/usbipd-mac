@@ -814,16 +814,19 @@ public class InstallSystemExtensionCommand: Command, InstallationProgressReporte
     // MARK: - Private Implementation
     
     private func runAsyncInstallation(orchestrator: InstallationOrchestrator) -> OrchestrationResult {
-        var installationResult: OrchestrationResult?
-        let semaphore = DispatchSemaphore(value: 0)
+        // Use a simple capturing approach with explicit sendable closure
+        let group = DispatchGroup()
+        var capturedResult: OrchestrationResult?
         
+        group.enter()
         Task {
-            installationResult = await orchestrator.performCompleteInstallation()
-            semaphore.signal()
+            let result = await orchestrator.performCompleteInstallation()
+            capturedResult = result
+            group.leave()
         }
         
-        semaphore.wait()
-        return installationResult ?? OrchestrationResult(
+        group.wait()
+        return capturedResult ?? OrchestrationResult(
             success: false,
             finalPhase: .failed,
             issues: ["Installation did not complete"],
@@ -1076,17 +1079,19 @@ public class DiagnoseCommand: Command {
         let verificationManager = InstallationVerificationManager()
         
         // Create a blocking wrapper for the async verification
-        var verificationResult: InstallationVerificationResult?
-        let semaphore = DispatchSemaphore(value: 0)
+        let group = DispatchGroup()
+        var capturedResult: InstallationVerificationResult?
         
+        group.enter()
         Task {
-            verificationResult = await verificationManager.verifyInstallation()
-            semaphore.signal()
+            let result = await verificationManager.verifyInstallation()
+            capturedResult = result
+            group.leave()
         }
         
-        semaphore.wait()
+        group.wait()
         
-        guard let result = verificationResult else {
+        guard let result = capturedResult else {
             print("❌ Installation verification failed to run")
             return .critical
         }
