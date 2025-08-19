@@ -1,0 +1,27 @@
+{
+  "id": "approval_1755543775397_a0jwm6uos",
+  "title": "Tasks Phase: system-extension-installation-fix - Ready for Review",
+  "filePath": ".spec-workflow/specs/system-extension-installation-fix/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-18T19:02:55.397Z",
+  "category": "spec",
+  "categoryName": "system-extension-installation-fix",
+  "response": "Feedback Summary (2 comments):\n\nGeneral Comments:\n1. Follow git workflow. Add git commit messages at relevant tasks. First task should create a feature branch and commit specs. Last task should create a PR if one isn't created and ensure CI passes.\n2. Is there a way to test with a test release before getting to the last task?\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Add git commit messages at relevant tasks. First task should create a feature branch and commit specs. Last task should create a PR if one isn't created and ensure CI passes.\",\n      \"timestamp\": \"2025-08-18T19:05:46.953Z\",\n      \"id\": \"comment_1755543946953_rxtkzpcdd\"\n    },\n    {\n      \"type\": \"general\",\n      \"comment\": \"Is there a way to test with a test release before getting to the last task?\",\n      \"timestamp\": \"2025-08-18T19:06:20.534Z\",\n      \"id\": \"comment_1755543980534_3jdgi42te\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (2 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Add git commit messages at relevant tasks. First task should create a feature branch and commit specs. Last task should create a PR if one isn't created and ensure CI passes.\\n2. Is there a way to test with a test release before getting to the last task?\\n\\n\",\n  \"timestamp\": \"2025-08-18T19:06:23.167Z\"\n}",
+  "respondedAt": "2025-08-18T19:06:23.179Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Add git commit messages at relevant tasks. First task should create a feature branch and commit specs. Last task should create a PR if one isn't created and ensure CI passes.",
+      "timestamp": "2025-08-18T19:05:46.953Z",
+      "id": "comment_1755543946953_rxtkzpcdd"
+    },
+    {
+      "type": "general",
+      "comment": "Is there a way to test with a test release before getting to the last task?",
+      "timestamp": "2025-08-18T19:06:20.534Z",
+      "id": "comment_1755543980534_3jdgi42te"
+    }
+  ]
+}

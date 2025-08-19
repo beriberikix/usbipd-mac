@@ -14,6 +14,9 @@ import SystemExtensions
 @testable import Common
 @testable import SystemExtension
 
+// Import test infrastructure
+@testable import SharedUtilities
+
 /// Integration tests for automatic System Extension installation workflow
 /// Tests complete automatic installation workflow with real components and environment awareness
 /// Uses CI detection to skip System Extension operations and test fallback behavior instead

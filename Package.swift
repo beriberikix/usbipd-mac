@@ -64,6 +64,10 @@ let package = Package(
             name: "USBIPDCLITests",
             dependencies: ["USBIPDCLI"],
             sources: [".", "../SharedUtilities"]),
+        .testTarget(
+            name: "USBIPDCoreTests",
+            dependencies: ["USBIPDCore", "Common"],
+            sources: [".", "../SharedUtilities"]),
         // Temporarily disabled for CI stability
         // .testTarget(
         //     name: "IntegrationTests",

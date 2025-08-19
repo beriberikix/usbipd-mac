@@ -14,6 +14,9 @@ import Network
 @testable import USBIPDCLI
 @testable import Common
 
+// Import test infrastructure
+@testable import SharedUtilities
+
 /// End-to-end integration tests for complete Homebrew System Extension workflow
 /// Tests the complete user experience from brew install through System Extension activation
 /// Validates automatic installation, manual fallback scenarios, and comprehensive error recovery

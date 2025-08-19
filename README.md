@@ -55,11 +55,26 @@ brew services info usbipd-mac
 
 #### System Extension Setup
 
-After Homebrew installation, you'll need to approve the System Extension:
+After Homebrew installation, you'll need to install and approve the System Extension:
 
-1. **System Extension Approval**: macOS will prompt you to approve the System Extension in **System Preferences > Security & Privacy > General**
-2. **Restart Required**: A restart may be required for the System Extension to become active
-3. **Verification**: Check the System Extension status with `usbipd status`
+1. **Automatic Installation**: Use the built-in installation command:
+   ```bash
+   # Install and register the System Extension (requires sudo)
+   sudo usbipd install-system-extension
+   ```
+
+2. **System Extension Approval**: macOS will prompt you to approve the System Extension in **System Preferences > Security & Privacy > General**
+3. **Restart Required**: A restart may be required for the System Extension to become active
+4. **Verification**: Check the System Extension status with `usbipd status`
+
+**Installation Diagnostics**: If you encounter issues, run comprehensive diagnostics:
+```bash
+# Run complete installation diagnostics
+usbipd diagnose
+
+# Run verbose diagnostics for detailed troubleshooting
+usbipd diagnose --verbose
+```
 
 #### Troubleshooting Homebrew Installation
 
@@ -69,6 +84,37 @@ Common installation issues and solutions:
 - **System Extension Blocked**: Check System Preferences > Security & Privacy and approve the extension
 - **Service Won't Start**: Verify the binary installed correctly with `which usbipd` and check logs with `brew services list`
 - **Version Issues**: Update with `brew upgrade usbipd-mac` or reinstall with `brew reinstall usbipd-mac`
+
+#### System Extension Installation Troubleshooting
+
+For System Extension specific issues:
+
+**Installation Problems**:
+- **Bundle Not Found**: Ensure Homebrew installation completed successfully, reinstall if needed
+- **Registration Failed**: Run `sudo usbipd install-system-extension --verbose` for detailed error information
+- **User Approval Required**: System Extensions require explicit user approval in System Preferences
+- **Developer Mode Required**: For unsigned builds, enable developer mode: `sudo systemextensionsctl developer on`
+
+**Common Error Solutions**:
+```bash
+# Check detailed installation status
+usbipd diagnose --verbose
+
+# Re-install System Extension if corrupted
+sudo usbipd install-system-extension --skip-verification
+
+# Verify System Extension is properly registered
+systemextensionsctl list
+
+# Check System Extension process status
+usbipd status
+```
+
+**System Requirements**:
+- **macOS 11.0+**: System Extensions are only available on Big Sur and later
+- **Code Signing**: Production releases require properly signed System Extensions
+- **System Integrity Protection**: Must be compatible with SIP settings
+- **User Approval**: Interactive approval required in System Preferences
 
 ### Manual Installation (Development)
 
@@ -92,6 +138,22 @@ usbipd status
 
 # Stop sharing a device
 usbipd unbind --device <device-id>
+```
+
+### System Extension Management
+
+```bash
+# Install and register the System Extension
+sudo usbipd install-system-extension
+
+# Run comprehensive installation diagnostics
+usbipd diagnose
+
+# Run verbose diagnostics with detailed information
+usbipd diagnose --verbose
+
+# Check System Extension status and health
+usbipd status --verbose
 ```
 
 ### Client Connection
@@ -148,12 +210,17 @@ For development with System Extensions:
 # Enable System Extension development mode (requires reboot)
 sudo systemextensionsctl developer on
 
-# Build and install for development
+# Build the project (includes System Extension bundle creation)
 swift build
-sudo usbipd daemon --install-extension
 
-# Check status
-usbipd status
+# Install System Extension for development
+sudo usbipd install-system-extension
+
+# Run diagnostics to verify installation
+usbipd diagnose
+
+# Check detailed status including bundle information
+usbipd status --verbose
 ```
 
 ## Running Tests

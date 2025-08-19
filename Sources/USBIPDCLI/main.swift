@@ -79,26 +79,43 @@ func main() {
         logger.info("Using default server configuration")
     }
     
-    // Detect System Extension bundle if available
-    logger.debug("Attempting System Extension bundle detection")
+    // Detect System Extension bundle if available (using enhanced detection)
+    logger.debug("Attempting enhanced System Extension bundle detection")
     let bundleDetector = SystemExtensionBundleDetector()
     let detectionResult = bundleDetector.detectBundle()
     
     if detectionResult.found {
         logger.info("System Extension bundle detected", context: [
             "bundlePath": detectionResult.bundlePath ?? "unknown",
-            "bundleIdentifier": detectionResult.bundleIdentifier ?? "unknown"
+            "bundleIdentifier": detectionResult.bundleIdentifier ?? "unknown",
+            "environment": "\(detectionResult.detectionEnvironment)"
         ])
+        
+        // Log Homebrew metadata if available
+        if let homebrewMetadata = detectionResult.homebrewMetadata {
+            logger.info("Homebrew metadata detected", context: [
+                "version": homebrewMetadata.version ?? "unknown",
+                "installationDate": homebrewMetadata.installationDate?.description ?? "unknown"
+            ])
+        }
         
         // Update server configuration with detected bundle
         if let bundleConfig = SystemExtensionBundleConfig.from(detectionResult: detectionResult) {
             serverConfig.updateSystemExtensionBundleConfig(bundleConfig)
-            logger.debug("Updated server configuration with System Extension bundle")
+            logger.debug("Updated server configuration with enhanced System Extension bundle detection")
         }
     } else {
         logger.info("No System Extension bundle detected", context: [
-            "issues": detectionResult.issues.joined(separator: ", ")
+            "issues": detectionResult.issues.joined(separator: ", "),
+            "environment": "\(detectionResult.detectionEnvironment)"
         ])
+        
+        // Provide helpful information about installation
+        if case .homebrew = detectionResult.detectionEnvironment {
+            logger.info("Homebrew environment detected - consider running: usbipd install-system-extension")
+        } else if case .development = detectionResult.detectionEnvironment {
+            logger.info("Development environment detected - ensure swift build has been run")
+        }
         
         // Disable auto-installation if no bundle is available
         if !detectionResult.issues.isEmpty {
