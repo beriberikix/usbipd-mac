@@ -482,7 +482,7 @@ final class ProductionEnvironmentTests: XCTestCase {
     
     // MARK: - Helper Method Implementations
     
-    private func testCLIIntegrationWithHomebrewEnvironment() throws {
+    func testCLIIntegrationWithHomebrewEnvironment() throws {
         // Test CLI commands work with detected Homebrew bundle
         let parser = CommandLineParser(
             deviceDiscovery: IOKitDeviceDiscovery(),
@@ -601,7 +601,7 @@ final class ProductionEnvironmentTests: XCTestCase {
         return ServiceRestartResult(restartHandled: true)
     }
     
-    private func testBundleDetectionDiagnostics() throws {
+    func testBundleDetectionDiagnostics() throws {
         // Test diagnostic accuracy for bundle detection failures
         let detector = bundleDetector!
         let result = detector.detectBundle()
@@ -610,7 +610,7 @@ final class ProductionEnvironmentTests: XCTestCase {
         XCTAssertNotNil(result, "Bundle detection result should be available")
     }
     
-    private func testInstallationVerificationDiagnostics() throws {
+    func testInstallationVerificationDiagnostics() throws {
         // Test diagnostic accuracy for installation verification failures
         let verificationTask = Task {
             return await verificationManager.verifyInstallation()
@@ -619,7 +619,7 @@ final class ProductionEnvironmentTests: XCTestCase {
         // Simplified validation for MVP
     }
     
-    private func testServiceManagementDiagnostics() throws {
+    func testServiceManagementDiagnostics() throws {
         // Test diagnostic accuracy for service management
         let serviceTask = Task {
             return await serviceLifecycleManager.detectServiceStatus()
@@ -628,7 +628,7 @@ final class ProductionEnvironmentTests: XCTestCase {
         // Simplified validation for MVP
     }
     
-    private func testMixedFailureScenarioDiagnostics() throws {
+    func testMixedFailureScenarioDiagnostics() throws {
         // Test diagnostic accuracy with multiple simultaneous failures
         // This would simulate complex failure scenarios
     }

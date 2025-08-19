@@ -756,7 +756,6 @@ public class InstallSystemExtensionCommand: Command, InstallationProgressReporte
                     print("  • \(recommendation)")
                 }
             }
-            
         } else {
             logger.error("System Extension installation failed", context: [
                 "finalPhase": result.finalPhase.rawValue,
@@ -819,17 +818,7 @@ public class InstallSystemExtensionCommand: Command, InstallationProgressReporte
         let semaphore = DispatchSemaphore(value: 0)
         
         Task {
-            do {
-                installationResult = await orchestrator.performCompleteInstallation()
-            } catch {
-                logger.error("Installation threw unexpected error", context: ["error": error.localizedDescription])
-                installationResult = OrchestrationResult(
-                    success: false,
-                    finalPhase: .failed,
-                    issues: ["Unexpected error: \(error.localizedDescription)"],
-                    recommendations: ["Try running the installation again", "Check system logs for detailed error information"]
-                )
-            }
+            installationResult = await orchestrator.performCompleteInstallation()
             semaphore.signal()
         }
         
@@ -1448,17 +1437,17 @@ public class DiagnoseCommand: Command {
 
 /// Diagnostic modes for targeted testing
 private enum DiagnosticMode: String {
-    case all = "all"
-    case bundleDetection = "bundle"
-    case installation = "installation"
-    case serviceManagement = "service"
+    case all
+    case bundleDetection
+    case installation
+    case serviceManagement
 }
 
 /// Overall diagnostic status
 private enum DiagnosticStatus: String, Comparable {
-    case healthy = "healthy"
-    case warning = "warning"
-    case critical = "critical"
+    case healthy
+    case warning
+    case critical
     
     static func < (lhs: DiagnosticStatus, rhs: DiagnosticStatus) -> Bool {
         let order: [DiagnosticStatus] = [.healthy, .warning, .critical]

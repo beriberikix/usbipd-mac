@@ -1,17 +1,18 @@
 import Foundation
+import Common
 
 // MARK: - Installation Verification Result
 
 /// Comprehensive result of System Extension installation verification
 public struct InstallationVerificationResult {
     /// Overall installation status
-    public let status: InstallationStatus
+    public let status: VerificationInstallationStatus
     
     /// Individual verification checks performed
     public let verificationChecks: [VerificationCheck]
     
     /// Issues discovered during verification
-    public let discoveredIssues: [InstallationIssue]
+    public let discoveredIssues: [VerificationInstallationIssue]
     
     /// Timestamp when verification was performed
     public let verificationTimestamp: Date
@@ -26,9 +27,9 @@ public struct InstallationVerificationResult {
     public let summary: String
     
     public init(
-        status: InstallationStatus,
+        status: VerificationInstallationStatus,
         verificationChecks: [VerificationCheck],
-        discoveredIssues: [InstallationIssue],
+        discoveredIssues: [VerificationInstallationIssue],
         verificationTimestamp: Date,
         verificationDuration: TimeInterval,
         bundleIdentifier: String,
@@ -47,7 +48,7 @@ public struct InstallationVerificationResult {
 // MARK: - Installation Status
 
 /// Overall functional status of System Extension installation
-public enum InstallationStatus: String, CaseIterable {
+public enum VerificationInstallationStatus: String, CaseIterable {
     /// Extension is fully functional and operational
     case fullyFunctional = "fully_functional"
     
@@ -113,7 +114,7 @@ public struct VerificationCheck {
     public let details: String?
     
     /// Specific issues discovered during this check
-    public let issues: [InstallationIssue]
+    public let issues: [VerificationInstallationIssue]
     
     /// Timestamp when check was performed
     public let checkTimestamp: Date
@@ -125,7 +126,7 @@ public struct VerificationCheck {
         message: String,
         severity: CheckSeverity,
         details: String? = nil,
-        issues: [InstallationIssue] = [],
+        issues: [VerificationInstallationIssue] = [],
         checkTimestamp: Date = Date()
     ) {
         self.checkID = checkID
@@ -143,10 +144,10 @@ public struct VerificationCheck {
 
 /// Severity level for verification check results
 public enum CheckSeverity: String, CaseIterable, Comparable {
-    case info = "info"
-    case warning = "warning"
-    case error = "error"
-    case critical = "critical"
+    case info
+    case warning
+    case error
+    case critical
     
     /// Human-readable description
     public var description: String {
@@ -189,7 +190,7 @@ public enum CheckSeverity: String, CaseIterable, Comparable {
 // MARK: - Installation Issue
 
 /// Specific installation issues that can be detected and resolved
-public enum InstallationIssue: String, CaseIterable, Hashable {
+public enum VerificationInstallationIssue: String, CaseIterable, Hashable {
     // Bundle-related issues
     case bundleNotFound = "bundle_not_found"
     case bundleCorrupted = "bundle_corrupted"
@@ -341,6 +342,15 @@ public enum InstallationIssue: String, CaseIterable, Hashable {
         }
     }
     
+    /// Suggested actions for resolving the issue
+    public var suggestedActions: [String] {
+        if let remediation = self.remediation {
+            return [remediation]
+        } else {
+            return []
+        }
+    }
+    
     /// Severity level of the issue
     public var severity: CheckSeverity {
         switch self {
@@ -364,12 +374,12 @@ public enum InstallationIssue: String, CaseIterable, Hashable {
 
 /// Categories for organizing installation issues
 public enum IssueCategory: String, CaseIterable {
-    case bundle = "bundle"
-    case registration = "registration"
-    case system = "system"
-    case security = "security"
-    case service = "service"
-    case performance = "performance"
+    case bundle
+    case registration
+    case system
+    case security
+    case service
+    case performance
     
     public var description: String {
         switch self {
@@ -394,7 +404,7 @@ public enum IssueCategory: String, CaseIterable {
 /// Detailed information about a detected installation issue
 public struct DetectedInstallationIssue {
     /// The specific issue that was detected
-    public let issue: InstallationIssue
+    public let issue: VerificationInstallationIssue
     
     /// Severity level of the issue
     public let severity: CheckSeverity
@@ -418,7 +428,7 @@ public struct DetectedInstallationIssue {
     public let contextData: [String: String]
     
     public init(
-        issue: InstallationIssue,
+        issue: VerificationInstallationIssue,
         severity: CheckSeverity,
         description: String,
         detectionMethod: String,
@@ -529,7 +539,7 @@ public struct SystemLogEntry {
     public let timestamp: Date
     
     /// Log level/severity
-    public let level: LogLevel
+    public let level: VerificationLogLevel
     
     /// Source component that generated the log
     public let source: String
@@ -542,7 +552,7 @@ public struct SystemLogEntry {
     
     public init(
         timestamp: Date,
-        level: LogLevel,
+        level: VerificationLogLevel,
         source: String,
         message: String,
         category: String? = nil
@@ -557,13 +567,16 @@ public struct SystemLogEntry {
 
 // MARK: - Log Level
 
-/// Log severity levels
-public enum LogLevel: String, CaseIterable {
-    case debug = "debug"
-    case info = "info"
-    case warning = "warning"
-    case error = "error"
-    case critical = "critical"
+/// Log severity levels - using Common.LogLevel
+public typealias VerificationLogLevel = Common.LogLevel
+
+/// Backup log levels if Common.LogLevel is not available
+public enum VerificationLogLevelBackup: String, CaseIterable {
+    case debug
+    case info
+    case warning
+    case error
+    case critical
 }
 
 // MARK: - Configuration Analysis

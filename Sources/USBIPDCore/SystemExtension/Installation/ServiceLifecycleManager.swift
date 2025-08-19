@@ -630,16 +630,14 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
         var conflicts: [PortConflict] = []
         let lines = result.output.components(separatedBy: .newlines)
         
-        for line in lines.dropFirst() { // Skip header
-            if !line.isEmpty {
-                let components = line.trimmingCharacters(in: .whitespaces).components(separatedBy: .whitespaces)
-                if components.count >= 2 {
-                    conflicts.append(PortConflict(
-                        port: 3240,
-                        process: components[0],
-                        pid: components[1]
-                    ))
-                }
+        for line in lines.dropFirst() where !line.isEmpty { // Skip header
+            let components = line.trimmingCharacters(in: .whitespaces).components(separatedBy: .whitespaces)
+            if components.count >= 2 {
+                conflicts.append(PortConflict(
+                    port: 3240,
+                    process: components[0],
+                    pid: components[1]
+                ))
             }
         }
         
@@ -653,17 +651,15 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
             "\(homebrewPrefix)/etc/\(Self.formulaName)/\(Self.serviceIdentifier).plist"
         ]
         
-        for path in plistPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                return ServiceValidationCheck(
-                    checkID: "service_configuration",
-                    checkName: "Service Configuration",
-                    passed: true,
-                    message: "Service plist found at \(path)",
-                    severity: CheckSeverity.info,
-                    details: path
-                )
-            }
+        for path in plistPaths where FileManager.default.fileExists(atPath: path) {
+            return ServiceValidationCheck(
+                checkID: "service_configuration",
+                checkName: "Service Configuration",
+                passed: true,
+                message: "Service plist found at \(path)",
+                severity: CheckSeverity.info,
+                details: path
+            )
         }
         
         return ServiceValidationCheck(

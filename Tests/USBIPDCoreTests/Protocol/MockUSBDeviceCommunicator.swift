@@ -33,7 +33,7 @@ protocol USBDeviceCommunicatorProtocol: AnyObject {
 
 // MARK: - Mock Device Communicator for Testing
 
-class MockUSBDeviceCommunicator: USBDeviceCommunicatorProtocol {
+class MockUSBDeviceCommunicator: USBDeviceCommunicator {
     
     // MARK: - Mock Configuration
     
@@ -224,5 +224,43 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicatorProtocol {
             completionTime: Date().timeIntervalSince1970,
             startFrame: request.startFrame
         )
+    }
+    
+    // MARK: - Interface Management
+    
+    private var openInterfaces: Set<String> = []
+    
+    func openUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
+        let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
+        openInterfaces.insert(key)
+    }
+    
+    func closeUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
+        let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
+        openInterfaces.remove(key)
+    }
+    
+    func isInterfaceOpen(device: USBDevice, interfaceNumber: UInt8) -> Bool {
+        let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
+        return openInterfaces.contains(key)
+    }
+    
+    // MARK: - Device Validation
+    
+    func validateDeviceClaim(device: USBDevice) throws -> Bool {
+        if !shouldSucceed, let error = simulatedError {
+            throw error
+        }
+        return true
+    }
+    
+    // MARK: - Transfer Cancellation
+    
+    func cancelAllTransfers(device: USBDevice, interfaceNumber: UInt8) async throws {
+        // Mock implementation - no actual transfers to cancel
+    }
+    
+    func cancelTransfers(device: USBDevice, interfaceNumber: UInt8, endpoint: UInt8) async throws {
+        // Mock implementation - no actual transfers to cancel
     }
 }

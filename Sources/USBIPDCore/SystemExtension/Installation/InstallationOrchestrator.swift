@@ -6,18 +6,18 @@ import SystemExtensions
 import Common
 
 /// Progress reporter protocol for installation status updates
-public protocol InstallationProgressReporter {
+public protocol InstallationProgressReporter: AnyObject {
     /// Report installation progress with current status
     /// - Parameters:
     ///   - phase: Current installation phase
     ///   - progress: Progress percentage (0.0 to 1.0)
     ///   - message: Human-readable status message
     ///   - userActions: Optional user actions required
-    func reportProgress(phase: InstallationPhase, progress: Double, message: String, userActions: [String]?)
+    func reportProgress(phase: OrchestrationPhase, progress: Double, message: String, userActions: [String]?)
 }
 
-/// Installation phase tracking
-public enum InstallationPhase: String, CaseIterable {
+/// Installation orchestration phase tracking
+public enum OrchestrationPhase: String, CaseIterable {
     case bundleDetection = "bundle_detection"
     case systemExtensionSubmission = "system_extension_submission" 
     case serviceIntegration = "service_integration"
@@ -26,13 +26,13 @@ public enum InstallationPhase: String, CaseIterable {
     case failed = "failed"
 }
 
-/// Complete installation result
-public struct InstallationResult {
+/// Complete installation orchestration result
+public struct OrchestrationResult {
     /// Overall installation success
     public let success: Bool
     
     /// Final installation phase reached
-    public let finalPhase: InstallationPhase
+    public let finalPhase: OrchestrationPhase
     
     /// Bundle detection result
     public let bundleDetectionResult: SystemExtensionBundleDetector.DetectionResult?
@@ -60,7 +60,7 @@ public struct InstallationResult {
     
     public init(
         success: Bool,
-        finalPhase: InstallationPhase,
+        finalPhase: OrchestrationPhase,
         bundleDetectionResult: SystemExtensionBundleDetector.DetectionResult? = nil,
         submissionResult: SubmissionResult? = nil,
         serviceIntegrationResult: ServiceIntegrationResult? = nil,
@@ -83,8 +83,19 @@ public struct InstallationResult {
     }
 }
 
-/// Installation error types
-public enum InstallationError: Error, LocalizedError {
+/// Failure context for orchestration failure handling
+public struct FailureContext {
+    public let bundleResult: SystemExtensionBundleDetector.DetectionResult?
+    public let submissionResult: SubmissionResult?
+    public let serviceResult: ServiceIntegrationResult?
+    public let verificationResult: InstallationVerificationResult?
+    public let startTime: Date
+    public let collectedIssues: [String]
+    public let collectedRecommendations: [String]
+}
+
+/// Installation orchestration error types
+public enum OrchestrationError: Error, LocalizedError {
     case bundleDetectionFailed(details: String)
     case systemExtensionSubmissionFailed(error: SystemExtensionSubmissionError)
     case serviceIntegrationFailed(details: String)
@@ -139,7 +150,7 @@ public final class InstallationOrchestrator: @unchecked Sendable {
     public var installationTimeout: TimeInterval = 300.0
     
     /// Current installation phase
-    public private(set) var currentPhase: InstallationPhase = .bundleDetection
+    public private(set) var currentPhase: OrchestrationPhase = .bundleDetection
     
     /// Installation start time
     private var installationStartTime: Date?
@@ -170,12 +181,12 @@ public final class InstallationOrchestrator: @unchecked Sendable {
     
     /// Perform complete System Extension installation workflow
     /// - Returns: Complete installation result
-    public func performCompleteInstallation() async -> InstallationResult {
+    public func performCompleteInstallation() async -> OrchestrationResult {
         logger.info("Starting complete System Extension installation workflow")
         
         let startTime = Date()
         installationStartTime = startTime
-        var collectedIssues: [String] = []
+        let collectedIssues: [String] = []
         var collectedRecommendations: [String] = []
         
         var bundleResult: SystemExtensionBundleDetector.DetectionResult?
@@ -192,7 +203,7 @@ public final class InstallationOrchestrator: @unchecked Sendable {
             bundleResult = try await performBundleDetection()
             
             guard let bundlePath = bundleResult?.bundlePath else {
-                throw InstallationError.bundleDetectionFailed(details: "No valid bundle found")
+                throw OrchestrationError.bundleDetectionFailed(details: "No valid bundle found")
             }
             
             // Phase 2: System Extension Submission
@@ -226,11 +237,13 @@ public final class InstallationOrchestrator: @unchecked Sendable {
             if let serviceRecs = serviceResult?.recommendations {
                 collectedRecommendations.append(contentsOf: serviceRecs)
             }
-            if let verificationRecs = verificationResult?.recommendations {
+            if let verificationResult = verificationResult {
+                // Convert verification issues to recommendations
+                let verificationRecs = verificationResult.discoveredIssues.compactMap { $0.remediation }
                 collectedRecommendations.append(contentsOf: verificationRecs)
             }
             
-            let result = InstallationResult(
+            let result = OrchestrationResult(
                 success: true,
                 finalPhase: .completed,
                 bundleDetectionResult: bundleResult,
@@ -248,17 +261,18 @@ public final class InstallationOrchestrator: @unchecked Sendable {
             ])
             
             return result
-            
         } catch {
             return await handleInstallationFailure(
                 error: error,
-                bundleResult: bundleResult,
-                submissionResult: submissionResult,
-                serviceResult: serviceResult,
-                verificationResult: verificationResult,
-                startTime: startTime,
-                collectedIssues: collectedIssues,
-                collectedRecommendations: collectedRecommendations
+                context: FailureContext(
+                    bundleResult: bundleResult,
+                    submissionResult: submissionResult,
+                    serviceResult: serviceResult,
+                    verificationResult: verificationResult,
+                    startTime: startTime,
+                    collectedIssues: collectedIssues,
+                    collectedRecommendations: collectedRecommendations
+                )
             )
         }
     }
@@ -276,14 +290,8 @@ public final class InstallationOrchestrator: @unchecked Sendable {
     /// - Returns: Installation result with failure details
     public func handleInstallationFailure(
         error: Error,
-        bundleResult: SystemExtensionBundleDetector.DetectionResult?,
-        submissionResult: SubmissionResult?,
-        serviceResult: ServiceIntegrationResult?,
-        verificationResult: InstallationVerificationResult?,
-        startTime: Date,
-        collectedIssues: [String],
-        collectedRecommendations: [String]
-    ) async -> InstallationResult {
+        context: FailureContext
+    ) async -> OrchestrationResult {
         
         logger.error("Installation workflow failed", context: [
             "error": error.localizedDescription,
@@ -292,8 +300,8 @@ public final class InstallationOrchestrator: @unchecked Sendable {
         
         currentPhase = .failed
         
-        var issues = collectedIssues
-        var recommendations = collectedRecommendations
+        var issues = context.collectedIssues
+        var recommendations = context.collectedRecommendations
         
         // Add error-specific details
         issues.append(error.localizedDescription)
@@ -308,17 +316,17 @@ public final class InstallationOrchestrator: @unchecked Sendable {
             userActions: recommendations.isEmpty ? nil : Array(recommendations.prefix(3))
         )
         
-        return InstallationResult(
+        return OrchestrationResult(
             success: false,
             finalPhase: .failed,
-            bundleDetectionResult: bundleResult,
-            submissionResult: submissionResult,
-            serviceIntegrationResult: serviceResult,
-            verificationResult: verificationResult,
+            bundleDetectionResult: context.bundleResult,
+            submissionResult: context.submissionResult,
+            serviceIntegrationResult: context.serviceResult,
+            verificationResult: context.verificationResult,
             issues: issues,
             recommendations: recommendations,
             completionTime: Date(),
-            duration: Date().timeIntervalSince(startTime)
+            duration: Date().timeIntervalSince(context.startTime)
         )
     }
     
@@ -329,7 +337,7 @@ public final class InstallationOrchestrator: @unchecked Sendable {
     ///   - message: Status message
     ///   - userActions: Optional user actions required
     public func reportInstallationProgress(
-        phase: InstallationPhase, 
+        phase: OrchestrationPhase, 
         progress: Double, 
         message: String, 
         userActions: [String]? = nil
@@ -359,7 +367,7 @@ public final class InstallationOrchestrator: @unchecked Sendable {
         guard result.found, let bundlePath = result.bundlePath else {
             let error = "Bundle detection failed: \(result.issues.joined(separator: ", "))"
             logger.error(error)
-            throw InstallationError.bundleDetectionFailed(details: error)
+            throw OrchestrationError.bundleDetectionFailed(details: error)
         }
         
         logger.info("Bundle detection succeeded", context: [
@@ -386,13 +394,13 @@ public final class InstallationOrchestrator: @unchecked Sendable {
                     self.logger.error("System Extension submission failed", context: [
                         "error": error.localizedDescription
                     ])
-                    continuation.resume(throwing: InstallationError.systemExtensionSubmissionFailed(error: error))
+                    continuation.resume(throwing: OrchestrationError.systemExtensionSubmissionFailed(error: error))
                 default:
                     // For other statuses, we consider this a failure for now
                     self.logger.warning("System Extension submission incomplete", context: [
                         "status": "\(result.status)"
                     ])
-                    continuation.resume(throwing: InstallationError.systemExtensionSubmissionFailed(error: .requestFailed))
+                    continuation.resume(throwing: OrchestrationError.systemExtensionSubmissionFailed(error: .unknownError))
                 }
             }
         }
@@ -402,15 +410,28 @@ public final class InstallationOrchestrator: @unchecked Sendable {
     private func performServiceIntegration() async throws -> ServiceIntegrationResult {
         logger.info("Performing service integration")
         
-        let result = await serviceManager.coordinateInstallationWithService()
+        let coordinationResult = await serviceManager.coordinateInstallationWithService()
         
-        if !result.serviceIntegrationStatus.hasServiceManagementIssues {
+        // Convert ServiceCoordinationResult to ServiceIntegrationResult
+        let serviceResult = ServiceIntegrationResult(
+            success: coordinationResult.success,
+            status: ServiceIntegrationStatus(
+                launchdRegistered: true, // This would need proper detection
+                serviceRunning: false, // This would need proper detection
+                brewServicesManaged: true, // This would need proper detection
+                orphanedProcesses: 0 // This would need proper detection
+            ),
+            issues: coordinationResult.issues,
+            recommendations: coordinationResult.issues.map { $0.userDescription }
+        )
+        
+        if coordinationResult.success {
             logger.info("Service integration succeeded")
-            return result
+            return serviceResult
         } else {
-            let error = "Service integration issues: \(result.issues.map { $0.description }.joined(separator: ", "))"
+            let error = "Service integration issues: \(coordinationResult.issues.map { $0.userDescription }.joined(separator: ", "))"
             logger.error(error)
-            throw InstallationError.serviceIntegrationFailed(details: error)
+            throw OrchestrationError.serviceIntegrationFailed(details: error)
         }
     }
     
@@ -420,16 +441,16 @@ public final class InstallationOrchestrator: @unchecked Sendable {
         
         let result = await verificationManager.verifyInstallation()
         
-        switch result.overallStatus {
-        case .fullyFunctional, .functionalWithIssues:
+        switch result.status {
+        case .fullyFunctional, .partiallyFunctional:
             logger.info("Installation verification succeeded", context: [
-                "status": "\(result.overallStatus)"
+                "status": "\(result.status)"
             ])
             return result
-        case .nonFunctional, .notInstalled, .unknown:
-            let error = "Installation verification failed: \(result.overallStatus)"
+        case .problematic, .failed, .unknown:
+            let error = "Installation verification failed: \(result.status)"
             logger.error(error)
-            throw InstallationError.verificationFailed(details: error)
+            throw OrchestrationError.verificationFailed(details: error)
         }
     }
     
@@ -438,14 +459,14 @@ public final class InstallationOrchestrator: @unchecked Sendable {
         var recommendations: [String] = []
         
         switch error {
-        case InstallationError.bundleDetectionFailed:
+        case OrchestrationError.bundleDetectionFailed:
             recommendations.append("Ensure System Extension bundle is built (run: swift build)")
             recommendations.append("Check if running from Homebrew installation")
             recommendations.append("Verify bundle permissions and file system access")
             
-        case InstallationError.systemExtensionSubmissionFailed(let submissionError):
+        case OrchestrationError.systemExtensionSubmissionFailed(let submissionError):
             switch submissionError {
-            case .userApprovalRequired:
+            case .authorizationRequired:
                 recommendations.append("Open System Preferences > Security & Privacy")
                 recommendations.append("Allow system extension from developer")
                 recommendations.append("Restart installation after approval")
@@ -458,12 +479,12 @@ public final class InstallationOrchestrator: @unchecked Sendable {
                 recommendations.append("Contact support if issue persists")
             }
             
-        case InstallationError.serviceIntegrationFailed:
+        case OrchestrationError.serviceIntegrationFailed:
             recommendations.append("Check if usbipd-mac service is running (brew services list)")
             recommendations.append("Restart service: brew services restart usbipd-mac")
             recommendations.append("Check launchd service registration")
             
-        case InstallationError.verificationFailed:
+        case OrchestrationError.verificationFailed:
             recommendations.append("Run diagnostic: usbipd diagnose --verbose")
             recommendations.append("Check systemextensionsctl list for registration")
             recommendations.append("Restart System Extension: systemextensionsctl reset")

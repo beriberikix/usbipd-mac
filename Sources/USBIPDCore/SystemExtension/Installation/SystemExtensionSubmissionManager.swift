@@ -26,7 +26,7 @@ public final class SystemExtensionSubmissionManager: NSObject, @unchecked Sendab
     // MARK: - Initialization
     
     /// Initialize submission manager
-    public override init() {
+    override public init() {
         super.init()
         logger.info("SystemExtensionSubmissionManager initialized")
     }

@@ -375,19 +375,19 @@ public struct ServiceCoordinationStatus {
 /// Overall service health status
 public enum ServiceHealth: String, CaseIterable {
     /// Service is healthy and operating normally
-    case healthy = "healthy"
+    case healthy
     
     /// Service has minor issues but is functional
-    case degraded = "degraded"
+    case degraded
     
     /// Service has significant issues affecting functionality
-    case unhealthy = "unhealthy"
+    case unhealthy
     
     /// Service has critical issues and may not function
-    case critical = "critical"
+    case critical
     
     /// Service health is unknown
-    case unknown = "unknown"
+    case unknown
 }
 
 // MARK: - Validation Types
@@ -501,11 +501,6 @@ internal struct LaunchdRegistrationStatus {
     
     /// Registration information from launchctl
     let registrationInfo: String
-    
-    init(isRegistered: Bool, registrationInfo: String) {
-        self.isRegistered = isRegistered
-        self.registrationInfo = registrationInfo
-    }
 }
 
 /// Brew services status

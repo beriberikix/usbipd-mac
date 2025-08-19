@@ -500,9 +500,9 @@ public final class InstallationVerificationManager: @unchecked Sendable {
         let xcodeInstalled = FileManager.default.fileExists(atPath: "/Applications/Xcode.app") ||
                            FileManager.default.fileExists(atPath: "/usr/bin/xcodebuild")
         
-        let systemExtensionDirectory = expectedPaths.first(where: { path in
+        let systemExtensionDirectory = expectedPaths.first { path in
             FileManager.default.fileExists(atPath: expandPathPattern(path).first ?? "")
-        })
+        }
         
         return ConfigurationAnalysis(
             homebrewInstalled: homebrewInstalled,

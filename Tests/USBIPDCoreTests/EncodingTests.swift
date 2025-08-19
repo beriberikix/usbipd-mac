@@ -204,21 +204,7 @@ final class EncodingTests: XCTestCase {
         XCTAssertEqual(deviceImportRequestData.count, 40)
         
         // Test device import response encoding (success case)
-        let deviceInfo = USBIPDeviceInfo(
-            path: "/test/path",
-            busID: "1-1",
-            busnum: 1,
-            devnum: 2,
-            speed: 480000000,
-            vendorID: 0x1234,
-            productID: 0x5678,
-            deviceClass: 9,
-            deviceSubClass: 0,
-            deviceProtocol: 1,
-            configurationCount: 1,
-            configurationValue: 1,
-            interfaceCount: 1
-        )
+        // Note: Device import response doesn't include device info, just status
         
         let deviceImportResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 0)
         XCTAssertEqual(deviceImportResponseData.count, 12) // 8 + 4
