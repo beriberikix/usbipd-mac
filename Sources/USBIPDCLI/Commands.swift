@@ -1082,10 +1082,11 @@ public class DiagnoseCommand: Command {
         // Run installation verification using the enhanced verification manager
         let verificationManager = InstallationVerificationManager()
         
-        // Create a blocking wrapper for the async verification using RunLoop approach
+        // Create a blocking wrapper for the async verification using RunLoop approach with timeout
         let resultBox = Box<InstallationVerificationResult?>(nil)
         let runLoop = RunLoop.current
         var isCompleted = false
+        let timeoutDate = Date().addingTimeInterval(30.0) // 30 second timeout
         
         Task {
             let verificationResult = await verificationManager.verifyInstallation()
@@ -1094,8 +1095,13 @@ public class DiagnoseCommand: Command {
             CFRunLoopStop(runLoop.getCFRunLoop())
         }
         
-        while !isCompleted {
+        while !isCompleted && Date() < timeoutDate {
             runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+        }
+        
+        if !isCompleted {
+            print("⏱️ Installation verification timed out after 30 seconds")
+            return .warning
         }
         
         guard let result = resultBox.value else {

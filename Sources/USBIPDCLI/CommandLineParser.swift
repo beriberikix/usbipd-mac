@@ -106,6 +106,12 @@ public class CommandLineParser {
         let commandName = args[0]
         let commandArgs = Array(args.dropFirst())
         
+        // Handle special flags that aren't commands
+        if commandName == "--version" || commandName == "-v" {
+            printVersion()
+            return
+        }
+        
         logger.info("Executing command", context: ["command": commandName, "arguments": commandArgs.joined(separator: " ")])
         
         guard let command = commands[commandName] else {
@@ -122,5 +128,22 @@ public class CommandLineParser {
     /// Get all registered commands
     public func getCommands() -> [Command] {
         return Array(commands.values)
+    }
+    
+    /// Print version information
+    private func printVersion() {
+        print("USB/IP Daemon for macOS")
+        print("Version: 0.1.0")
+        print("Build: \(getBuildInfo())")
+        logger.info("Version information displayed")
+    }
+    
+    /// Get build information
+    private func getBuildInfo() -> String {
+        #if DEBUG
+        return "debug"
+        #else
+        return "release"
+        #endif
     }
 }

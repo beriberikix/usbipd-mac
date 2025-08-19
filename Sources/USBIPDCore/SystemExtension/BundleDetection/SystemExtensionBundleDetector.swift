@@ -353,9 +353,16 @@ public struct SystemExtensionBundleDetector {
             )
             
             for item in contents {
-                // Look for .systemextension bundles
+                // Look for .systemextension bundles (production)
                 if item.pathExtension == "systemextension" {
                     return item
+                }
+                
+                // Look for development SystemExtension executable
+                if item.lastPathComponent == "USBIPDSystemExtension" {
+                    // In development mode, return the parent directory as bundle path
+                    // This allows the rest of the system to work with development builds
+                    return path
                 }
                 
                 // Recursively search subdirectories
@@ -392,6 +399,15 @@ public struct SystemExtensionBundleDetector {
             return BundleValidationResult(isValid: false, issues: issues)
         }
         
+        // Check if this is a development environment (has USBIPDSystemExtension executable)
+        let developmentExecutablePath = bundlePath.appendingPathComponent("USBIPDSystemExtension")
+        if fileManager.fileExists(atPath: developmentExecutablePath.path) {
+            // Development mode validation - just check for executable
+            issues.append("Development mode bundle detected - SystemExtension executable found")
+            return BundleValidationResult(isValid: true, issues: issues)
+        }
+        
+        // Production mode validation - check for proper bundle structure
         // Check for Info.plist
         let infoPlistPath = bundlePath.appendingPathComponent("Contents/Info.plist")
         guard fileManager.fileExists(atPath: infoPlistPath.path) else {
