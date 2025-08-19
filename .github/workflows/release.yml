@@ -225,21 +225,22 @@ jobs:
           path: release-artifacts/
           retention-days: 30
 
-  update-homebrew-formula:
-    name: Update Homebrew Formula
+  generate-homebrew-metadata:
+    name: Generate Homebrew Metadata
     runs-on: macos-latest
     needs: [release-validation, build-artifacts]
+    outputs:
+      metadata-file: ${{ steps.generate-metadata.outputs.metadata-file }}
     steps:
-      - name: 🍺 Starting Homebrew Formula Update
+      - name: 🏺 Starting Homebrew Metadata Generation
         run: |
-          echo "::notice title=Homebrew Formula::Starting automated Homebrew formula update"
-          echo "🍺 This stage updates the formula with release version and checksum"
+          echo "::notice title=Homebrew Metadata::Starting automated homebrew metadata generation"
+          echo "🏺 This stage generates structured metadata for tap repository consumption"
           echo "📊 Status: STARTING"
 
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
       - name: 📤 Download Release Artifacts
@@ -248,11 +249,25 @@ jobs:
           name: release-artifacts-${{ needs.release-validation.outputs.version }}
           path: release-artifacts/
 
+      - name: 🔧 Setup Metadata Generation Environment
+        run: |
+          echo "::group::Environment Setup"
+          echo "::notice title=Environment::Setting up metadata generation environment"
+          
+          # Install jq if not available
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "📦 Installing jq for JSON processing..."
+            brew install jq
+          fi
+          
+          echo "✅ Environment ready for metadata generation"
+          echo "::endgroup::"
+
       - name: 🔢 Calculate Archive SHA256
         id: calculate-sha256
         run: |
           echo "::group::SHA256 Calculation"
-          echo "::notice title=SHA256::Calculating GitHub source archive checksum for formula update"
+          echo "::notice title=SHA256::Calculating GitHub source archive checksum for metadata"
           
           VERSION="${{ needs.release-validation.outputs.version }}"
           ARCHIVE_URL="https://github.com/beriberikix/usbipd-mac/archive/$VERSION.tar.gz"
@@ -269,118 +284,93 @@ jobs:
           fi
           
           echo "✅ SHA256 calculated: $SHA256_CHECKSUM"
-          echo "   This matches what Homebrew will download from GitHub"
+          echo "   This checksum will be included in the metadata for tap repository"
           echo "sha256=$SHA256_CHECKSUM" >> $GITHUB_OUTPUT
           echo "::endgroup::"
 
-      - name: 🍺 Update Formula
+      - name: 🏺 Generate Homebrew Metadata
+        id: generate-metadata
         run: |
-          echo "::group::Formula Update"
-          echo "::notice title=Formula Update::Updating Homebrew formula with release information"
+          echo "::group::Metadata Generation"
+          echo "::notice title=Metadata Generation::Generating structured homebrew metadata JSON"
           
           VERSION="${{ needs.release-validation.outputs.version }}"
           SHA256_CHECKSUM="${{ steps.calculate-sha256.outputs.sha256 }}"
+          ARCHIVE_URL="https://github.com/beriberikix/usbipd-mac/archive/$VERSION.tar.gz"
           
-          echo "🍺 Updating formula..."
+          echo "🏺 Generating metadata..."
           echo "   Version: $VERSION"
           echo "   SHA256: $SHA256_CHECKSUM"
+          echo "   Archive URL: $ARCHIVE_URL"
           
-          # Use the formula update script
-          ./Scripts/update-formula.sh \
+          # Generate metadata using the new script
+          ./Scripts/generate-homebrew-metadata.sh \
             --version "$VERSION" \
             --checksum "$SHA256_CHECKSUM" \
-            --skip-validation \
-            --no-tag-validation \
-            --no-system-extension
+            --archive-url "$ARCHIVE_URL"
           
-          echo "::notice title=Formula Updated::Formula placeholders updated successfully"
-          echo "✅ Formula updated with release information"
+          # Verify metadata was generated
+          METADATA_FILE=".build/homebrew-metadata/homebrew-metadata.json"
+          if [ ! -f "$METADATA_FILE" ]; then
+            echo "::error title=Metadata Missing::Generated metadata file not found"
+            exit 1
+          fi
+          
+          echo "::notice title=Metadata Generated::Homebrew metadata generated successfully"
+          echo "✅ Metadata generated: $METADATA_FILE"
+          echo "metadata-file=$METADATA_FILE" >> $GITHUB_OUTPUT
           echo "::endgroup::"
 
-      - name: 🔍 Validate Updated Formula
+      - name: 🔍 Validate Generated Metadata
         run: |
-          echo "::group::Formula Validation"
-          echo "::notice title=Formula Validation::Validating updated formula syntax and structure"
+          echo "::group::Metadata Validation"
+          echo "::notice title=Metadata Validation::Validating generated metadata against schema"
           
-          # Check Ruby syntax
-          if ruby -c Formula/usbipd-mac.rb >/dev/null 2>&1; then
-            echo "✅ Ruby syntax validation passed"
-          else
-            echo "::error title=Syntax Error::Formula has Ruby syntax errors"
-            ruby -c Formula/usbipd-mac.rb
-            exit 1
-          fi
+          METADATA_FILE="${{ steps.generate-metadata.outputs.metadata-file }}"
           
-          # Verify placeholders were replaced
-          if grep -q "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" Formula/usbipd-mac.rb; then
-            echo "::error title=Placeholder Error::Formula still contains unreplaced placeholders"
-            grep -n "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" Formula/usbipd-mac.rb
-            exit 1
-          fi
+          echo "🔍 Validating metadata..."
+          echo "   File: $METADATA_FILE"
           
-          # Verify new values are present
-          VERSION="${{ needs.release-validation.outputs.version }}"
-          SHA256_CHECKSUM="${{ steps.calculate-sha256.outputs.sha256 }}"
+          # Validate metadata using the validation script
+          ./Scripts/validate-homebrew-metadata.sh \
+            --file "$METADATA_FILE" \
+            --skip-network \
+            --skip-checksum \
+            --verbose
           
-          if ! grep -q "$VERSION" Formula/usbipd-mac.rb; then
-            echo "::error title=Version Missing::Version $VERSION not found in updated formula"
-            exit 1
-          fi
-          
-          if ! grep -q "$SHA256_CHECKSUM" Formula/usbipd-mac.rb; then
-            echo "::error title=Checksum Missing::SHA256 checksum not found in updated formula"
-            exit 1
-          fi
-          
-          echo "::notice title=Formula Validated::Updated formula passed all validation checks"
-          echo "✅ Formula validation completed successfully"
+          echo "::notice title=Metadata Validated::Metadata validation completed successfully"
+          echo "✅ Metadata validation passed"
           echo "::endgroup::"
 
-      - name: 📄 Commit Formula Changes
+      - name: 📋 Metadata Summary
         run: |
-          echo "::group::Formula Commit"
-          echo "::notice title=Formula Commit::Committing updated formula to repository"
+          echo "::group::Metadata Summary"
+          echo "::notice title=Metadata Summary::Displaying generated metadata summary"
           
-          VERSION="${{ needs.release-validation.outputs.version }}"
-          SHA256_CHECKSUM="${{ steps.calculate-sha256.outputs.sha256 }}"
+          METADATA_FILE="${{ steps.generate-metadata.outputs.metadata-file }}"
           
-          # Configure Git for the GitHub Actions bot
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          echo "📋 Generated Metadata Summary:"
+          echo "   • Schema Version: $(jq -r '.schema_version' "$METADATA_FILE")"
+          echo "   • Version: $(jq -r '.metadata.version' "$METADATA_FILE")"
+          echo "   • Archive URL: $(jq -r '.metadata.archive_url' "$METADATA_FILE")"
+          echo "   • SHA256: $(jq -r '.metadata.sha256' "$METADATA_FILE" | head -c 16)..."
+          echo "   • Timestamp: $(jq -r '.metadata.timestamp' "$METADATA_FILE")"
+          echo "   • File Size: $(wc -c < "$METADATA_FILE") bytes"
           
-          # Check if there are changes to commit
-          if git diff --quiet Formula/usbipd-mac.rb; then
-            echo "::warning title=No Changes::No changes detected in formula file"
-            echo "⚠️ No formula changes to commit"
-          else
-            # Add and commit the formula changes
-            git add Formula/usbipd-mac.rb
-            
-            git commit -m "feat: update Homebrew formula to $VERSION - automated release workflow update"
-            
-            echo "::notice title=Formula Committed::Formula changes committed successfully"
-            echo "✅ Formula changes committed"
-            echo "📋 Commit message: feat: update Homebrew formula to $VERSION"
-          fi
+          echo "✅ Metadata ready for tap repository consumption"
           echo "::endgroup::"
 
-      - name: 📤 Push Formula Changes
-        run: |
-          echo "::group::Formula Push"
-          echo "::notice title=Formula Push::Pushing updated formula to repository"
-          
-          # Push the changes to main branch (release runs on tag, so HEAD is detached)
-          git push origin HEAD:main
-          
-          echo "::notice title=Formula Pushed::Updated formula pushed to repository"
-          echo "✅ Formula changes pushed to repository"
-          echo "🔗 Formula updated in main branch"
-          echo "::endgroup::"
+      - name: 📤 Upload Metadata as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-metadata-${{ needs.release-validation.outputs.version }}
+          path: ${{ steps.generate-metadata.outputs.metadata-file }}
+          retention-days: 90
 
   create-release:
     name: Create GitHub Release
     runs-on: macos-latest
-    needs: [release-validation, build-artifacts, update-homebrew-formula]
+    needs: [release-validation, build-artifacts, generate-homebrew-metadata]
     steps:
       - name: 🚀 Starting Release Creation
         run: |
@@ -398,6 +388,12 @@ jobs:
         with:
           name: release-artifacts-${{ needs.release-validation.outputs.version }}
           path: release-artifacts/
+
+      - name: 📥 Download Homebrew Metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-metadata-${{ needs.release-validation.outputs.version }}
+          path: homebrew-metadata/
 
       - name: 📝 Generate Release Notes
         id: release-notes
@@ -460,16 +456,16 @@ jobs:
           
           echo "🚀 Creating GitHub release $VERSION..."
           
-          # Create release
+          # Create release with artifacts and metadata
           if [ "$PRERELEASE" = "true" ]; then
             echo "🏷️ Creating pre-release"
-            gh release create "$VERSION" release-artifacts/* \
+            gh release create "$VERSION" release-artifacts/* homebrew-metadata/* \
               --title "usbipd-mac $VERSION" \
               --notes-file release-notes.md \
               --prerelease
           else
             echo "🏷️ Creating stable release"
-            gh release create "$VERSION" release-artifacts/* \
+            gh release create "$VERSION" release-artifacts/* homebrew-metadata/* \
               --title "usbipd-mac $VERSION" \
               --notes-file release-notes.md
           fi
@@ -482,7 +478,7 @@ jobs:
   post-release:
     name: Post-Release Validation
     runs-on: macos-latest
-    needs: [release-validation, create-release, update-homebrew-formula]
+    needs: [release-validation, create-release, generate-homebrew-metadata]
     if: always() && needs.create-release.result == 'success'
     steps:
       - name: 📊 Starting Post-Release Validation
@@ -537,8 +533,8 @@ jobs:
           echo "   • Release version validation"
           echo "   • Comprehensive CI validation (via workflow_call)"
           echo "   • Optimized artifact building and signing"
-          echo "   • Automated Homebrew formula update"
-          echo "   • GitHub release creation with artifacts"
+          echo "   • Automated Homebrew metadata generation"
+          echo "   • GitHub release creation with artifacts and metadata"
           echo "   • Post-release verification"
           echo ""
           echo "🔗 **Workflow Benefits:**"

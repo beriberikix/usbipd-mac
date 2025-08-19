@@ -103,11 +103,11 @@ jobs:
           test-environment: ${{ env.TEST_ENVIRONMENT }}
           enable-qemu-tests: ${{ env.ENABLE_QEMU_TESTS }}
 
-  homebrew-validation:
-    name: Homebrew Formula Validation
+  homebrew-metadata-validation:
+    name: Homebrew Metadata Validation
     runs-on: macos-latest
     needs: build-validation
-    if: contains(github.event.head_commit.message, 'formula') || contains(github.event.head_commit.message, 'homebrew') || github.event_name == 'workflow_dispatch'
+    if: contains(github.event.head_commit.message, 'homebrew') || contains(github.event.head_commit.message, 'metadata') || github.event_name == 'workflow_dispatch'
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
@@ -115,60 +115,189 @@ jobs:
       - name: 🛠️ Setup Swift Environment
         uses: ./.github/actions/setup-swift-environment
 
-      - name: 🍺 Test Homebrew Formula
+      - name: 🔧 Setup Metadata Generation Environment
         run: |
-          echo "Testing Homebrew formula structure and syntax..."
+          echo "Setting up metadata generation environment..."
           
-          # Check Ruby syntax
-          if ruby -c Formula/usbipd-mac.rb; then
-            echo "✅ Formula Ruby syntax is valid"
+          # Install jq if not available
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "📦 Installing jq for JSON processing..."
+            brew install jq
+          fi
+          
+          echo "✅ Environment ready for metadata generation testing"
+
+      - name: 🏺 Test Metadata Generation Script
+        run: |
+          echo "Testing homebrew metadata generation script..."
+          
+          # Check script exists and is executable
+          if [ ! -f "Scripts/generate-homebrew-metadata.sh" ]; then
+            echo "❌ Metadata generation script not found"
+            exit 1
+          fi
+          
+          if [ ! -x "Scripts/generate-homebrew-metadata.sh" ]; then
+            echo "❌ Metadata generation script is not executable"
+            exit 1
+          fi
+          
+          echo "✅ Metadata generation script found and executable"
+          
+          # Test script help output
+          if ./Scripts/generate-homebrew-metadata.sh --help > /dev/null; then
+            echo "✅ Script help option works"
           else
-            echo "❌ Formula has Ruby syntax errors"
+            echo "❌ Script help option failed"
             exit 1
           fi
           
-          # Check for required formula elements
-          if ! grep -q "class.*Formula" Formula/usbipd-mac.rb; then
-            echo "❌ Formula must define a class inheriting from Formula"
-            exit 1
-          fi
-          
-          if ! grep -q "def install" Formula/usbipd-mac.rb; then
-            echo "❌ Formula must define an install method"
-            exit 1
-          fi
-          
-          if ! grep -q "service do" Formula/usbipd-mac.rb; then
-            echo "⚠️ Formula does not define a service block"
-          else
-            echo "✅ Formula includes service configuration"
-          fi
-          
-          # Create a test version of the formula with real values
-          echo "Creating test formula with real values..."
+          # Test dry run mode with dummy data
+          echo "Testing metadata generation in dry-run mode..."
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.1")
-          TEST_SHA256="a" # Dummy SHA for testing
           
-          # Create test formula
-          sed -e "s/VERSION_PLACEHOLDER/$LATEST_TAG/g" \
-              -e "s/SHA256_PLACEHOLDER/$TEST_SHA256/g" \
-              Formula/usbipd-mac.rb > /tmp/test-formula.rb
-          
-          # Test the modified formula syntax
-          if ruby -c /tmp/test-formula.rb; then
-            echo "✅ Test formula with substituted values is valid"
+          if ./Scripts/generate-homebrew-metadata.sh \
+              --version "$LATEST_TAG" \
+              --checksum "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" \
+              --archive-url "https://github.com/beriberikix/usbipd-mac/archive/$LATEST_TAG.tar.gz" \
+              --release-notes "Test release notes for CI validation" \
+              --dry-run \
+              --skip-validation; then
+            echo "✅ Metadata generation dry-run succeeded"
           else
-            echo "❌ Test formula has issues after substitution"
+            echo "❌ Metadata generation dry-run failed"
+            exit 1
+          fi
+
+      - name: 🔍 Test Metadata Validation Script
+        run: |
+          echo "Testing homebrew metadata validation script..."
+          
+          # Check script exists and is executable
+          if [ ! -f "Scripts/validate-homebrew-metadata.sh" ]; then
+            echo "❌ Metadata validation script not found"
             exit 1
           fi
           
-          echo "✅ Homebrew formula validation completed successfully"
+          if [ ! -x "Scripts/validate-homebrew-metadata.sh" ]; then
+            echo "❌ Metadata validation script is not executable"
+            exit 1
+          fi
+          
+          echo "✅ Metadata validation script found and executable"
+          
+          # Test script help output
+          if ./Scripts/validate-homebrew-metadata.sh --help > /dev/null; then
+            echo "✅ Validation script help option works"
+          else
+            echo "❌ Validation script help option failed"
+            exit 1
+          fi
+
+      - name: 🧪 Test Complete Metadata Workflow
+        run: |
+          echo "Testing complete metadata generation and validation workflow..."
+          
+          # Generate test metadata
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.1")
+          TEST_CHECKSUM="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          TEST_URL="https://github.com/beriberikix/usbipd-mac/archive/$LATEST_TAG.tar.gz"
+          
+          echo "Generating test metadata..."
+          ./Scripts/generate-homebrew-metadata.sh \
+            --version "$LATEST_TAG" \
+            --checksum "$TEST_CHECKSUM" \
+            --archive-url "$TEST_URL" \
+            --release-notes "Test release for CI validation" \
+            --skip-validation \
+            --force
+          
+          # Check if metadata was generated
+          METADATA_FILE=".build/homebrew-metadata/homebrew-metadata.json"
+          if [ ! -f "$METADATA_FILE" ]; then
+            echo "❌ Metadata file was not generated"
+            exit 1
+          fi
+          
+          echo "✅ Metadata file generated successfully"
+          
+          # Validate the generated metadata
+          echo "Validating generated metadata..."
+          if ./Scripts/validate-homebrew-metadata.sh \
+              --file "$METADATA_FILE" \
+              --skip-network \
+              --skip-checksum \
+              --verbose; then
+            echo "✅ Generated metadata validation passed"
+          else
+            echo "❌ Generated metadata validation failed"
+            exit 1
+          fi
+          
+          # Verify metadata content
+          echo "Verifying metadata content structure..."
+          
+          # Check required fields exist
+          if ! jq -e '.schema_version' "$METADATA_FILE" > /dev/null; then
+            echo "❌ Missing schema_version field"
+            exit 1
+          fi
+          
+          if ! jq -e '.metadata.version' "$METADATA_FILE" > /dev/null; then
+            echo "❌ Missing metadata.version field"
+            exit 1
+          fi
+          
+          if ! jq -e '.metadata.sha256' "$METADATA_FILE" > /dev/null; then
+            echo "❌ Missing metadata.sha256 field"
+            exit 1
+          fi
+          
+          if ! jq -e '.formula_updates' "$METADATA_FILE" > /dev/null; then
+            echo "❌ Missing formula_updates field"
+            exit 1
+          fi
+          
+          echo "✅ All required fields found in metadata"
+          
+          # Verify content values
+          METADATA_VERSION=$(jq -r '.metadata.version' "$METADATA_FILE")
+          if [ "$METADATA_VERSION" != "$LATEST_TAG" ]; then
+            echo "❌ Version mismatch in metadata: expected $LATEST_TAG, got $METADATA_VERSION"
+            exit 1
+          fi
+          
+          METADATA_CHECKSUM=$(jq -r '.metadata.sha256' "$METADATA_FILE")
+          if [ "$METADATA_CHECKSUM" != "$TEST_CHECKSUM" ]; then
+            echo "❌ Checksum mismatch in metadata: expected $TEST_CHECKSUM, got $METADATA_CHECKSUM"
+            exit 1
+          fi
+          
+          echo "✅ Metadata content verification passed"
+          
+          # Display metadata summary
+          echo "📋 Generated Metadata Summary:"
+          echo "   • Schema Version: $(jq -r '.schema_version' "$METADATA_FILE")"
+          echo "   • Version: $(jq -r '.metadata.version' "$METADATA_FILE")"
+          echo "   • Archive URL: $(jq -r '.metadata.archive_url' "$METADATA_FILE")"
+          echo "   • SHA256: $(jq -r '.metadata.sha256' "$METADATA_FILE" | head -c 16)..."
+          echo "   • Timestamp: $(jq -r '.metadata.timestamp' "$METADATA_FILE")"
+          echo "   • File Size: $(wc -c < "$METADATA_FILE") bytes"
+          
+          echo "✅ Complete metadata workflow test passed"
+
+      - name: 🧹 Cleanup Test Artifacts
+        if: always()
+        run: |
+          echo "Cleaning up test artifacts..."
+          rm -rf .build/homebrew-metadata/ || true
+          echo "✅ Cleanup completed"
 
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [code-quality, build-validation, test-suite, homebrew-validation]
+    needs: [code-quality, build-validation, test-suite, homebrew-metadata-validation]
     steps:
       - name: 📊 Check Overall CI Status
         run: |
@@ -176,7 +305,7 @@ jobs:
           echo "Code Quality: ${{ needs.code-quality.result }}"
           echo "Build Validation: ${{ needs.build-validation.result }}"
           echo "Test Suite: ${{ needs.test-suite.result }}"
-          echo "Homebrew Validation: ${{ needs.homebrew-validation.result }}"
+          echo "Homebrew Metadata Validation: ${{ needs.homebrew-metadata-validation.result }}"
           
           if [[ "${{ needs.code-quality.result }}" == "success" && 
                 "${{ needs.build-validation.result }}" == "success" && 
