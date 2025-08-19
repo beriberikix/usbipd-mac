@@ -314,45 +314,17 @@ usbipd-mac uses automated GitHub Actions workflows for consistent and reliable r
 
 #### Homebrew Formula Management
 
-**Automatic Formula Updates**: The Homebrew formula in this repository is updated automatically during the release workflow. However, the **tap repository** (`beriberikix/homebrew-usbipd-mac`) requires manual updates.
+**Fully Automated Formula Updates**: The Homebrew formula is now integrated directly into this repository and is updated completely automatically during the release workflow.
 
 **Complete Formula Update Process**:
 
-1. **Automatic (this repository)**: The release workflow automatically:
-   - Updates `Formula/usbipd-mac.rb` with new version and checksum
-   - Validates the updated formula syntax
-   - Commits and pushes changes back to the main branch
+The release workflow automatically handles the entire formula update process:
+- Updates `Formula/usbipd-mac.rb` with new version and checksum
+- Validates the updated formula syntax and structure
+- Commits and pushes changes back to the main branch
+- Makes the formula available through the `beriberikix/usbipd-mac` tap
 
-2. **Manual (tap repository)**: After the release workflow completes:
-   ```bash
-   # Option A: Update from main repository directory
-   cd /path/to/usbipd-mac  # Your main repository
-   
-   # Clone the tap repository alongside your main repo
-   git clone https://github.com/beriberikix/homebrew-usbipd-mac.git ../homebrew-usbipd-mac
-   
-   # Copy updated formula to tap repository
-   cp Formula/usbipd-mac.rb ../homebrew-usbipd-mac/Formula/
-   
-   # Commit and push to tap repository
-   cd ../homebrew-usbipd-mac
-   git add Formula/usbipd-mac.rb
-   git commit -m "feat: update formula to v1.2.3"
-   git push origin main
-   ```
-   
-   ```bash
-   # Option B: Update directly in Homebrew's tap directory
-   cd /opt/homebrew/Library/Taps/beriberikix/homebrew-usbipd-mac
-   
-   # Copy from your main repository (adjust path as needed)
-   cp /path/to/usbipd-mac/Formula/usbipd-mac.rb Formula/
-   
-   # Commit and push to tap repository
-   git add Formula/usbipd-mac.rb
-   git commit -m "feat: update formula to v1.2.3"
-   git push origin main
-   ```
+**No manual intervention required** - users can install and update through Homebrew immediately after a release is published.
 
 **Formula Testing and Validation**:
 ```bash
@@ -388,8 +360,7 @@ For release automation to work properly:
 
 1. **Code Signing**: Configure Apple Developer certificates in GitHub repository secrets
 2. **Permissions**: Ensure maintainer access to repository settings and secrets
-3. **Homebrew Tap**: Access to the `beriberikix/homebrew-usbipd-mac` tap repository for formula updates
-4. **Environment**: Validate local environment with release preparation script
+3. **Environment**: Validate local environment with release preparation script
 
 Validation commands:
 ```bash
