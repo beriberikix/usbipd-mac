@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.0.6] - 2025-08-18
+
+### Added
+- **Complete System Extension Installation Framework**: Comprehensive system extension lifecycle management
+  - Advanced installation orchestration with automatic and manual installation modes
+  - Intelligent installation verification and validation system
+  - Service lifecycle management with recovery and fallback mechanisms
+  - Enhanced diagnostic capabilities for troubleshooting installation issues
+- **Production-Ready Installation Workflows**: End-to-end system extension deployment
+  - Automated installation process for developer environments
+  - Manual installation guidance with step-by-step user instructions
+  - Cross-platform compatibility validation (Intel, Apple Silicon, Universal)
+  - Installation status monitoring with real-time progress reporting
+- **Enhanced CLI Commands and Diagnostics**: Comprehensive command-line interface
+  - New `install-system-extension` command for manual installation
+  - Advanced `diagnose` command with system health checks
+  - Installation verification and status reporting capabilities
+  - Interactive troubleshooting and guidance system
+
+### Fixed
+- **Critical USB/IP Protocol Issues**: Resolved fatal crashes and protocol errors
+  - Fixed USB/IP device list request command encoding (0x05 → 0x8005)
+  - Resolved "Index out of range" crashes in integration tests
+  - Improved timing for asynchronous notification processing
+  - Enhanced error handling for network communication failures
+- **Test Infrastructure Stability**: Comprehensive test suite improvements
+  - Fixed critical integration test failures affecting production validation
+  - Improved mock device simulation and timing reliability
+  - Enhanced test environment setup and teardown procedures
+  - Resolved Swift concurrency compliance issues
+- **System Extension Bundle Detection**: Enhanced bundle management
+  - Improved bundle detection and validation logic
+  - Fixed bundle path resolution in various installation scenarios
+  - Enhanced error handling for bundle creation and management
+  - Better compatibility with different macOS versions and architectures
+
+### Changed
+- **Installation Architecture**: Streamlined and consolidated installation process
+  - Simplified installation workflow with fewer user interaction points
+  - Improved error recovery and fallback mechanisms
+  - Enhanced logging and diagnostic information collection
+  - Better integration with macOS System Extension APIs
+- **Test Infrastructure**: Modernized testing approach
+  - Consolidated test environments (development, CI, production)
+  - Improved QEMU integration testing infrastructure
+  - Enhanced mock systems for reliable automated testing
+  - Streamlined CI/CD pipeline for faster validation
+
+### Security
+- **Enhanced System Extension Security**: Improved security validation
+  - Strengthened code signing and entitlement validation
+  - Enhanced installation verification to prevent tampering
+  - Improved system permission management and validation
+  - Better isolation and sandboxing of system extension components
+
+### Performance
+- **Optimized Installation Process**: Faster and more reliable installation
+  - Reduced installation time through parallel processing
+  - Improved resource utilization during installation
+  - Enhanced memory management and cleanup procedures
+  - Better error recovery without requiring system restarts
+
 ## [v0.0.4] - 2025-08-18
 
 ### Added

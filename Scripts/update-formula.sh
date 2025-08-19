@@ -477,92 +477,79 @@ update_formula() {
     local temp_file
     temp_file=$(mktemp)
     
-    # Verify required placeholders exist
-    if ! grep -q "VERSION_PLACEHOLDER" "$FORMULA_FILE"; then
-        log_error "VERSION_PLACEHOLDER not found in formula file"
+    # Verify required patterns exist (work with real values, not placeholders)
+    if ! grep -q 'url.*archive.*\.tar\.gz' "$FORMULA_FILE"; then
+        log_error "Archive URL pattern not found in formula file"
         exit $EXIT_UPDATE_FAILED
     fi
     
-    if ! grep -q "SHA256_PLACEHOLDER" "$FORMULA_FILE"; then
-        log_error "SHA256_PLACEHOLDER not found in formula file"
+    if ! grep -q 'version.*"v[0-9]' "$FORMULA_FILE"; then
+        log_error "Version pattern not found in formula file"
         exit $EXIT_UPDATE_FAILED
     fi
     
-    # Check for System Extension placeholders if including System Extension
-    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ]; then
-        if ! grep -q "SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER" "$FORMULA_FILE"; then
-            log_warning "SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER not found in formula file"
-            log_warning "Formula may not support System Extension integration"
-        fi
+    if ! grep -q 'sha256.*"[a-f0-9]\{64\}"' "$FORMULA_FILE"; then
+        log_error "SHA256 pattern not found in formula file"
+        exit $EXIT_UPDATE_FAILED
     fi
     
-    # Update formula with actual values
-    log_info "Updating VERSION_PLACEHOLDER with $VERSION"
-    if ! sed "s|VERSION_PLACEHOLDER|$VERSION|g" "$FORMULA_FILE" > "$temp_file.tmp"; then
-        log_error "Failed to replace VERSION_PLACEHOLDER in formula"
-        log_error "sed command: sed \"s|VERSION_PLACEHOLDER|$VERSION|g\" \"$FORMULA_FILE\""
+    # Update formula with actual values using regex patterns
+    log_info "Updating URL with new version $VERSION"
+    if ! sed "s|archive/v[0-9][0-9.]*.tar.gz|archive/$VERSION.tar.gz|g" "$FORMULA_FILE" > "$temp_file.tmp"; then
+        log_error "Failed to replace URL in formula"
         rm -f "$temp_file" "$temp_file.tmp"
         exit $EXIT_UPDATE_FAILED
     fi
-    log_info "VERSION_PLACEHOLDER replacement completed"
     
-    log_info "Updating SHA256_PLACEHOLDER with $SHA256_CHECKSUM"
-    if ! sed "s|SHA256_PLACEHOLDER|$SHA256_CHECKSUM|g" "$temp_file.tmp" > "$temp_file"; then
-        log_error "Failed to replace SHA256_PLACEHOLDER in formula"
-        log_error "sed command: sed \"s|SHA256_PLACEHOLDER|$SHA256_CHECKSUM|g\" \"$temp_file.tmp\""
+    log_info "Updating version with $VERSION"
+    if ! sed "s|version \"v[0-9][0-9.]*\"|version \"$VERSION\"|g" "$temp_file.tmp" > "$temp_file"; then
+        log_error "Failed to replace version in formula"
         rm -f "$temp_file" "$temp_file.tmp"
         exit $EXIT_UPDATE_FAILED
     fi
-    log_info "SHA256_PLACEHOLDER replacement completed"
     
-    rm -f "$temp_file.tmp"
-    
-    # Update System Extension placeholders if applicable
-    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ] && [ -n "$SYSTEM_EXTENSION_CHECKSUM" ]; then
-        if ! sed "s|SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER|$SYSTEM_EXTENSION_CHECKSUM|g" "$temp_file" > "$temp_file.tmp"; then
-            log_error "Failed to replace SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER in formula"
-            rm -f "$temp_file" "$temp_file.tmp"
-            exit $EXIT_UPDATE_FAILED
-        fi
-        mv "$temp_file.tmp" "$temp_file"
+    log_info "Updating SHA256 with $SHA256_CHECKSUM"
+    if ! sed "s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"$SHA256_CHECKSUM\"|g" "$temp_file" > "$temp_file.tmp"; then
+        log_error "Failed to replace SHA256 in formula"
+        rm -f "$temp_file" "$temp_file.tmp"
+        exit $EXIT_UPDATE_FAILED
     fi
+    mv "$temp_file.tmp" "$temp_file"
+    log_info "Formula update completed"
     
     # Verify the update was successful
-    log_info "Verifying that all placeholders were replaced"
+    log_info "Verifying formula update was successful"
     log_info "Temp file: $temp_file"
     log_info "Temp file exists: $(test -f "$temp_file" && echo "YES" || echo "NO")"
     if [ -f "$temp_file" ]; then
         log_info "Temp file size: $(wc -c < "$temp_file") bytes"
     fi
     
-    local remaining_placeholders
-    local grep_output
-    grep_output=$(grep -o "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" "$temp_file" 2>/dev/null || true)
-    remaining_placeholders=$(echo "$grep_output" | wc -l)
+    # Validate that the updates were applied correctly
+    log_info "Validating formula updates..."
     
-    # If grep_output is empty, wc -l returns 1, so we need to handle this case
-    if [ -z "$grep_output" ]; then
-        remaining_placeholders=0
-    fi
-    
-    log_info "Remaining placeholders: $remaining_placeholders"
-    if [ "$remaining_placeholders" -gt 0 ]; then
-        log_error "Failed to replace all required placeholders in formula"
-        log_error "Remaining placeholders found in temp file:"
-        grep -n "VERSION_PLACEHOLDER\|SHA256_PLACEHOLDER" "$temp_file" || true
+    if ! grep -q "version \"$VERSION\"" "$temp_file"; then
+        log_error "Failed to verify version update in formula"
         rm -f "$temp_file"
         exit $EXIT_UPDATE_FAILED
     fi
-    log_info "All required placeholders have been replaced successfully"
     
-    # Check for remaining System Extension placeholders (warning only)
-    if [ "$INCLUDE_SYSTEM_EXTENSION" = true ]; then
-        local se_placeholders
-        se_placeholders=$(grep -o "SYSTEM_EXTENSION_CHECKSUM_PLACEHOLDER" "$temp_file" | wc -l)
-        if [ "$se_placeholders" -gt 0 ]; then
-            log_warning "System Extension placeholder not replaced (formula may not support System Extensions)"
-        fi
+    if ! grep -q "sha256 \"$SHA256_CHECKSUM\"" "$temp_file"; then
+        log_error "Failed to verify SHA256 update in formula"
+        rm -f "$temp_file"
+        exit $EXIT_UPDATE_FAILED
     fi
+    
+    if ! grep -q "archive/$VERSION.tar.gz" "$temp_file"; then
+        log_error "Failed to verify URL update in formula"
+        rm -f "$temp_file"
+        exit $EXIT_UPDATE_FAILED
+    fi
+    
+    log_info "All required updates have been applied successfully"
+    
+    # Final validation completed
+    log_success "✓ Formula update validation completed"
     
     # Verify the new values are present
     if ! grep -q "$VERSION" "$temp_file"; then
