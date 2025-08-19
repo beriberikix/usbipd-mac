@@ -814,21 +814,17 @@ public class InstallSystemExtensionCommand: Command, InstallationProgressReporte
     // MARK: - Private Implementation
     
     private func runAsyncInstallation(orchestrator: InstallationOrchestrator) -> OrchestrationResult {
-        // Use RunLoop-based async-to-sync bridging for proper concurrency compliance
+        // Use semaphore-based async-to-sync bridging for proper concurrency compliance
         let resultBox = Box<OrchestrationResult?>(nil)
-        let runLoop = RunLoop.current
-        var isCompleted = false
+        let semaphore = DispatchSemaphore(value: 0)
         
         Task {
             let result = await orchestrator.performCompleteInstallation()
             resultBox.value = result
-            isCompleted = true
-            CFRunLoopStop(runLoop.getCFRunLoop())
+            semaphore.signal()
         }
         
-        while !isCompleted {
-            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
-        }
+        semaphore.wait()
         
         return resultBox.value ?? OrchestrationResult(
             success: false,
@@ -1082,24 +1078,22 @@ public class DiagnoseCommand: Command {
         // Run installation verification using the enhanced verification manager
         let verificationManager = InstallationVerificationManager()
         
-        // Create a blocking wrapper for the async verification using RunLoop approach with timeout
+        // Create a blocking wrapper for the async verification using semaphore with timeout
         let resultBox = Box<InstallationVerificationResult?>(nil)
-        let runLoop = RunLoop.current
-        var isCompleted = false
-        let timeoutDate = Date().addingTimeInterval(30.0) // 30 second timeout
+        let completionBox = Box<Bool>(false)
+        let semaphore = DispatchSemaphore(value: 0)
         
         Task {
             let verificationResult = await verificationManager.verifyInstallation()
             resultBox.value = verificationResult
-            isCompleted = true
-            CFRunLoopStop(runLoop.getCFRunLoop())
+            completionBox.value = true
+            semaphore.signal()
         }
         
-        while !isCompleted && Date() < timeoutDate {
-            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
-        }
+        // Wait with timeout (30 seconds)
+        let result = semaphore.wait(timeout: .now() + 30.0)
         
-        if !isCompleted {
+        if result == .timedOut {
             print("⏱️ Installation verification timed out after 30 seconds")
             return .warning
         }
