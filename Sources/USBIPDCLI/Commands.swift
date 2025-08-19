@@ -814,19 +814,23 @@ public class InstallSystemExtensionCommand: Command, InstallationProgressReporte
     // MARK: - Private Implementation
     
     private func runAsyncInstallation(orchestrator: InstallationOrchestrator) -> OrchestrationResult {
-        // Use a simple capturing approach with explicit sendable closure
-        let group = DispatchGroup()
-        var capturedResult: OrchestrationResult?
+        // Use RunLoop-based async-to-sync bridging for proper concurrency compliance
+        let resultBox = Box<OrchestrationResult?>(nil)
+        let runLoop = RunLoop.current
+        var isCompleted = false
         
-        group.enter()
         Task {
             let result = await orchestrator.performCompleteInstallation()
-            capturedResult = result
-            group.leave()
+            resultBox.value = result
+            isCompleted = true
+            CFRunLoopStop(runLoop.getCFRunLoop())
         }
         
-        group.wait()
-        return capturedResult ?? OrchestrationResult(
+        while !isCompleted {
+            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+        }
+        
+        return resultBox.value ?? OrchestrationResult(
             success: false,
             finalPhase: .failed,
             issues: ["Installation did not complete"],
@@ -1078,20 +1082,23 @@ public class DiagnoseCommand: Command {
         // Run installation verification using the enhanced verification manager
         let verificationManager = InstallationVerificationManager()
         
-        // Create a blocking wrapper for the async verification
-        let group = DispatchGroup()
-        var capturedResult: InstallationVerificationResult?
+        // Create a blocking wrapper for the async verification using RunLoop approach
+        let resultBox = Box<InstallationVerificationResult?>(nil)
+        let runLoop = RunLoop.current
+        var isCompleted = false
         
-        group.enter()
         Task {
-            let result = await verificationManager.verifyInstallation()
-            capturedResult = result
-            group.leave()
+            let verificationResult = await verificationManager.verifyInstallation()
+            resultBox.value = verificationResult
+            isCompleted = true
+            CFRunLoopStop(runLoop.getCFRunLoop())
         }
         
-        group.wait()
+        while !isCompleted {
+            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+        }
         
-        guard let result = capturedResult else {
+        guard let result = resultBox.value else {
             print("❌ Installation verification failed to run")
             return .critical
         }
@@ -1469,3 +1476,28 @@ private enum DiagnosticStatus: String, Comparable {
 }
 
 // OutputFormatter is now defined in OutputFormatter.swift
+
+// MARK: - Concurrency Support
+
+/// Thread-safe box for async-to-sync bridging
+private final class Box<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: T
+    
+    init(_ value: T) {
+        self._value = value
+    }
+    
+    var value: T {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _value
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _value = newValue
+        }
+    }
+}
