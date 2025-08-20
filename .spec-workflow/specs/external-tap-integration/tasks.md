@@ -195,14 +195,14 @@ The implementation follows a phased approach: first establish the metadata gener
   - Purpose: Provide comprehensive troubleshooting guidance for new architecture
   - _Requirements: 8.2, 5.4_
 
-- [-] 27. Commit documentation updates
+- [x] 27. Commit documentation updates
   - Git: Add and commit all documentation changes
   - Use commit message: "docs: update installation instructions for external tap repository"
   - Include description of new installation method and troubleshooting additions
   - Purpose: Complete documentation update for new architecture
   - _Requirements: Git workflow compliance_
 
-- [ ] 28. Create integration tests for tap workflow
+- [x] 28. Create integration tests for tap workflow
   - File: Tests/Integration/TapRepositoryIntegrationTests.swift
   - Implement tests that verify webhook processing, metadata validation, and formula updates
   - Include tests for error scenarios and recovery procedures
@@ -216,7 +216,7 @@ The implementation follows a phased approach: first establish the metadata gener
   - Purpose: Ensure end-user installation experience matches existing functionality
   - _Requirements: 3.4, formula preservation requirements_
 
-- [ ] 30. Commit integration tests and validation results
+- [-] 30. Commit integration tests and validation results
   - Git: Add and commit Tests/Integration/TapRepositoryIntegrationTests.swift
   - Use commit message: "test: add integration tests for tap repository workflow"
   - Include test results and validation notes in commit description
