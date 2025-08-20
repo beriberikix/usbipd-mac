@@ -153,28 +153,28 @@ The implementation follows a phased approach: first establish the metadata gener
   - Purpose: Complete tap repository setup with working formula template
   - _Requirements: Git workflow compliance_
 
-- [ ] 21. Test end-to-end integration
+- [x] 21. Test end-to-end integration
   - Test Environment: Both repositories with webhook configuration
   - Create test release in main repository and verify tap repository formula update
   - Validate complete workflow from metadata generation through formula publication
   - Purpose: Ensure complete workflow functions correctly before production deployment
   - _Requirements: All integration requirements_
 
-- [ ] 22. Remove Formula directory from main repository  
+- [-] 22. Remove Formula directory from main repository  
   - Files: Formula/usbipd-mac.rb (delete), Scripts/update-formula.sh (delete)
   - Remove Formula directory and formula-related scripts no longer needed
   - Clean up any references to Formula directory in documentation and scripts
   - Purpose: Eliminate dual formula management and establish tap repository as single source of truth
   - _Requirements: 6.1, 6.2_
 
-- [ ] 23. Remove formula-related scripts from main repository
+- [-] 23. Remove formula-related scripts from main repository
   - Files: Scripts/validate-formula.sh, Scripts/rollback-formula.sh, Scripts/validate-homebrew-installation.sh (delete or update)
   - Remove or update scripts that are specific to local Formula directory management
   - Preserve any functionality needed for release automation or testing
   - Purpose: Clean up main repository from formula-specific tooling
   - _Requirements: 6.2, 6.4_
 
-- [ ] 24. Commit removal of legacy Formula directory and scripts
+- [-] 24. Commit removal of legacy Formula directory and scripts
   - Git: Add deleted files and commit with message: "feat: remove local Formula directory, migrated to external tap"
   - Include detailed commit description explaining the migration and new installation method
   - Reference the tap repository URL in the commit message
