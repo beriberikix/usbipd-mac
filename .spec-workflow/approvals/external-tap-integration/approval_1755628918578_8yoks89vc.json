@@ -1,0 +1,39 @@
+{
+  "id": "approval_1755628918578_8yoks89vc",
+  "title": "Requirements Phase: external-tap-integration - Updated Pull-Based Model",
+  "filePath": ".spec-workflow/specs/external-tap-integration/requirements.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-19T18:41:58.578Z",
+  "category": "spec",
+  "categoryName": "external-tap-integration",
+  "response": "Feedback Summary (2 comments):\n\nSpecific Text Comments:\n1. \"archive_url\": While the script know it's archive url ahead of time?\n2. \"### Requirement 9: Backward Compatibility and Migr...\": We do not have users and do not need to handle backwards compatibility.\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"selection\",\n      \"comment\": \"While the script know it's archive url ahead of time?\",\n      \"timestamp\": \"2025-08-19T18:47:26.740Z\",\n      \"selectedText\": \"archive_url\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#ffeb3b\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1755629201323_34vh92fl2\"\n    },\n    {\n      \"type\": \"selection\",\n      \"comment\": \"We do not have users and do not need to handle backwards compatibility.\",\n      \"timestamp\": \"2025-08-19T18:47:18.100Z\",\n      \"selectedText\": \"### Requirement 9: Backward Compatibility and Migration\\n\\n**User Story:** As a user who previously installed usbipd-mac, I want clear instructions for transitioning to the tap-based installation, so that I can continue receiving updates seamlessly.\\n\\n#### Acceptance Criteria\\n\\n1. WHEN the migration is complete THEN documentation SHALL provide step-by-step transition instructions\\n2. WHEN users migrate THEN the process SHALL preserve their existing installation and configuration\\n3. WHEN users need help THEN troubleshooting guides SHALL address common migration issues\\n4. WHEN the tap is added THEN users SHALL receive formula updates automatically via standard Homebrew mechanisms\\n5. IF users encounter problems THEN rollback instructions SHALL be available to restore previous installation methods\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#FFEB3B\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1755629238100_khwj8xqot\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (2 comments):\\n\\nSpecific Text Comments:\\n1. \\\"archive_url\\\": While the script know it's archive url ahead of time?\\n2. \\\"### Requirement 9: Backward Compatibility and Migr...\\\": We do not have users and do not need to handle backwards compatibility.\\n\",\n  \"timestamp\": \"2025-08-19T18:47:29.924Z\"\n}",
+  "respondedAt": "2025-08-19T18:47:29.934Z",
+  "comments": [
+    {
+      "type": "selection",
+      "comment": "While the script know it's archive url ahead of time?",
+      "timestamp": "2025-08-19T18:47:26.740Z",
+      "selectedText": "archive_url",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#ffeb3b",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1755629201323_34vh92fl2"
+    },
+    {
+      "type": "selection",
+      "comment": "We do not have users and do not need to handle backwards compatibility.",
+      "timestamp": "2025-08-19T18:47:18.100Z",
+      "selectedText": "### Requirement 9: Backward Compatibility and Migration\n\n**User Story:** As a user who previously installed usbipd-mac, I want clear instructions for transitioning to the tap-based installation, so that I can continue receiving updates seamlessly.\n\n#### Acceptance Criteria\n\n1. WHEN the migration is complete THEN documentation SHALL provide step-by-step transition instructions\n2. WHEN users migrate THEN the process SHALL preserve their existing installation and configuration\n3. WHEN users need help THEN troubleshooting guides SHALL address common migration issues\n4. WHEN the tap is added THEN users SHALL receive formula updates automatically via standard Homebrew mechanisms\n5. IF users encounter problems THEN rollback instructions SHALL be available to restore previous installation methods",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#FFEB3B",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1755629238100_khwj8xqot"
+    }
+  ]
+}
