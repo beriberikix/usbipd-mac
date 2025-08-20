@@ -538,7 +538,7 @@ jobs:
             echo "📡 Webhook attempt $attempt of $max_attempts..."
             
             if curl -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Authorization: token ${{ secrets.WEBHOOK_TOKEN || secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github.v3+json" \
               -H "Content-Type: application/json" \
               "https://api.github.com/repos/$TAP_REPO/dispatches" \
