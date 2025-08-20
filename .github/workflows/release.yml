@@ -475,10 +475,127 @@ jobs:
           echo "🔗 Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$VERSION"
           echo "::endgroup::"
 
+  notify-tap-repository:
+    name: Notify Tap Repository
+    runs-on: macos-latest
+    needs: [release-validation, create-release, generate-homebrew-metadata]
+    if: always() && needs.create-release.result == 'success'
+    steps:
+      - name: 📡 Starting Tap Repository Notification
+        run: |
+          echo "::notice title=Tap Notification::Starting webhook notification to tap repository"
+          echo "📡 This stage triggers the tap repository to update the formula with new release"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📡 Send Repository Dispatch Webhook
+        run: |
+          echo "::group::Repository Dispatch Webhook"
+          echo "::notice title=Webhook Dispatch::Sending repository_dispatch webhook to tap repository"
+          
+          VERSION="${{ needs.release-validation.outputs.version }}"
+          SOURCE_REPO="beriberikix/usbipd-mac"
+          TAP_REPO="beriberikix/homebrew-usbipd-mac"
+          RELEASE_URL="${{ github.server_url }}/${{ github.repository }}/releases/tag/$VERSION"
+          
+          echo "📡 Sending webhook notification..."
+          echo "   Source Repository: $SOURCE_REPO"
+          echo "   Target Tap Repository: $TAP_REPO"
+          echo "   Release Version: $VERSION"
+          echo "   Release URL: $RELEASE_URL"
+          
+          # Send repository_dispatch webhook to tap repository
+          WEBHOOK_PAYLOAD=$(cat <<EOF
+          {
+            "event_type": "release-published",
+            "client_payload": {
+              "repository": "$SOURCE_REPO",
+              "release": {
+                "tag_name": "$VERSION",
+                "html_url": "$RELEASE_URL",
+                "prerelease": ${{ needs.release-validation.outputs.is-prerelease }},
+                "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              },
+              "sender": {
+                "login": "github-actions[bot]",
+                "type": "Bot"
+              }
+            }
+          }
+          EOF
+          )
+          
+          echo "📋 Webhook payload:"
+          echo "$WEBHOOK_PAYLOAD" | jq '.'
+          
+          # Send the webhook with retry logic
+          max_attempts=3
+          webhook_success=false
+          
+          for attempt in 1 2 3; do
+            echo "📡 Webhook attempt $attempt of $max_attempts..."
+            
+            if curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/$TAP_REPO/dispatches" \
+              --data "$WEBHOOK_PAYLOAD" \
+              --fail \
+              --silent \
+              --show-error; then
+              
+              echo "::notice title=Webhook Sent::Repository dispatch webhook sent successfully"
+              echo "✅ Webhook sent successfully on attempt $attempt"
+              webhook_success=true
+              break
+            else
+              echo "❌ Webhook attempt $attempt failed"
+              
+              if [ $attempt -eq $max_attempts ]; then
+                echo "::error title=Webhook Failed::Could not send webhook after $max_attempts attempts"
+                echo "❌ All webhook attempts failed"
+                echo ""
+                echo "🛠️ **Manual Recovery:**"
+                echo "   The release was created successfully but tap repository was not notified."
+                echo "   You can manually trigger the formula update using:"
+                echo "   gh workflow run formula-update.yml -R $TAP_REPO -f version=$VERSION"
+                echo ""
+                echo "📞 **This is not a critical failure** - the release is complete"
+                echo "   The tap repository can be updated manually if needed"
+                # Don't exit with error - release is successful, webhook is just notification
+                break
+              fi
+              
+              # Exponential backoff before retry
+              backoff_delay=$((2 ** attempt))
+              echo "⏳ Retrying webhook in $backoff_delay seconds (exponential backoff)..."
+              sleep $backoff_delay
+            fi
+          done
+          
+          if [ "$webhook_success" = "true" ]; then
+            echo "🎯 **Webhook Success:**"
+            echo "   • Tap repository has been notified of new release"
+            echo "   • Formula update workflow should start automatically"
+            echo "   • Monitor tap repository for formula update completion"
+            echo "   • Users will be able to install updated version via: brew upgrade usbipd-mac"
+          else
+            echo "⚠️ **Webhook Failed (Non-Critical):**"
+            echo "   • Release completed successfully"
+            echo "   • Tap repository notification failed"
+            echo "   • Manual formula update may be required"
+            echo "   • Use: gh workflow run formula-update.yml -R $TAP_REPO -f version=$VERSION"
+          fi
+          
+          echo "::endgroup::"
+
   post-release:
     name: Post-Release Validation
     runs-on: macos-latest
-    needs: [release-validation, create-release, generate-homebrew-metadata]
+    needs: [release-validation, create-release, generate-homebrew-metadata, notify-tap-repository]
     if: always() && needs.create-release.result == 'success'
     steps:
       - name: 📊 Starting Post-Release Validation
@@ -510,6 +627,7 @@ jobs:
             echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
             echo "   • Artifacts: Available"
             echo "   • Status: Published"
+            echo "   • Tap Notification: ${{ needs.notify-tap-repository.result }}"
           else
             echo "::error title=Release Verification Failed::Cannot verify release accessibility"
             echo "❌ Release verification failed"
@@ -528,6 +646,7 @@ jobs:
           echo "   • Pre-release: ${{ needs.release-validation.outputs.is-prerelease }}"
           echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
           echo "   • Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-validation.outputs.version }}"
+          echo "   • Tap Notification: ${{ needs.notify-tap-repository.result }}"
           echo ""
           echo "✅ **Completed Steps:**"
           echo "   • Release version validation"
@@ -535,13 +654,26 @@ jobs:
           echo "   • Optimized artifact building and signing"
           echo "   • Automated Homebrew metadata generation"
           echo "   • GitHub release creation with artifacts and metadata"
+          echo "   • Tap repository webhook notification"
           echo "   • Post-release verification"
           echo ""
           echo "🔗 **Workflow Benefits:**"
           echo "   • Reused CI validation logic from consolidated workflow"
           echo "   • Streamlined artifact building process"
           echo "   • Consistent validation across CI and release pipelines"
+          echo "   • Automated external tap repository integration"
           echo "   • Reduced workflow duplication and maintenance"
+          echo ""
+          echo "🏺 **Homebrew Integration:**"
+          if [[ "${{ needs.notify-tap-repository.result }}" == "success" ]]; then
+            echo "   • ✅ Tap repository successfully notified"
+            echo "   • ✅ Formula update should begin automatically"
+            echo "   • ✅ Users can upgrade via: brew upgrade usbipd-mac"
+          else
+            echo "   • ⚠️ Tap repository notification failed"
+            echo "   • 🔧 Manual formula update may be needed"
+            echo "   • 📋 Use: gh workflow run formula-update.yml -R beriberikix/homebrew-usbipd-mac -f version=${{ needs.release-validation.outputs.version }}"
+          fi
           echo ""
           echo "📊 Status: **SUCCESS**"
           echo "::endgroup::"
