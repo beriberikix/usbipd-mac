@@ -314,23 +314,20 @@ usbipd-mac uses automated GitHub Actions workflows for consistent and reliable r
 
 #### Homebrew Formula Management
 
-**Fully Automated Formula Updates**: The Homebrew formula is now integrated directly into this repository and is updated completely automatically during the release workflow.
+**External Tap Architecture**: The Homebrew formula is managed in a separate tap repository and is updated automatically via webhook integration during the release workflow.
 
-**Complete Formula Update Process**:
+**Automated Formula Update Process**:
 
-The release workflow automatically handles the entire formula update process:
-- Updates `Formula/usbipd-mac.rb` with new version and checksum
-- Validates the updated formula syntax and structure
-- Commits and pushes changes back to the main branch
-- Makes the formula available through the `beriberikix/usbipd-mac` tap
+The release workflow uses a pull-based architecture for formula updates:
+- Generates structured metadata (`homebrew-metadata.json`) with version, checksum, and release notes
+- Publishes metadata as a release asset
+- Webhook triggers formula update in the external tap repository: [`homebrew-usbipd-mac`](https://github.com/beriberikix/homebrew-usbipd-mac)
+- Tap repository automatically updates formula template and publishes changes
 
 **No manual intervention required** - users can install and update through Homebrew immediately after a release is published.
 
 **Formula Testing and Validation**:
 ```bash
-# Test formula syntax locally
-./Scripts/validate-formula.sh
-
 # Test installation from tap
 brew uninstall usbipd-mac || true
 brew untap beriberikix/usbipd-mac || true
@@ -338,14 +335,7 @@ brew tap beriberikix/usbipd-mac
 brew install usbipd-mac
 ```
 
-**Manual Formula Operations** (for testing/troubleshooting):
-```bash
-# Preview formula update
-./Scripts/update-formula.sh --version v1.2.3 --dry-run
-
-# Rollback formula to previous version
-./Scripts/update-formula.sh --rollback
-```
+**Formula Repository**: The formula and automation workflows are maintained in the separate [`homebrew-usbipd-mac`](https://github.com/beriberikix/homebrew-usbipd-mac) repository.
 
 #### Versioning Strategy
 
