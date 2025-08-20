@@ -160,42 +160,42 @@ The implementation follows a phased approach: first establish the metadata gener
   - Purpose: Ensure complete workflow functions correctly before production deployment
   - _Requirements: All integration requirements_
 
-- [-] 22. Remove Formula directory from main repository  
+- [x] 22. Remove Formula directory from main repository  
   - Files: Formula/usbipd-mac.rb (delete), Scripts/update-formula.sh (delete)
   - Remove Formula directory and formula-related scripts no longer needed
   - Clean up any references to Formula directory in documentation and scripts
   - Purpose: Eliminate dual formula management and establish tap repository as single source of truth
   - _Requirements: 6.1, 6.2_
 
-- [-] 23. Remove formula-related scripts from main repository
+- [x] 23. Remove formula-related scripts from main repository
   - Files: Scripts/validate-formula.sh, Scripts/rollback-formula.sh, Scripts/validate-homebrew-installation.sh (delete or update)
   - Remove or update scripts that are specific to local Formula directory management
   - Preserve any functionality needed for release automation or testing
   - Purpose: Clean up main repository from formula-specific tooling
   - _Requirements: 6.2, 6.4_
 
-- [-] 24. Commit removal of legacy Formula directory and scripts
+- [x] 24. Commit removal of legacy Formula directory and scripts
   - Git: Add deleted files and commit with message: "feat: remove local Formula directory, migrated to external tap"
   - Include detailed commit description explaining the migration and new installation method
   - Reference the tap repository URL in the commit message
   - Purpose: Complete removal of legacy formula management from main repository
   - _Requirements: Git workflow compliance_
 
-- [ ] 25. Update documentation for tap-based installation
+- [x] 25. Update documentation for tap-based installation
   - Files: README.md, Documentation/, CLAUDE.md
   - Update all installation instructions to use `brew tap beriberikix/usbipd-mac && brew install usbipd-mac`
   - Remove references to Formula directory and local formula installation
   - Purpose: Guide users to correct installation method using tap repository
   - _Requirements: 6.3, 6.5_
 
-- [ ] 26. Add troubleshooting documentation for tap repository
+- [x] 26. Add troubleshooting documentation for tap repository
   - File: Documentation/homebrew-troubleshooting.md (update existing)
   - Add sections covering webhook failures, metadata issues, and formula validation problems
   - Include manual workflow dispatch instructions and recovery procedures
   - Purpose: Provide comprehensive troubleshooting guidance for new architecture
   - _Requirements: 8.2, 5.4_
 
-- [ ] 27. Commit documentation updates
+- [-] 27. Commit documentation updates
   - Git: Add and commit all documentation changes
   - Use commit message: "docs: update installation instructions for external tap repository"
   - Include description of new installation method and troubleshooting additions
