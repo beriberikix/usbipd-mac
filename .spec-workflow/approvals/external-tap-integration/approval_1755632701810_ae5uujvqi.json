@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755632701810_ae5uujvqi",
+  "title": "Tasks Phase: external-tap-integration - Ready for Review",
+  "filePath": ".spec-workflow/specs/external-tap-integration/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-19T19:45:01.810Z",
+  "category": "spec",
+  "categoryName": "external-tap-integration",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow git workflow. Commit to git at relevant points. First task should create a feature branch. Last task should create PR and fix CI issues.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Commit to git at relevant points. First task should create a feature branch. Last task should create PR and fix CI issues.\",\n      \"timestamp\": \"2025-08-19T20:01:53.148Z\",\n      \"id\": \"comment_1755633713148_k5im78ntw\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Commit to git at relevant points. First task should create a feature branch. Last task should create PR and fix CI issues.\\n\\n\",\n  \"timestamp\": \"2025-08-19T20:01:58.457Z\"\n}",
+  "respondedAt": "2025-08-19T20:01:58.470Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Commit to git at relevant points. First task should create a feature branch. Last task should create PR and fix CI issues.",
+      "timestamp": "2025-08-19T20:01:53.148Z",
+      "id": "comment_1755633713148_k5im78ntw"
+    }
+  ]
+}
