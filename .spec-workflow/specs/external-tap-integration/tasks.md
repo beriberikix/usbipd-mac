@@ -209,28 +209,28 @@ The implementation follows a phased approach: first establish the metadata gener
   - Purpose: Ensure tap repository workflows remain reliable through future changes
   - _Requirements: 8.1, 8.4_
 
-- [ ] 29. Validate tap repository formula installation
+- [x] 29. Validate tap repository formula installation
   - Test Environment: Clean macOS system with Homebrew
   - Perform complete installation test using tap repository: brew tap && brew install
   - Verify System Extension functionality and service management work correctly
   - Purpose: Ensure end-user installation experience matches existing functionality
   - _Requirements: 3.4, formula preservation requirements_
 
-- [-] 30. Commit integration tests and validation results
+- [x] 30. Commit integration tests and validation results
   - Git: Add and commit Tests/Integration/TapRepositoryIntegrationTests.swift
   - Use commit message: "test: add integration tests for tap repository workflow"
   - Include test results and validation notes in commit description
   - Purpose: Complete testing infrastructure for external tap integration
   - _Requirements: Git workflow compliance_
 
-- [ ] 31. Create deployment checklist and rollback procedures
+- [x] 31. Create deployment checklist and rollback procedures
   - File: Documentation/deployment-checklist.md (new)
   - Document step-by-step deployment process and validation checkpoints
   - Include rollback procedures if tap repository integration fails
   - Purpose: Ensure safe and reversible deployment of new architecture
   - _Requirements: 8.4, comprehensive error handling_
 
-- [ ] 32. Final commit and prepare pull request
+- [-] 32. Final commit and prepare pull request
   - Git: Add and commit Documentation/deployment-checklist.md and any remaining changes
   - Use commit message: "docs: add deployment checklist and rollback procedures for tap integration"
   - Ensure all changes are committed and branch is ready for pull request
