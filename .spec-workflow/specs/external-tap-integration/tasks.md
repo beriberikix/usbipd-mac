@@ -139,7 +139,7 @@ The implementation follows a phased approach: first establish the metadata gener
   - _Leverage: Formula/usbipd-mac.rb from main repository_
   - _Requirements: 7.1, 3.2_
 
-- [-] 19. Configure tap repository webhook integration
+- [x] 19. Configure tap repository webhook integration
   - Configuration: GitHub repository settings (performed in GitHub UI)
   - Set up webhook to trigger on release events from main repository
   - Configure webhook URL to target tap repository workflow_dispatch endpoint
@@ -237,21 +237,21 @@ The implementation follows a phased approach: first establish the metadata gener
   - Purpose: Prepare feature branch for code review and integration
   - _Requirements: Git workflow compliance_
 
-- [-] 33. Create pull request for external tap integration
+- [x] 33. Create pull request for external tap integration
   - Git: Create pull request from feature/external-tap-integration to main branch
   - Include comprehensive PR description explaining the architecture change
   - Add checklist of completed tasks and validation steps performed
   - Purpose: Submit feature for code review and integration into main branch
   - _Requirements: Git workflow compliance_
 
-- [ ] 34. Address CI failures and code review feedback
+- [x] 34. Address CI failures and code review feedback
   - Git: Fix any CI test failures or linting issues identified by automated checks
   - Respond to code review feedback and implement requested changes
   - Update documentation or tests as needed based on reviewer suggestions
   - Purpose: Ensure pull request meets all quality standards for integration
   - _Requirements: Git workflow compliance_
 
-- [ ] 35. Monitor and validate first production release
+- [x] 35. Monitor and validate first production release
   - Operational task: After PR merge, monitor first release using new workflow
   - Verify metadata generation, webhook delivery, and formula update completion
   - Document any issues encountered and create follow-up issues as needed
