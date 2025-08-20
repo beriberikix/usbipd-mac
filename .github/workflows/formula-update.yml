@@ -1,0 +1,1056 @@
+name: Formula Update (Tap Repository Webhook)
+
+on:
+  repository_dispatch:
+    types: [release-published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to process (e.g., v1.2.3)'
+        required: true
+        type: string
+      source_repository:
+        description: 'Source repository (e.g., beriberikix/usbipd-mac)'
+        required: false
+        default: 'beriberikix/usbipd-mac'
+        type: string
+      force_update:
+        description: 'Force update even if formula already exists for this version'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SOURCE_REPOSITORY: ${{ github.event.client_payload.repository || inputs.source_repository || 'beriberikix/usbipd-mac' }}
+  RELEASE_VERSION: ${{ github.event.client_payload.release.tag_name || inputs.version }}
+  WORKFLOW_START_TIME: ${{ github.event.head_commit.timestamp || github.run_started_at }}
+  WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  validate-webhook:
+    name: Validate Webhook Event
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+      source-repo: ${{ steps.extract-version.outputs.source-repo }}
+      trigger-type: ${{ steps.extract-version.outputs.trigger-type }}
+    steps:
+      - name: 🔍 Starting Webhook Validation
+        run: |
+          echo "::notice title=Webhook Validation::Validating incoming webhook event and extracting metadata"
+          echo "🔍 This stage validates the webhook trigger and extracts release information"
+          echo "📊 Status: STARTING"
+
+      - name: 📋 Extract Event Information
+        id: extract-version
+        run: |
+          echo "::group::Event Information Extraction"
+          echo "::notice title=Event Processing::Extracting version and repository information from webhook"
+          
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            VERSION="${{ env.RELEASE_VERSION }}"
+            SOURCE_REPO="${{ env.SOURCE_REPOSITORY }}"
+            TRIGGER_TYPE="webhook"
+            echo "📡 Webhook-triggered update from repository_dispatch"
+            echo "📦 Source Repository: $SOURCE_REPO"
+            echo "🏷️ Release Version: $VERSION"
+          else
+            VERSION="${{ inputs.version }}"
+            SOURCE_REPO="${{ inputs.source_repository }}"
+            TRIGGER_TYPE="manual"
+            echo "🔧 Manual workflow dispatch"
+            echo "📦 Source Repository: $SOURCE_REPO"
+            echo "🏷️ Release Version: $VERSION"
+          fi
+          
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "::error title=Invalid Version::Version must follow semantic versioning (vX.Y.Z or vX.Y.Z-suffix)"
+            echo "::error::Received version: $VERSION"
+            exit 1
+          fi
+          
+          # Validate source repository format
+          if [[ ! "$SOURCE_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+            echo "::error title=Invalid Repository::Source repository must be in owner/repo format"
+            echo "::error::Received repository: $SOURCE_REPO"
+            exit 1
+          fi
+          
+          echo "✅ Version validated: $VERSION"
+          echo "✅ Source repository validated: $SOURCE_REPO"
+          echo "✅ Trigger type: $TRIGGER_TYPE"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "source-repo=$SOURCE_REPO" >> $GITHUB_OUTPUT
+          echo "trigger-type=$TRIGGER_TYPE" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+      - name: 📊 Webhook Validation Summary
+        run: |
+          echo "::group::Webhook Validation Summary"
+          echo "::notice title=Webhook Validated::Webhook event validated successfully"
+          echo "✅ Trigger: ${{ github.event_name }}"
+          echo "✅ Version: ${{ steps.extract-version.outputs.version }}"
+          echo "✅ Source Repository: ${{ steps.extract-version.outputs.source-repo }}"
+          echo "✅ Trigger Type: ${{ steps.extract-version.outputs.trigger-type }}"
+          echo "📊 Status: VALIDATED"
+          echo "::endgroup::"
+
+  fetch-metadata:
+    name: Fetch Release Metadata
+    runs-on: ubuntu-latest
+    needs: validate-webhook
+    outputs:
+      metadata-content: ${{ steps.download-metadata.outputs.content }}
+      metadata-valid: ${{ steps.validate-metadata.outputs.valid }}
+    steps:
+      - name: 📥 Starting Metadata Fetch
+        run: |
+          echo "::notice title=Metadata Fetch::Fetching homebrew metadata from source repository release"
+          echo "📥 This stage downloads and validates metadata from the published release"
+          echo "📊 Status: STARTING"
+
+      - name: 🔧 Setup Environment
+        run: |
+          echo "::group::Environment Setup"
+          echo "::notice title=Environment::Setting up tools for metadata processing"
+          
+          # Install jq for JSON processing
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "📦 Installing jq for JSON processing..."
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+          
+          echo "✅ Environment ready for metadata processing"
+          echo "::endgroup::"
+
+      - name: 📥 Download Homebrew Metadata
+        id: download-metadata
+        run: |
+          echo "::group::Metadata Download"
+          echo "::notice title=Metadata Download::Downloading homebrew metadata from release assets"
+          
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          SOURCE_REPO="${{ needs.validate-webhook.outputs.source-repo }}"
+          
+          echo "📥 Downloading metadata..."
+          echo "   Source: $SOURCE_REPO"
+          echo "   Version: $VERSION"
+          
+          # Download metadata file from release assets
+          METADATA_URL="https://github.com/$SOURCE_REPO/releases/download/$VERSION/homebrew-metadata.json"
+          echo "   Metadata URL: $METADATA_URL"
+          
+          # Download with retry logic and exponential backoff
+          max_attempts=3
+          for attempt in 1 2 3; do
+            echo "📥 Download attempt $attempt of $max_attempts..."
+            if curl -L -f -s "$METADATA_URL" -o homebrew-metadata.json; then
+              echo "✅ Metadata downloaded successfully"
+              break
+            else
+              echo "❌ Download attempt $attempt failed"
+              if [ $attempt -eq $max_attempts ]; then
+                echo "::error title=Download Failed::Could not download metadata after $max_attempts attempts"
+                echo "::error::URL: $METADATA_URL"
+                exit 1
+              fi
+              # Exponential backoff: 2^attempt seconds (2, 4, 8 seconds)
+              backoff_delay=$((2 ** attempt))
+              echo "⏳ Retrying in $backoff_delay seconds (exponential backoff)..."
+              sleep $backoff_delay
+            fi
+          done
+          
+          # Verify file was downloaded and is not empty
+          if [ ! -f homebrew-metadata.json ] || [ ! -s homebrew-metadata.json ]; then
+            echo "::error title=Invalid Metadata::Downloaded metadata file is empty or missing"
+            exit 1
+          fi
+          
+          # Read and output metadata content
+          METADATA_CONTENT=$(cat homebrew-metadata.json)
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$METADATA_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "::notice title=Metadata Downloaded::Homebrew metadata downloaded successfully"
+          echo "✅ Metadata file size: $(wc -c < homebrew-metadata.json) bytes"
+          echo "::endgroup::"
+
+      - name: 🔍 Validate Downloaded Metadata
+        id: validate-metadata
+        run: |
+          echo "::group::Metadata Validation"
+          echo "::notice title=Metadata Validation::Validating downloaded metadata structure and content"
+          
+          # Basic JSON syntax validation
+          if ! jq empty homebrew-metadata.json >/dev/null 2>&1; then
+            echo "::error title=Invalid JSON::Downloaded metadata is not valid JSON"
+            exit 1
+          fi
+          
+          echo "✅ JSON syntax is valid"
+          
+          # Check required fields
+          local validation_errors=0
+          
+          # Validate schema version
+          if ! jq -e '.schema_version' homebrew-metadata.json >/dev/null; then
+            echo "::error title=Missing Field::schema_version field is missing"
+            validation_errors=$((validation_errors + 1))
+          fi
+          
+          # Validate metadata section
+          if ! jq -e '.metadata.version' homebrew-metadata.json >/dev/null; then
+            echo "::error title=Missing Field::metadata.version field is missing"
+            validation_errors=$((validation_errors + 1))
+          fi
+          
+          if ! jq -e '.metadata.archive_url' homebrew-metadata.json >/dev/null; then
+            echo "::error title=Missing Field::metadata.archive_url field is missing"
+            validation_errors=$((validation_errors + 1))
+          fi
+          
+          if ! jq -e '.metadata.sha256' homebrew-metadata.json >/dev/null; then
+            echo "::error title=Missing Field::metadata.sha256 field is missing"
+            validation_errors=$((validation_errors + 1))
+          fi
+          
+          # Validate formula_updates section
+          if ! jq -e '.formula_updates' homebrew-metadata.json >/dev/null; then
+            echo "::error title=Missing Field::formula_updates field is missing"
+            validation_errors=$((validation_errors + 1))
+          fi
+          
+          if [ $validation_errors -gt 0 ]; then
+            echo "::error title=Validation Failed::Metadata validation failed with $validation_errors errors"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Validate version consistency
+          METADATA_VERSION=$(jq -r '.metadata.version' homebrew-metadata.json)
+          EXPECTED_VERSION="${{ needs.validate-webhook.outputs.version }}"
+          
+          if [ "$METADATA_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error title=Version Mismatch::Metadata version does not match expected version"
+            echo "::error::Expected: $EXPECTED_VERSION"
+            echo "::error::Found: $METADATA_VERSION"
+            exit 1
+          fi
+          
+          echo "✅ All required fields validated"
+          echo "✅ Version consistency verified"
+          echo "valid=true" >> $GITHUB_OUTPUT
+          
+          # Display metadata summary
+          echo "📋 Metadata Summary:"
+          echo "   • Schema Version: $(jq -r '.schema_version' homebrew-metadata.json)"
+          echo "   • Version: $(jq -r '.metadata.version' homebrew-metadata.json)"
+          echo "   • Archive URL: $(jq -r '.metadata.archive_url' homebrew-metadata.json)"
+          echo "   • SHA256: $(jq -r '.metadata.sha256' homebrew-metadata.json | head -c 16)..."
+          echo "   • Timestamp: $(jq -r '.metadata.timestamp' homebrew-metadata.json)"
+          
+          echo "::notice title=Metadata Validated::Metadata validation completed successfully"
+          echo "::endgroup::"
+
+      - name: 📤 Upload Metadata Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-metadata-${{ needs.validate-webhook.outputs.version }}
+          path: homebrew-metadata.json
+          retention-days: 30
+
+  verify-archive:
+    name: Verify Source Archive
+    runs-on: ubuntu-latest
+    needs: [validate-webhook, fetch-metadata]
+    outputs:
+      archive-verified: ${{ steps.verify-checksum.outputs.verified }}
+    steps:
+      - name: 🔐 Starting Archive Verification
+        run: |
+          echo "::notice title=Archive Verification::Verifying source archive integrity and accessibility"
+          echo "🔐 This stage downloads and verifies the source archive checksum"
+          echo "📊 Status: STARTING"
+
+      - name: 📥 Download Metadata Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-metadata-${{ needs.validate-webhook.outputs.version }}
+
+      - name: 🔐 Verify Archive Checksum
+        id: verify-checksum
+        run: |
+          echo "::group::Archive Checksum Verification"
+          echo "::notice title=Checksum Verification::Downloading and verifying source archive checksum"
+          
+          # Extract archive information from metadata
+          ARCHIVE_URL=$(jq -r '.metadata.archive_url' homebrew-metadata.json)
+          EXPECTED_SHA256=$(jq -r '.metadata.sha256' homebrew-metadata.json)
+          
+          echo "🔐 Verifying archive integrity..."
+          echo "   Archive URL: $ARCHIVE_URL"
+          echo "   Expected SHA256: $EXPECTED_SHA256"
+          
+          # Download the source archive with retry logic and exponential backoff
+          echo "📥 Downloading source archive with retry logic..."
+          max_attempts=3
+          download_success=false
+          
+          for attempt in 1 2 3; do
+            echo "📥 Archive download attempt $attempt of $max_attempts..."
+            if curl -L -f -s "$ARCHIVE_URL" -o source-archive.tar.gz; then
+              echo "✅ Source archive downloaded successfully"
+              download_success=true
+              break
+            else
+              echo "❌ Archive download attempt $attempt failed"
+              if [ $attempt -eq $max_attempts ]; then
+                echo "::error title=Download Failed::Could not download source archive after $max_attempts attempts"
+                echo "::error::URL: $ARCHIVE_URL"
+                echo "::error::This may indicate network issues or the archive is not available"
+                exit 1
+              fi
+              # Exponential backoff: 2^attempt seconds (2, 4, 8 seconds)
+              backoff_delay=$((2 ** attempt))
+              echo "⏳ Retrying archive download in $backoff_delay seconds (exponential backoff)..."
+              sleep $backoff_delay
+            fi
+          done
+          
+          if [ "$download_success" != "true" ]; then
+            echo "::error title=Download Failed::Archive download failed unexpectedly"
+            exit 1
+          fi
+          
+          # Calculate actual checksum
+          echo "🔍 Calculating SHA256 checksum..."
+          ACTUAL_SHA256=$(sha256sum source-archive.tar.gz | cut -d' ' -f1)
+          
+          # Verify checksum match
+          if [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ]; then
+            echo "✅ Checksum verification passed"
+            echo "   Expected SHA256: $EXPECTED_SHA256"
+            echo "   Actual SHA256:   $ACTUAL_SHA256"
+            echo "verified=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error title=Checksum Mismatch::Source archive checksum does not match metadata"
+            echo "::error::Expected SHA256: $EXPECTED_SHA256"
+            echo "::error::Actual SHA256:   $ACTUAL_SHA256"
+            echo "::error::Archive URL:     $ARCHIVE_URL"
+            echo "::error::Archive Size:    $(wc -c < source-archive.tar.gz) bytes"
+            echo "::error::This indicates either:"
+            echo "::error::  1. The archive was corrupted during download"
+            echo "::error::  2. The metadata contains an incorrect checksum"
+            echo "::error::  3. The wrong archive version was downloaded"
+            echo "::error::Please verify the release metadata and try again"
+            echo "verified=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Get archive size for logging
+          ARCHIVE_SIZE=$(wc -c < source-archive.tar.gz)
+          echo "📊 Archive verified: $ARCHIVE_SIZE bytes"
+          
+          echo "::notice title=Archive Verified::Source archive integrity verified successfully"
+          echo "::endgroup::"
+
+  update-formula:
+    name: Update Formula
+    runs-on: ubuntu-latest
+    needs: [validate-webhook, fetch-metadata, verify-archive]
+    if: needs.fetch-metadata.outputs.metadata-valid == 'true' && needs.verify-archive.outputs.archive-verified == 'true'
+    steps:
+      - name: 🍺 Starting Formula Update
+        run: |
+          echo "::notice title=Formula Update::Updating Homebrew formula with verified metadata"
+          echo "🍺 This stage updates the formula file and commits changes to tap repository"
+          echo "📊 Status: STARTING"
+
+      - name: 📥 Checkout Tap Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📥 Download Metadata Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-metadata-${{ needs.validate-webhook.outputs.version }}
+
+      - name: 🔧 Setup Formula Update Environment
+        run: |
+          echo "::group::Environment Setup"
+          echo "::notice title=Environment::Setting up tools for formula processing"
+          
+          # Install jq and ruby
+          sudo apt-get update && sudo apt-get install -y jq ruby
+          
+          # Configure git for commits
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action (Formula Update)"
+          
+          echo "✅ Environment ready for formula updates"
+          echo "::endgroup::"
+
+      - name: 🍺 Update Formula File
+        run: |
+          echo "::group::Formula Update"
+          echo "::notice title=Formula Update::Updating formula file with metadata values"
+          
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          
+          # Extract values from metadata
+          ARCHIVE_URL=$(jq -r '.metadata.archive_url' homebrew-metadata.json)
+          SHA256_CHECKSUM=$(jq -r '.metadata.sha256' homebrew-metadata.json)
+          VERSION_PLACEHOLDER=$(jq -r '.formula_updates.version_placeholder' homebrew-metadata.json)
+          SHA256_PLACEHOLDER=$(jq -r '.formula_updates.sha256_placeholder' homebrew-metadata.json)
+          
+          echo "🍺 Updating formula..."
+          echo "   Version: $VERSION"
+          echo "   Archive URL: $ARCHIVE_URL"
+          echo "   SHA256: $SHA256_CHECKSUM"
+          echo "   Version Placeholder: $VERSION_PLACEHOLDER"
+          echo "   SHA256 Placeholder: $SHA256_PLACEHOLDER"
+          
+          # Check if formula file exists
+          FORMULA_FILE="Formula/usbipd-mac.rb"
+          if [ ! -f "$FORMULA_FILE" ]; then
+            echo "::error title=Formula Missing::Formula file not found: $FORMULA_FILE"
+            exit 1
+          fi
+          
+          # Create backup
+          cp "$FORMULA_FILE" "$FORMULA_FILE.backup"
+          
+          # Update formula with actual values
+          sed -i "s|archive/v[0-9][0-9.]*\\.tar\\.gz|archive/$VERSION.tar.gz|g" "$FORMULA_FILE"
+          sed -i "s|version \"v[0-9][0-9.]*\"|version \"$VERSION\"|g" "$FORMULA_FILE"
+          sed -i "s|sha256 \"[a-f0-9]\\{64\\}\"|sha256 \"$SHA256_CHECKSUM\"|g" "$FORMULA_FILE"
+          
+          # Also handle placeholder-based updates if they exist
+          if [ "$VERSION_PLACEHOLDER" != "null" ]; then
+            sed -i "s|$VERSION_PLACEHOLDER|$VERSION|g" "$FORMULA_FILE"
+          fi
+          
+          if [ "$SHA256_PLACEHOLDER" != "null" ]; then
+            sed -i "s|$SHA256_PLACEHOLDER|$SHA256_CHECKSUM|g" "$FORMULA_FILE"
+          fi
+          
+          echo "::notice title=Formula Updated::Formula file updated with release information"
+          echo "✅ Formula updated successfully"
+          echo "::endgroup::"
+
+      - name: 🔍 Validate Updated Formula
+        id: validate-formula
+        run: |
+          echo "::group::Enhanced Formula Validation"
+          echo "::notice title=Formula Validation::Validating updated formula syntax and content with comprehensive checks"
+          
+          FORMULA_FILE="Formula/usbipd-mac.rb"
+          BACKUP_FILE="$FORMULA_FILE.backup"
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          SHA256_CHECKSUM=$(jq -r '.metadata.sha256' homebrew-metadata.json)
+          validation_failed=false
+          
+          echo "🔍 Starting comprehensive formula validation..."
+          echo "   Formula file: $FORMULA_FILE"
+          echo "   Expected version: $VERSION"
+          echo "   Expected SHA256: $SHA256_CHECKSUM"
+          
+          # Step 1: Ruby syntax validation
+          echo "📝 Validating Ruby syntax..."
+          if ruby -c "$FORMULA_FILE" >/dev/null 2>&1; then
+            echo "✅ Ruby syntax is valid"
+          else
+            echo "::error title=Syntax Error::Formula has Ruby syntax errors"
+            echo "❌ Ruby syntax validation failed:"
+            ruby -c "$FORMULA_FILE" 2>&1 | sed 's/^/  /'
+            validation_failed=true
+          fi
+          
+          # Step 2: Homebrew formula structure validation
+          echo "🍺 Validating Homebrew formula structure..."
+          
+          # Check for required components
+          required_components=(
+            "class.*Formula"
+            "desc.*\""
+            "homepage.*\""
+            "url.*\""
+            "version.*\""
+            "sha256.*\""
+            "def install"
+          )
+          
+          component_names=(
+            "Formula class definition"
+            "Description field"
+            "Homepage field"
+            "URL field"
+            "Version field"
+            "SHA256 field"
+            "Install method"
+          )
+          
+          for i in "${!required_components[@]}"; do
+            pattern="${required_components[i]}"
+            name="${component_names[i]}"
+            if grep -q "$pattern" "$FORMULA_FILE"; then
+              echo "✅ Found: $name"
+            else
+              echo "❌ Missing: $name"
+              echo "::error title=Structure Error::Missing required component: $name"
+              validation_failed=true
+            fi
+          done
+          
+          # Step 3: Verify updated values are present
+          echo "🔍 Verifying formula content updates..."
+          
+          if grep -q "version \"$VERSION\"" "$FORMULA_FILE"; then
+            echo "✅ Version $VERSION found in formula"
+          else
+            echo "❌ Version $VERSION not found in updated formula"
+            echo "::error title=Version Missing::Version $VERSION not found in updated formula"
+            validation_failed=true
+          fi
+          
+          if grep -q "sha256 \"$SHA256_CHECKSUM\"" "$FORMULA_FILE"; then
+            echo "✅ SHA256 checksum found in formula"
+          else
+            echo "❌ SHA256 checksum not found in updated formula"
+            echo "::error title=Checksum Missing::SHA256 checksum not found in updated formula"
+            validation_failed=true
+          fi
+          
+          if grep -q "archive/$VERSION.tar.gz" "$FORMULA_FILE"; then
+            echo "✅ Archive URL with version $VERSION found"
+          else
+            echo "❌ Archive URL with version $VERSION not found"
+            echo "::error title=URL Missing::Archive URL with version $VERSION not found"
+            validation_failed=true
+          fi
+          
+          # Step 4: Check for remaining placeholders
+          echo "🔍 Checking for unreplaced placeholders..."
+          placeholder_patterns=(
+            "VERSION_PLACEHOLDER"
+            "SHA256_PLACEHOLDER"
+            "{{VERSION}}"
+            "{{SHA256}}"
+            "{{CHECKSUM}}"
+          )
+          
+          placeholders_found=false
+          for pattern in "${placeholder_patterns[@]}"; do
+            if grep -q "$pattern" "$FORMULA_FILE"; then
+              echo "⚠️ Found unreplaced placeholder: $pattern"
+              grep -n "$pattern" "$FORMULA_FILE" | sed 's/^/    /'
+              placeholders_found=true
+            fi
+          done
+          
+          if [ "$placeholders_found" = true ]; then
+            echo "::warning title=Placeholders Found::Formula contains unreplaced placeholders that may need manual attention"
+          else
+            echo "✅ No unreplaced placeholders found"
+          fi
+          
+          # Step 5: Homebrew audit (if available)
+          echo "🍺 Running Homebrew formula audit (if available)..."
+          if command -v brew >/dev/null 2>&1; then
+            echo "   Homebrew found, running audit..."
+            if brew audit --strict "$FORMULA_FILE" 2>/dev/null; then
+              echo "✅ Homebrew audit passed"
+            else
+              echo "⚠️ Homebrew audit found issues (may not be critical):"
+              brew audit --strict "$FORMULA_FILE" 2>&1 | sed 's/^/    /' || true
+              echo "::warning title=Audit Issues::Homebrew audit found issues that may need attention"
+            fi
+          else
+            echo "   Homebrew not available in CI environment, skipping audit"
+            echo "   (This is normal for GitHub Actions runners)"
+          fi
+          
+          # Step 6: Additional formula integrity checks
+          echo "🔍 Running additional integrity checks..."
+          
+          # Check that license field exists
+          if grep -q "license.*\"" "$FORMULA_FILE"; then
+            echo "✅ License field found"
+          else
+            echo "⚠️ License field not found (recommended but not required)"
+            echo "::warning title=License Missing::Formula is missing license field"
+          fi
+          
+          # Check that dependencies are properly formatted
+          if grep -q "depends_on" "$FORMULA_FILE"; then
+            echo "✅ Dependencies found and properly declared"
+          else
+            echo "ℹ️ No dependencies declared (this may be correct)"
+          fi
+          
+          # Validate formula naming
+          if grep -q "class UsbipdMac.*Formula" "$FORMULA_FILE"; then
+            echo "✅ Formula class name is correct"
+          else
+            echo "⚠️ Formula class name may be incorrect"
+            echo "::warning title=Class Name::Formula class name should be 'UsbipdMac < Formula'"
+          fi
+          
+          # Final validation result
+          if [ "$validation_failed" = true ]; then
+            echo "::error title=Validation Failed::Formula validation failed with critical errors"
+            echo "❌ Formula validation failed - critical errors found"
+            echo "validation_passed=false" >> $GITHUB_OUTPUT
+            
+            # Restore backup on validation failure
+            echo "🔄 Restoring formula from backup due to validation failure..."
+            if [ -f "$BACKUP_FILE" ]; then
+              cp "$BACKUP_FILE" "$FORMULA_FILE"
+              echo "✅ Formula restored from backup"
+              echo "::notice title=Backup Restored::Formula restored from backup due to validation failure"
+            else
+              echo "::error title=Backup Missing::No backup file found for restoration"
+            fi
+            
+            exit 1
+          else
+            echo "::notice title=Formula Validated::Updated formula passed all validation checks"
+            echo "✅ All formula validation checks passed"
+            echo "validation_passed=true" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "::endgroup::"
+
+      - name: ❌ Handle Validation Failure
+        if: steps.validate-formula.outputs.validation_passed == 'false'
+        run: |
+          echo "::group::Validation Failure Handling"
+          echo "::error title=Formula Validation Failed::Formula validation failed - formula was restored from backup"
+          
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          
+          echo "❌ Formula update for $VERSION failed validation"
+          echo ""
+          echo "📋 **What happened:**"
+          echo "   • The formula was updated with new version and checksum"
+          echo "   • Validation checks found critical errors"
+          echo "   • The formula was automatically restored from backup"
+          echo "   • No changes were committed to the repository"
+          echo ""
+          echo "🔍 **Common validation failures:**"
+          echo "   • Ruby syntax errors in the updated formula"
+          echo "   • Missing required Homebrew formula components"
+          echo "   • Version or checksum not properly updated"
+          echo "   • Homebrew audit found critical issues"
+          echo ""
+          echo "🛠️ **Next steps:**"
+          echo "   • Check the validation logs above for specific errors"
+          echo "   • Verify the metadata in homebrew-metadata.json is correct"
+          echo "   • Check the formula template for syntax issues"
+          echo "   • Consider running a manual update with the formula update script"
+          echo ""
+          echo "🔄 **Recovery:**"
+          echo "   • The original formula has been preserved"
+          echo "   • The tap repository is in a consistent state"
+          echo "   • Manual intervention may be required to fix the issues"
+          
+          echo "::endgroup::"
+          exit 1
+
+      - name: 📄 Commit Formula Changes
+        if: steps.validate-formula.outputs.validation_passed == 'true'
+        id: commit-changes
+        run: |
+          echo "::group::Enhanced Formula Commit"
+          echo "::notice title=Formula Commit::Committing updated formula to tap repository with conflict detection"
+          echo "ℹ️ Validation passed, proceeding with enhanced commit process..."
+          
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          SOURCE_REPO="${{ needs.validate-webhook.outputs.source-repo }}"
+          TRIGGER_TYPE="${{ needs.validate-webhook.outputs.trigger-type }}"
+          FORMULA_FILE="Formula/usbipd-mac.rb"
+          
+          # Check current git status
+          echo "🔍 Checking repository status..."
+          git status --porcelain
+          
+          # Check if there are changes to commit
+          if git diff --quiet "$FORMULA_FILE"; then
+            echo "::warning title=No Changes::No changes detected in formula file"
+            echo "⚠️ No formula changes to commit"
+            echo "📊 Current formula content is already up to date"
+            echo "commits_made=false" >> $GITHUB_OUTPUT
+          else
+            echo "📝 Changes detected in formula file"
+            echo "🔍 Changes summary:"
+            git diff --stat "$FORMULA_FILE" || echo "   Unable to show diff stats"
+            
+            # Check for conflicts before staging
+            echo "🔍 Checking for potential conflicts..."
+            if git ls-files -u | grep -q "$FORMULA_FILE"; then
+              echo "::error title=Merge Conflict::Formula file has unresolved merge conflicts"
+              echo "❌ Merge conflicts detected in $FORMULA_FILE"
+              echo "🛠️ Manual intervention required:"
+              echo "   1. Resolve conflicts in $FORMULA_FILE"
+              echo "   2. Run 'git add $FORMULA_FILE'"
+              echo "   3. Re-run this workflow"
+              exit 1
+            fi
+            
+            # Stage the formula file
+            echo "📁 Staging formula changes..."
+            if git add "$FORMULA_FILE"; then
+              echo "✅ Formula file staged successfully"
+            else
+              echo "::error title=Staging Failed::Could not stage formula file"
+              echo "❌ Failed to stage $FORMULA_FILE"
+              exit 1
+            fi
+            
+            # Generate enhanced commit message
+            echo "📝 Generating descriptive commit message..."
+            ARCHIVE_URL=$(jq -r '.metadata.archive_url' homebrew-metadata.json)
+            SHA256=$(jq -r '.metadata.sha256' homebrew-metadata.json)
+            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            
+            # Get previous version for comparison
+            PREV_VERSION=$(git log -1 --format="%s" | grep -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" | head -1 || echo "unknown")
+            
+            if [ "$TRIGGER_TYPE" = "webhook" ]; then
+              COMMIT_MSG="feat: update formula to $VERSION - automated webhook update
+
+Automated formula update triggered by release webhook from $SOURCE_REPO
+
+📦 **Version Update:**
+   • Previous: $PREV_VERSION → Current: $VERSION
+   • Release Source: $SOURCE_REPO
+   • Trigger: Webhook (repository_dispatch)
+   • Updated: $TIMESTAMP
+
+🔗 **Release Information:**
+   • Archive URL: $ARCHIVE_URL
+   • SHA256 Checksum: $SHA256
+   • Metadata Source: homebrew-metadata.json from release assets
+
+✅ **Validation Status:**
+   • Ruby syntax: ✓ Passed
+   • Homebrew structure: ✓ Passed
+   • Content verification: ✓ Passed
+   • Formula integrity: ✓ Passed
+
+🤖 Automated update via tap repository webhook integration"
+            else
+              COMMIT_MSG="feat: update formula to $VERSION - manual update
+
+Manual formula update via workflow dispatch
+
+📦 **Version Update:**
+   • Previous: $PREV_VERSION → Current: $VERSION
+   • Source Repository: $SOURCE_REPO
+   • Trigger: Manual workflow dispatch
+   • Updated: $TIMESTAMP
+
+🔗 **Release Information:**
+   • Archive URL: $ARCHIVE_URL
+   • SHA256 Checksum: $SHA256
+   • Metadata Source: homebrew-metadata.json from release assets
+
+✅ **Validation Status:**
+   • Ruby syntax: ✓ Passed
+   • Homebrew structure: ✓ Passed
+   • Content verification: ✓ Passed
+   • Formula integrity: ✓ Passed
+
+🔧 Manual update via workflow dispatch"
+            fi
+            
+            # Commit the changes
+            echo "💾 Committing formula changes..."
+            if git commit -m "$COMMIT_MSG"; then
+              COMMIT_HASH=$(git rev-parse HEAD)
+              echo "::notice title=Formula Committed::Formula changes committed successfully"
+              echo "✅ Formula changes committed successfully"
+              echo "🔗 Commit hash: $COMMIT_HASH"
+              echo "📋 Commit title: feat: update formula to $VERSION"
+              echo "commits_made=true" >> $GITHUB_OUTPUT
+              echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+            else
+              echo "::error title=Commit Failed::Could not commit formula changes"
+              echo "❌ Failed to commit formula changes"
+              echo "🛠️ Troubleshooting steps:"
+              echo "   1. Check git configuration (user.name, user.email)"
+              echo "   2. Verify file permissions"
+              echo "   3. Check for repository corruption"
+              exit 1
+            fi
+          fi
+          echo "::endgroup::"
+
+      - name: 📤 Push Formula Changes
+        if: steps.validate-formula.outputs.validation_passed == 'true' && steps.commit-changes.outputs.commits_made == 'true'
+        id: push-changes
+        run: |
+          echo "::group::Enhanced Formula Push with Conflict Detection"
+          echo "::notice title=Formula Push::Pushing updated formula to tap repository with retry logic"
+          echo "ℹ️ Validation passed and commits made, proceeding with enhanced push process..."
+          
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          COMMIT_HASH="${{ steps.commit-changes.outputs.commit_hash }}"
+          
+          echo "📋 Push details:"
+          echo "   • Version: $VERSION"
+          echo "   • Commit: $COMMIT_HASH"
+          echo "   • Branch: $(git branch --show-current)"
+          echo "   • Remote: $(git remote get-url origin)"
+          
+          # Check current branch and remote status
+          echo "🔍 Checking remote status before push..."
+          CURRENT_BRANCH=$(git branch --show-current)
+          
+          # Fetch latest changes to check for conflicts
+          echo "📥 Fetching latest changes from remote..."
+          if git fetch origin "$CURRENT_BRANCH" 2>/dev/null; then
+            echo "✅ Successfully fetched latest changes"
+            
+            # Check if we're behind the remote
+            LOCAL_COMMIT=$(git rev-parse HEAD)
+            REMOTE_COMMIT=$(git rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "")
+            
+            if [ -n "$REMOTE_COMMIT" ] && [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
+              # Check if we can fast-forward or if there are conflicts
+              if git merge-base --is-ancestor "origin/$CURRENT_BRANCH" HEAD; then
+                echo "✅ Local branch is ahead of remote, safe to push"
+              else
+                echo "⚠️ Remote has new commits, checking for conflicts..."
+                
+                # Check for formula-specific conflicts
+                if git diff HEAD "origin/$CURRENT_BRANCH" --name-only | grep -q "Formula/usbipd-mac.rb"; then
+                  echo "::error title=Push Conflict::Remote has conflicting changes to formula file"
+                  echo "❌ Formula file conflicts detected"
+                  echo "🛠️ **Manual intervention required:**"
+                  echo "   1. The remote repository has newer changes to Formula/usbipd-mac.rb"
+                  echo "   2. This may indicate a concurrent update or manual changes"
+                  echo "   3. Consider using manual workflow dispatch to retry with specific conflict resolution"
+                  echo ""
+                  echo "🔍 **Conflict resolution options:**"
+                  echo "   • Option A: Wait for concurrent update to complete, then retry"
+                  echo "   • Option B: Force push (not recommended for formula files)"
+                  echo "   • Option C: Manual merge resolution via pull request"
+                  echo ""
+                  echo "📊 **Remote changes detected:**"
+                  git log --oneline HEAD.."origin/$CURRENT_BRANCH" | head -5 || echo "   Unable to show remote changes"
+                  exit 1
+                else
+                  echo "✅ No conflicts with formula file, attempting rebase..."
+                  if git pull --rebase origin "$CURRENT_BRANCH"; then
+                    echo "✅ Successfully rebased local changes"
+                  else
+                    echo "::error title=Rebase Failed::Could not rebase local changes"
+                    echo "❌ Rebase failed, manual intervention required"
+                    exit 1
+                  fi
+                fi
+              fi
+            else
+              echo "✅ Local and remote are in sync"
+            fi
+          else
+            echo "⚠️ Could not fetch from remote (may be normal for new repositories)"
+          fi
+          
+          # Push with retry logic and exponential backoff
+          echo "📤 Pushing changes with retry logic..."
+          max_attempts=3
+          push_success=false
+          
+          for attempt in 1 2 3; do
+            echo "📤 Push attempt $attempt of $max_attempts..."
+            
+            if git push origin HEAD; then
+              echo "✅ Push successful on attempt $attempt"
+              push_success=true
+              break
+            else
+              echo "❌ Push attempt $attempt failed"
+              
+              if [ $attempt -eq $max_attempts ]; then
+                echo "::error title=Push Failed::Could not push after $max_attempts attempts"
+                echo "❌ All push attempts failed"
+                echo ""
+                echo "🛠️ **Common push failure causes:**"
+                echo "   • Network connectivity issues"
+                echo "   • Repository permission problems"
+                echo "   • Branch protection rules"
+                echo "   • Concurrent updates to the same branch"
+                echo "   • Repository size or rate limits"
+                echo ""
+                echo "🔧 **Manual resolution steps:**"
+                echo "   1. Check repository permissions and branch protection"
+                echo "   2. Verify network connectivity"
+                echo "   3. Wait a few minutes and retry the workflow"
+                echo "   4. Check GitHub status page for service issues"
+                echo "   5. Consider using workflow_dispatch with force options"
+                echo ""
+                echo "📊 **Last push error:**"
+                git push origin HEAD 2>&1 | tail -10 || echo "   Unable to capture push error"
+                exit 1
+              fi
+              
+              # Exponential backoff before retry
+              backoff_delay=$((2 ** attempt))
+              echo "⏳ Retrying in $backoff_delay seconds (exponential backoff)..."
+              sleep $backoff_delay
+              
+              # Re-fetch before retry in case remote changed
+              echo "📥 Re-fetching before retry..."
+              git fetch origin "$CURRENT_BRANCH" 2>/dev/null || echo "   Fetch failed, continuing with retry"
+            fi
+          done
+          
+          if [ "$push_success" = true ]; then
+            # Get pushed commit information
+            PUSHED_COMMIT=$(git rev-parse HEAD)
+            echo "::notice title=Formula Pushed::Updated formula pushed to tap repository successfully"
+            echo "✅ Formula changes pushed successfully"
+            echo "🔗 Pushed commit: $PUSHED_COMMIT"
+            echo "📦 Formula updated for version: $VERSION"
+            echo "🏷️ Formula now available in tap repository"
+            echo "push_successful=true" >> $GITHUB_OUTPUT
+            echo "pushed_commit=$PUSHED_COMMIT" >> $GITHUB_OUTPUT
+          else
+            echo "::error title=Push Failed::Unexpected push failure"
+            echo "push_successful=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "::endgroup::"
+
+      - name: 🔄 Handle Push Failure
+        if: steps.validate-formula.outputs.validation_passed == 'true' && steps.commit-changes.outputs.commits_made == 'true' && steps.push-changes.outputs.push_successful != 'true'
+        run: |
+          echo "::group::Push Failure Recovery"
+          echo "::error title=Push Failed::Formula push failed - providing recovery guidance"
+          
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          
+          echo "❌ Push operation failed for formula update to $VERSION"
+          echo ""
+          echo "📋 **What happened:**"
+          echo "   • Formula was successfully updated and validated"
+          echo "   • Changes were committed locally"
+          echo "   • Push to remote repository failed"
+          echo "   • Local repository contains the updated formula"
+          echo ""
+          echo "🔧 **Recovery options:**"
+          echo "   1. **Automatic retry:** Re-run this workflow to retry the push"
+          echo "   2. **Manual push:** Clone the repository and push manually"
+          echo "   3. **Force push:** Use workflow_dispatch with force options (use carefully)"
+          echo "   4. **Wait and retry:** If there were concurrent updates, wait and retry"
+          echo ""
+          echo "📝 **Manual recovery commands:**"
+          echo "   git clone [tap-repository-url]"
+          echo "   cd [tap-repository]"
+          echo "   git pull origin main"
+          echo "   # Apply formula changes manually"
+          echo "   git add Formula/usbipd-mac.rb"
+          echo "   git commit -m \"feat: update formula to $VERSION\""
+          echo "   git push origin main"
+          echo ""
+          echo "⚠️ **Important notes:**"
+          echo "   • The formula update is complete and valid"
+          echo "   • Only the push operation failed"
+          echo "   • No data was lost in this process"
+          echo "   • The tap repository is still in a consistent state"
+          
+          echo "::endgroup::"
+
+  post-update:
+    name: Post-Update Validation
+    runs-on: ubuntu-latest
+    needs: [validate-webhook, update-formula]
+    if: always() && needs.update-formula.result == 'success'
+    steps:
+      - name: 📊 Starting Post-Update Validation
+        run: |
+          echo "::notice title=Post-Update::Starting post-update validation and summary"
+          echo "📊 This stage validates the completed formula update and provides summary"
+          echo "📊 Status: STARTING"
+
+      - name: 📥 Checkout Updated Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: ✅ Validate Formula Update
+        run: |
+          echo "::group::Formula Update Validation"
+          echo "::notice title=Update Validation::Validating completed formula update"
+          
+          VERSION="${{ needs.validate-webhook.outputs.version }}"
+          FORMULA_FILE="Formula/usbipd-mac.rb"
+          
+          echo "✅ Validating formula update for $VERSION..."
+          
+          # Verify formula file exists
+          if [ ! -f "$FORMULA_FILE" ]; then
+            echo "::error title=Formula Missing::Formula file not found after update"
+            exit 1
+          fi
+          
+          # Verify version is present in formula
+          if grep -q "$VERSION" "$FORMULA_FILE"; then
+            echo "::notice title=Version Verified::Formula contains expected version"
+            echo "✅ Version $VERSION found in formula"
+          else
+            echo "::error title=Version Missing::Expected version not found in formula"
+            exit 1
+          fi
+          
+          # Check Ruby syntax
+          if ruby -c "$FORMULA_FILE" >/dev/null 2>&1; then
+            echo "✅ Formula syntax is valid"
+          else
+            echo "::error title=Syntax Error::Formula has syntax errors after update"
+            exit 1
+          fi
+          
+          echo "✅ Formula update validation passed"
+          echo "::endgroup::"
+
+      - name: 🎉 Update Success Summary
+        run: |
+          echo "::group::Update Success"
+          echo "::notice title=Update Complete::Tap repository formula update completed successfully"
+          echo "🎉 Formula update for ${{ needs.validate-webhook.outputs.version }} completed successfully!"
+          echo ""
+          echo "📦 **Update Details:**"
+          echo "   • Version: ${{ needs.validate-webhook.outputs.version }}"
+          echo "   • Source Repository: ${{ needs.validate-webhook.outputs.source-repo }}"
+          echo "   • Trigger Type: ${{ needs.validate-webhook.outputs.trigger-type }}"
+          echo "   • Metadata Validated: ${{ needs.fetch-metadata.outputs.metadata-valid }}"
+          echo "   • Archive Verified: ${{ needs.verify-archive.outputs.archive-verified }}"
+          echo ""
+          echo "✅ **Completed Steps:**"
+          echo "   • Webhook event validation"
+          echo "   • Release metadata download and validation"
+          echo "   • Source archive verification"
+          echo "   • Formula file update with verified metadata"
+          echo "   • Formula validation and syntax check"
+          echo "   • Changes committed and pushed to tap repository"
+          echo "   • Post-update validation"
+          echo ""
+          echo "🔗 **Workflow Benefits:**"
+          echo "   • Automated formula updates from release webhooks"
+          echo "   • Comprehensive metadata validation and verification"
+          echo "   • Source archive integrity checking"
+          echo "   • Robust error handling and rollback capabilities"
+          echo "   • Manual recovery options via workflow dispatch"
+          echo ""
+          echo "📊 Status: **SUCCESS**"
+          echo "::endgroup::"
