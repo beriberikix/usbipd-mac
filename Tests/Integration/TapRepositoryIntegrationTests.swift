@@ -422,7 +422,13 @@ final class TapRepositoryIntegrationTests: XCTestCase, TestSuite {
         return (isValid: process.terminationStatus == 0)
     }
     
-    private func validateFormulaStructure(formulaContent: String) throws -> (hasRequiredComponents: Bool, hasInstallMethod: Bool, hasValidClass: Bool) {
+    private struct FormulaValidationResult {
+        let hasRequiredComponents: Bool
+        let hasInstallMethod: Bool
+        let hasValidClass: Bool
+    }
+    
+    private func validateFormulaStructure(formulaContent: String) throws -> FormulaValidationResult {
         let hasClass = formulaContent.contains("class UsbipdMac < Formula")
         let hasDesc = formulaContent.contains("desc")
         let hasHomepage = formulaContent.contains("homepage")
@@ -433,7 +439,7 @@ final class TapRepositoryIntegrationTests: XCTestCase, TestSuite {
         
         let hasRequiredComponents = hasClass && hasDesc && hasHomepage && hasURL && hasVersion && hasSHA256
         
-        return (
+        return FormulaValidationResult(
             hasRequiredComponents: hasRequiredComponents,
             hasInstallMethod: hasInstall,
             hasValidClass: hasClass
