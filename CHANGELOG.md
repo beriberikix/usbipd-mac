@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.0.14] - 2025-08-21
+
+### Added
+- **Homebrew Releaser Migration**: Complete migration from webhook system to homebrew-releaser GitHub Action
+  - Automated homebrew tap management with homebrew-releaser action
+  - Comprehensive post-migration monitoring and validation
+  - End-to-end release automation with artifact management
+  - Rollback procedures and validation scripts
+  - Enhanced documentation and troubleshooting guides
+
+### Changed
+- Updated release workflows to use homebrew-releaser action
+- Improved homebrew tap repository management
+- Enhanced release monitoring and validation
+
+### Removed
+- Legacy webhook system for homebrew tap management
+
 ## [v0.0.6] - 2025-08-18
 
 ### Added
