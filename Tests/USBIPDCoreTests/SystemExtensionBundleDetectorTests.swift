@@ -319,12 +319,6 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
 
 // MARK: - Private method access for testing
 private extension SystemExtensionBundleDetector {
-    struct BundleSearchResult {
-        let bundlePath: URL?
-        let skippedPaths: [String]
-        let rejectionReasons: [String: RejectionReason]
-    }
-    
     func isDSYMPath(_ path: URL) -> Bool {
         return path.pathComponents.contains { $0.hasSuffix(".dSYM") }
     }
