@@ -565,7 +565,8 @@ jobs:
             # Create an issue for failed formula updates
             if command -v gh > /dev/null 2>&1; then
               echo "📋 Creating issue for failed formula update..."
-              ISSUE_BODY="## Formula Update Failure
+              ISSUE_BODY=$(cat <<'ISSUE_EOF'
+## Formula Update Failure
 
 **Release Version**: $VERSION
 **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -587,7 +588,9 @@ The homebrew-releaser GitHub Action failed during the release workflow for versi
 ### Workflow Logs
 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-/cc @maintainers"
+/cc @maintainers
+ISSUE_EOF
+)
 
               gh issue create \
                 --title "🚨 Formula Update Failed for $VERSION" \
