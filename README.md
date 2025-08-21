@@ -314,15 +314,15 @@ usbipd-mac uses automated GitHub Actions workflows for consistent and reliable r
 
 #### Homebrew Formula Management
 
-**External Tap Architecture**: The Homebrew formula is managed in a separate tap repository and is updated automatically via webhook integration during the release workflow.
+**External Tap Architecture**: The Homebrew formula is managed in a separate tap repository and is updated automatically via homebrew-releaser integration during the release workflow.
 
 **Automated Formula Update Process**:
 
-The release workflow uses a pull-based architecture for formula updates:
+The release workflow uses homebrew-releaser for direct formula updates:
 - Generates structured metadata (`homebrew-metadata.json`) with version, checksum, and release notes
 - Publishes metadata as a release asset
-- Webhook triggers formula update in the external tap repository: [`homebrew-usbipd-mac`](https://github.com/beriberikix/homebrew-usbipd-mac)
-- Tap repository automatically updates formula template and publishes changes
+- Homebrew-releaser action automatically updates formula in the external tap repository: [`homebrew-usbipd-mac`](https://github.com/beriberikix/homebrew-usbipd-mac)
+- Formula is committed directly to tap repository with proper version and SHA256
 
 **No manual intervention required** - users can install and update through Homebrew immediately after a release is published.
 

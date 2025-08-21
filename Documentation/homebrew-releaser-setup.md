@@ -1,10 +1,10 @@
 # Homebrew-Releaser Setup Guide
 
-This document provides instructions for setting up the homebrew-releaser GitHub Action to replace the current webhook-based Homebrew formula update system.
+This document provides instructions for the homebrew-releaser GitHub Action configuration used for automated Homebrew formula updates.
 
 ## Overview
 
-The homebrew-releaser action automates formula updates directly within the release workflow, eliminating the need for external webhook infrastructure and tap repository dispatch handlers.
+The homebrew-releaser action automates formula updates directly within the release workflow. This system has replaced the previous webhook-based infrastructure, providing a more reliable and simpler architecture for formula updates.
 
 ## Required GitHub Repository Secrets
 
@@ -101,16 +101,17 @@ create_pullrequest: true
 pullrequest_reviewer: maintainer-username
 ```
 
-## Migration Validation
+## Configuration Status
 
-### Pre-Migration Checklist
+### Configuration Checklist
 
-- [ ] `HOMEBREW_TAP_TOKEN` created with required permissions
-- [ ] Token added to main repository secrets
-- [ ] Token permissions verified against tap repository
-- [ ] Current webhook system documented for rollback
+- [x] `HOMEBREW_TAP_TOKEN` created with required permissions
+- [x] Token added to main repository secrets
+- [x] Token permissions verified against tap repository
+- [x] Homebrew-releaser configured in release workflow
+- [x] Webhook system removed from main repository
 
-### Migration Testing
+### Testing and Validation
 
 1. **Test Token Access**:
 ```bash
@@ -124,10 +125,10 @@ curl -H "Authorization: token YOUR_TOKEN" \
    - Trigger test release to validate formula generation
    - Review generated formula output in action logs
 
-3. **Parallel Operation**:
-   - Run homebrew-releaser alongside existing webhook system
-   - Compare formula outputs for consistency
-   - Monitor for conflicts or duplicate updates
+3. **Production Validation**:
+   - Monitor release workflow execution
+   - Verify formula updates in tap repository
+   - Test user installation: `brew upgrade usbipd-mac`
 
 ## Security Considerations
 
@@ -144,36 +145,40 @@ curl -H "Authorization: token YOUR_TOKEN" \
 - **Signed Commits**: Consider enabling commit signing for tap repository
 - **Audit Trail**: Maintain clear audit trail for formula updates
 
-## Rollback Procedures
+## Troubleshooting and Recovery
 
-### Emergency Rollback
+### Formula Update Failures
 
 If homebrew-releaser fails or causes issues:
 
-1. **Disable homebrew-releaser**:
-   - Remove or comment out homebrew-releaser step in workflow
-   - Re-enable webhook notification step
+1. **Review Action Logs**:
+   - Check GitHub Actions logs for homebrew-releaser step
+   - Review token permissions and repository access
+   - Validate formula syntax and configuration
 
-2. **Revert Formula Changes**:
-   - Use `git revert` to undo problematic formula commits
-   - Manually update formula if needed
+2. **Manual Formula Updates**:
+   - Clone tap repository locally
+   - Update formula manually with correct version and SHA256
+   - Commit and push changes directly
 
-3. **Restore Webhook System**:
-   - Ensure `WEBHOOK_TOKEN` secret is still available
-   - Verify tap repository webhook handler is active
+3. **Temporary Workarounds**:
+   - Comment out homebrew-releaser step in workflow
+   - Update formula manually until issues are resolved
+   - Re-enable automated updates after fixes
 
-### Planned Rollback
+### Recovery Procedures
 
-For planned migration rollback:
+For persistent issues with homebrew-releaser:
 
-1. **Update Release Workflow**:
-   - Remove homebrew-releaser configuration
-   - Restore original webhook notification logic
-   - Test webhook system functionality
+1. **Validate Configuration**:
+   - Check `HOMEBREW_TAP_TOKEN` permissions
+   - Verify homebrew-releaser action version
+   - Review formula template parameters
 
-2. **Clean Up Secrets**:
-   - Remove `HOMEBREW_TAP_TOKEN` if no longer needed
-   - Verify `WEBHOOK_TOKEN` is still functional
+2. **Manual Intervention**:
+   - Update formula directly in tap repository
+   - Use workflow_dispatch to manually trigger updates
+   - Monitor for resolution of underlying issues
 
 ## Monitoring and Maintenance
 
@@ -231,4 +236,4 @@ skip_commit: true  # For safe debugging
 
 ---
 
-**Migration Status**: Ready for implementation after token creation and secret configuration.
+**Implementation Status**: Completed - homebrew-releaser is active and webhook system has been fully removed.
