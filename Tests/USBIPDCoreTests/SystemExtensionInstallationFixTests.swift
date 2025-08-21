@@ -9,7 +9,6 @@
 
 import XCTest
 import Foundation
-@testable import USBIPDCLI
 @testable import USBIPDCore
 @testable import Common
 
