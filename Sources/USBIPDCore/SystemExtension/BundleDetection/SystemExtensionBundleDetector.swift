@@ -2,6 +2,7 @@
 // Utility for detecting System Extension bundles in build directory structure
 
 import Foundation
+import Common
 
 /// Utility for automatically locating System Extension bundles created during build
 public struct SystemExtensionBundleDetector {
@@ -40,6 +41,12 @@ public struct SystemExtensionBundleDetector {
         /// Homebrew metadata (if detected in Homebrew environment)
         public let homebrewMetadata: HomebrewMetadata?
         
+        /// Paths that were skipped during detection
+        public let skippedPaths: [String]
+        
+        /// Reasons for path rejections
+        public let rejectionReasons: [String: RejectionReason]
+
         public init(
             found: Bool,
             bundlePath: String? = nil,
@@ -47,7 +54,9 @@ public struct SystemExtensionBundleDetector {
             issues: [String] = [],
             detectionTime: Date = Date(),
             detectionEnvironment: DetectionEnvironment = .unknown,
-            homebrewMetadata: HomebrewMetadata? = nil
+            homebrewMetadata: HomebrewMetadata? = nil,
+            skippedPaths: [String] = [],
+            rejectionReasons: [String: RejectionReason] = [:]
         ) {
             self.found = found
             self.bundlePath = bundlePath
@@ -56,6 +65,8 @@ public struct SystemExtensionBundleDetector {
             self.detectionTime = detectionTime
             self.detectionEnvironment = detectionEnvironment
             self.homebrewMetadata = homebrewMetadata
+            self.skippedPaths = skippedPaths
+            self.rejectionReasons = rejectionReasons
         }
     }
     
@@ -91,69 +102,123 @@ public struct SystemExtensionBundleDetector {
         }
     }
     
-    private let fileManager: FileManager
+    internal let fileManager: FileManager
+    private let logger: Logger
     
     /// Initialize bundle detector with optional custom file manager
     public init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
+        self.logger = Logger(config: LoggerConfig(level: .debug), subsystem: "com.usbipd.mac", category: "bundle-detector")
     }
     
     /// Detect System Extension bundle in both development and production environments
     /// - Returns: Detection result with bundle path if found
     public func detectBundle() -> DetectionResult {
+        logger.debug("Starting System Extension bundle detection")
         var issues: [String] = []
-        
+        var skippedPaths: [String] = []
+        var rejectionReasons: [String: RejectionReason] = [:]
+
         // First try production bundle detection (Homebrew)
+        logger.debug("Attempting production bundle detection (Homebrew)")
         let productionResult = detectProductionBundle()
         if productionResult.found {
+            logger.info("System Extension bundle found in production environment", context: [
+                "bundlePath": productionResult.bundlePath ?? "unknown",
+                "environment": formatEnvironmentForLogging(productionResult.detectionEnvironment)
+            ])
             return productionResult
         } else {
+            logger.debug("Production bundle detection failed, trying development environment")
             issues.append(contentsOf: productionResult.issues)
+            skippedPaths.append(contentsOf: productionResult.skippedPaths)
+            rejectionReasons.merge(productionResult.rejectionReasons) { _, new in new }
         }
         
         // Fall back to development environment detection
+        logger.debug("Attempting development bundle detection")
         guard let currentDirectory = getCurrentDirectory() else {
-            issues.append("Unable to determine current working directory")
-            return DetectionResult(found: false, issues: issues)
+            let errorMsg = "Unable to determine current working directory"
+            logger.warning("Bundle detection failed: \(errorMsg)")
+            issues.append(errorMsg)
+            return DetectionResult(found: false, issues: issues, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
         }
         
         // Look for .build directory
         let buildDirectory = currentDirectory.appendingPathComponent(".build")
+        logger.debug("Checking for .build directory", context: ["buildPath": buildDirectory.path])
         guard fileManager.fileExists(atPath: buildDirectory.path) else {
-            issues.append("No .build directory found at \(buildDirectory.path)")
+            let errorMsg = "No .build directory found at \(buildDirectory.path)"
+            logger.warning("Development bundle detection failed: \(errorMsg)")
+            issues.append(errorMsg)
             return DetectionResult(
-                found: false, 
+                found: false,
                 issues: issues,
-                detectionEnvironment: .development(buildPath: buildDirectory.path)
+                detectionEnvironment: .development(buildPath: buildDirectory.path),
+                skippedPaths: skippedPaths,
+                rejectionReasons: rejectionReasons
             )
         }
         
         // Search for System Extension bundles in .build directory
         let searchPaths = getSearchPaths(buildDirectory: buildDirectory)
+        logger.debug("Searching for System Extension bundle", context: [
+            "searchPaths": searchPaths.count,
+            "buildDirectory": buildDirectory.path
+        ])
         
         for searchPath in searchPaths {
-            if let bundlePath = findBundleInPath(searchPath) {
+            logger.debug("Searching path for bundle", context: ["searchPath": searchPath.path])
+            let searchResult = findBundleInPath(searchPath)
+            skippedPaths.append(contentsOf: searchResult.skippedPaths)
+            rejectionReasons.merge(searchResult.rejectionReasons) { _, new in new }
+
+            if let bundlePath = searchResult.bundlePath {
+                logger.debug("Found potential bundle, validating", context: ["bundlePath": bundlePath.path])
                 // Validate the found bundle
                 let validationResult = validateBundle(at: bundlePath)
                 if validationResult.isValid {
+                    logger.info("System Extension bundle found in development environment", context: [
+                        "bundlePath": bundlePath.path,
+                        "bundleType": validationResult.bundleType?.rawValue ?? "unknown",
+                        "searchPath": searchPath.path
+                    ])
                     return DetectionResult(
                         found: true,
                         bundlePath: bundlePath.path,
                         bundleIdentifier: Self.bundleIdentifier,
                         issues: validationResult.issues,
-                        detectionEnvironment: .development(buildPath: searchPath.path)
+                        detectionEnvironment: .development(buildPath: searchPath.path),
+                        skippedPaths: skippedPaths,
+                        rejectionReasons: rejectionReasons
                     )
                 } else {
+                    logger.warning("Bundle validation failed", context: [
+                        "bundlePath": bundlePath.path,
+                        "rejectionReason": validationResult.rejectionReason?.rawValue ?? "unknown",
+                        "issues": validationResult.issues.joined(separator: ", ")
+                    ])
                     issues.append(contentsOf: validationResult.issues)
+                    if let reason = validationResult.rejectionReason {
+                        rejectionReasons[bundlePath.path] = reason
+                    }
                 }
             }
         }
         
-        issues.append("No valid System Extension bundle found in development or production environments")
+        let finalError = "No valid System Extension bundle found in development or production environments"
+        logger.warning("Bundle detection completely failed", context: [
+            "totalSkippedPaths": skippedPaths.count,
+            "totalIssues": issues.count,
+            "searchedPaths": searchPaths.count
+        ])
+        issues.append(finalError)
         return DetectionResult(
-            found: false, 
+            found: false,
             issues: issues,
-            detectionEnvironment: .development(buildPath: buildDirectory.path)
+            detectionEnvironment: .development(buildPath: buildDirectory.path),
+            skippedPaths: skippedPaths,
+            rejectionReasons: rejectionReasons
         )
     }
     
@@ -161,26 +226,34 @@ public struct SystemExtensionBundleDetector {
     /// - Returns: Detection result with bundle path if found in Homebrew installation
     public func detectProductionBundle() -> DetectionResult {
         var issues: [String] = []
-        
+        var skippedPaths: [String] = []
+        var rejectionReasons: [String: RejectionReason] = [: ]
+
         // Get Homebrew search paths
         let homebrewPaths = getHomebrewSearchPaths()
         
         if homebrewPaths.isEmpty {
             issues.append("No Homebrew installation paths found at /opt/homebrew/Cellar/usbipd-mac/")
             return DetectionResult(
-                found: false, 
+                found: false,
                 issues: issues,
-                detectionEnvironment: .unknown
+                detectionEnvironment: .unknown,
+                skippedPaths: skippedPaths,
+                rejectionReasons: rejectionReasons
             )
         }
         
         // Search each Homebrew path for System Extension bundles
         for homebrewPath in homebrewPaths {
-            if let bundlePath = findBundleInPath(homebrewPath) {
+            let searchResult = findBundleInPath(homebrewPath)
+            skippedPaths.append(contentsOf: searchResult.skippedPaths)
+            rejectionReasons.merge(searchResult.rejectionReasons) { _, new in new }
+
+            if let bundlePath = searchResult.bundlePath {
                 // Validate the found bundle
                 let validationResult = validateBundle(at: bundlePath)
                 if validationResult.isValid {
-                    // Extract version from path (e.g., /opt/homebrew/Cellar/usbipd-mac/v1.0.0/...)
+                    // Extract version from path (e.g., /opt/homebrew/Cellar/usbipd-mac/v1.0.0/…)
                     let versionFromPath = extractVersionFromHomebrewPath(homebrewPath)
                     
                     // Parse Homebrew metadata from bundle
@@ -192,19 +265,26 @@ public struct SystemExtensionBundleDetector {
                         bundleIdentifier: Self.bundleIdentifier,
                         issues: validationResult.issues,
                         detectionEnvironment: .homebrew(cellarPath: homebrewPath.path, version: versionFromPath),
-                        homebrewMetadata: homebrewMetadata
+                        homebrewMetadata: homebrewMetadata,
+                        skippedPaths: skippedPaths,
+                        rejectionReasons: rejectionReasons
                     )
                 } else {
                     issues.append(contentsOf: validationResult.issues)
+                    if let reason = validationResult.rejectionReason {
+                        rejectionReasons[bundlePath.path] = reason
+                    }
                 }
             }
         }
         
         issues.append("No valid System Extension bundle found in Homebrew installation paths")
         return DetectionResult(
-            found: false, 
+            found: false,
             issues: issues,
-            detectionEnvironment: .homebrew(cellarPath: "/opt/homebrew/Cellar/usbipd-mac", version: nil)
+            detectionEnvironment: .homebrew(cellarPath: "/opt/homebrew/Cellar/usbipd-mac", version: nil),
+            skippedPaths: skippedPaths,
+            rejectionReasons: rejectionReasons
         )
     }
     
@@ -256,7 +336,7 @@ public struct SystemExtensionBundleDetector {
     private func extractVersionFromHomebrewPath(_ homebrewPath: URL) -> String? {
         let pathComponents = homebrewPath.pathComponents
         
-        // Look for version pattern in path like: /opt/homebrew/Cellar/usbipd-mac/v1.0.0/...
+        // Look for version pattern in path like: /opt/homebrew/Cellar/usbipd-mac/v1.0.0/…
         for component in pathComponents {
             if component.hasPrefix("v") && component.count > 1 {
                 return component
@@ -344,7 +424,10 @@ public struct SystemExtensionBundleDetector {
     }
     
     /// Find System Extension bundle in specific path
-    private func findBundleInPath(_ path: URL) -> URL? {
+    internal func findBundleInPath(_ path: URL) -> BundleSearchResult {
+        var skippedPaths: [String] = []
+        var rejectionReasons: [String: RejectionReason] = [: ]
+        
         do {
             let contents = try fileManager.contentsOfDirectory(
                 at: path,
@@ -353,66 +436,142 @@ public struct SystemExtensionBundleDetector {
             )
             
             for item in contents {
+                // Exclude dSYM directories from our search
+                if isDSYMPath(item) {
+                    logger.debug("Skipping dSYM directory during bundle search", context: [
+                        "skippedPath": item.path,
+                        "reason": "dSYM directory"
+                    ])
+                    skippedPaths.append(item.path)
+                    rejectionReasons[item.path] = .dSYMPath
+                    continue
+                }
+
                 // Look for .systemextension bundles (production)
                 if item.pathExtension == "systemextension" {
-                    return item
+                    logger.debug("Found production bundle (.systemextension)", context: [
+                        "bundlePath": item.path,
+                        "bundleType": "production"
+                    ])
+                    return BundleSearchResult(bundlePath: item, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
                 }
                 
                 // Look for development SystemExtension executable
                 if item.lastPathComponent == "USBIPDSystemExtension" {
+                    logger.debug("Found development bundle (executable)", context: [
+                        "executablePath": item.path,
+                        "bundlePath": path.path,
+                        "bundleType": "development"
+                    ])
                     // In development mode, return the parent directory as bundle path
                     // This allows the rest of the system to work with development builds
-                    return path
+                    return BundleSearchResult(bundlePath: path, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
                 }
                 
                 // Recursively search subdirectories
                 var isDirectory: ObjCBool = false
                 if fileManager.fileExists(atPath: item.path, isDirectory: &isDirectory),
                    isDirectory.boolValue {
-                    if let bundleInSubdir = findBundleInPath(item) {
-                        return bundleInSubdir
+                    let subdirResult = findBundleInPath(item)
+                    if let bundlePath = subdirResult.bundlePath {
+                        return BundleSearchResult(
+                            bundlePath: bundlePath,
+                            skippedPaths: skippedPaths + subdirResult.skippedPaths,
+                            rejectionReasons: rejectionReasons.merging(subdirResult.rejectionReasons) { _, new in new }
+                        )
                     }
+                    skippedPaths.append(contentsOf: subdirResult.skippedPaths)
+                    rejectionReasons.merge(subdirResult.rejectionReasons) { _, new in new }
                 }
             }
         } catch {
             // Silently continue searching other paths
         }
         
-        return nil
+        return BundleSearchResult(bundlePath: nil, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
+    }
+
+    /// Check if a given path is a dSYM bundle
+    /// - Parameter path: The URL to check
+    /// - Returns: True if the path contains a .dSYM component
+    private func isDSYMPath(_ path: URL) -> Bool {
+        return path.pathComponents.contains { $0.hasSuffix(".dSYM") }
     }
     
+    /// Type of bundle detected
+    public enum BundleType: String {
+        case development
+        case production
+    }
+
+    /// Reason for bundle validation rejection
+    public enum RejectionReason: String, Codable {
+        case dSYMPath
+        case missingExecutable
+        case invalidBundleStructure
+        case missingInfoPlist
+    }
+
+    /// Result of bundle search operation
+    private struct BundleSearchResult {
+        let bundlePath: URL?
+        let skippedPaths: [String]
+        let rejectionReasons: [String: RejectionReason]
+    }
+
     /// Validation result for bundle
     private struct BundleValidationResult {
         let isValid: Bool
         let issues: [String]
+        let bundleType: BundleType?
+        let rejectionReason: RejectionReason?
     }
     
     /// Validate found bundle structure and contents
     private func validateBundle(at bundlePath: URL) -> BundleValidationResult {
+        logger.debug("Validating bundle structure", context: ["bundlePath": bundlePath.path])
         var issues: [String] = []
         
         // Check if path exists and is a directory
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: bundlePath.path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
-            issues.append("Bundle path does not exist or is not a directory: \(bundlePath.path)")
-            return BundleValidationResult(isValid: false, issues: issues)
+            let errorMsg = "Bundle path does not exist or is not a directory: \(bundlePath.path)"
+            logger.warning("Bundle validation failed - invalid path", context: [
+                "bundlePath": bundlePath.path,
+                "rejectionReason": RejectionReason.invalidBundleStructure.rawValue
+            ])
+            issues.append(errorMsg)
+            return BundleValidationResult(isValid: false, issues: issues, bundleType: nil, rejectionReason: .invalidBundleStructure)
         }
         
         // Check if this is a development environment (has USBIPDSystemExtension executable)
         let developmentExecutablePath = bundlePath.appendingPathComponent("USBIPDSystemExtension")
         if fileManager.fileExists(atPath: developmentExecutablePath.path) {
             // Development mode validation - just check for executable
-            issues.append("Development mode bundle detected - SystemExtension executable found")
-            return BundleValidationResult(isValid: true, issues: issues)
+            let infoMsg = "Development mode bundle detected - SystemExtension executable found"
+            logger.info("Bundle validation successful - development bundle", context: [
+                "bundlePath": bundlePath.path,
+                "bundleType": BundleType.development.rawValue,
+                "executablePath": developmentExecutablePath.path
+            ])
+            issues.append(infoMsg)
+            return BundleValidationResult(isValid: true, issues: issues, bundleType: .development, rejectionReason: nil)
         }
         
         // Production mode validation - check for proper bundle structure
+        logger.debug("Validating production bundle structure", context: ["bundlePath": bundlePath.path])
         // Check for Info.plist
         let infoPlistPath = bundlePath.appendingPathComponent("Contents/Info.plist")
         guard fileManager.fileExists(atPath: infoPlistPath.path) else {
-            issues.append("Missing Info.plist at \(infoPlistPath.path)")
-            return BundleValidationResult(isValid: false, issues: issues)
+            let errorMsg = "Missing Info.plist at \(infoPlistPath.path)"
+            logger.warning("Bundle validation failed - missing Info.plist", context: [
+                "bundlePath": bundlePath.path,
+                "rejectionReason": RejectionReason.missingInfoPlist.rawValue,
+                "expectedInfoPlistPath": infoPlistPath.path
+            ])
+            issues.append(errorMsg)
+            return BundleValidationResult(isValid: false, issues: issues, bundleType: .production, rejectionReason: .missingInfoPlist)
         }
         
         // Validate Info.plist contents
@@ -424,13 +583,13 @@ public struct SystemExtensionBundleDetector {
                 format: nil
             ) as? [String: Any] else {
                 issues.append("Invalid Info.plist format")
-                return BundleValidationResult(isValid: false, issues: issues)
+                return BundleValidationResult(isValid: false, issues: issues, bundleType: .production, rejectionReason: .invalidBundleStructure)
             }
             
             // Check bundle identifier
             guard let bundleId = plist["CFBundleIdentifier"] as? String else {
                 issues.append("Missing CFBundleIdentifier in Info.plist")
-                return BundleValidationResult(isValid: false, issues: issues)
+                return BundleValidationResult(isValid: false, issues: issues, bundleType: .production, rejectionReason: .invalidBundleStructure)
             }
             
             if bundleId != Self.bundleIdentifier {
@@ -441,14 +600,29 @@ public struct SystemExtensionBundleDetector {
             if let executableName = plist["CFBundleExecutable"] as? String {
                 let executablePath = bundlePath.appendingPathComponent("Contents/MacOS").appendingPathComponent(executableName)
                 if !fileManager.fileExists(atPath: executablePath.path) {
-                    issues.append("Missing executable at \(executablePath.path)")
+                    let errorMsg = "Missing executable at \(executablePath.path)"
+                    logger.warning("Bundle validation failed - missing executable", context: [
+                        "bundlePath": bundlePath.path,
+                        "rejectionReason": RejectionReason.missingExecutable.rawValue,
+                        "expectedExecutablePath": executablePath.path,
+                        "executableName": executableName
+                    ])
+                    issues.append(errorMsg)
+                    return BundleValidationResult(isValid: false, issues: issues, bundleType: .production, rejectionReason: .missingExecutable)
                 }
             } else {
-                issues.append("Missing CFBundleExecutable in Info.plist")
+                let errorMsg = "Missing CFBundleExecutable in Info.plist"
+                logger.warning("Bundle validation failed - missing CFBundleExecutable", context: [
+                    "bundlePath": bundlePath.path,
+                    "rejectionReason": RejectionReason.missingExecutable.rawValue,
+                    "infoPlistPath": infoPlistPath.path
+                ])
+                issues.append(errorMsg)
+                return BundleValidationResult(isValid: false, issues: issues, bundleType: .production, rejectionReason: .missingExecutable)
             }
         } catch {
             issues.append("Error reading Info.plist: \(error.localizedDescription)")
-            return BundleValidationResult(isValid: false, issues: issues)
+            return BundleValidationResult(isValid: false, issues: issues, bundleType: .production, rejectionReason: .invalidBundleStructure)
         }
         
         // Bundle is valid if no critical issues found
@@ -456,7 +630,43 @@ public struct SystemExtensionBundleDetector {
         let hasPlistIssues = issues.contains { $0.contains("Info.plist") && !$0.contains("Bundle identifier mismatch") }
         
         let isValid = !hasExecutableIssues && !hasPlistIssues
-        return BundleValidationResult(isValid: isValid, issues: issues)
+        
+        if isValid {
+            logger.info("Bundle validation successful - production bundle", context: [
+                "bundlePath": bundlePath.path,
+                "bundleType": BundleType.production.rawValue,
+                "issueCount": issues.count
+            ])
+        } else {
+            logger.warning("Bundle validation failed - production bundle issues", context: [
+                "bundlePath": bundlePath.path,
+                "hasExecutableIssues": hasExecutableIssues,
+                "hasPlistIssues": hasPlistIssues,
+                "totalIssues": issues.count
+            ])
+        }
+        
+        return BundleValidationResult(isValid: isValid, issues: issues, bundleType: .production, rejectionReason: nil)
+    }
+    
+    // MARK: - Logging Helpers
+    
+    /// Format detection environment for structured logging
+    private func formatEnvironmentForLogging(_ environment: DetectionEnvironment) -> String {
+        switch environment {
+        case .development(let buildPath):
+            return "development(\(buildPath))"
+        case .homebrew(let cellarPath, let version):
+            if let version = version {
+                return "homebrew(\(cellarPath), \(version))"
+            } else {
+                return "homebrew(\(cellarPath))"
+            }
+        case .manual(let bundlePath):
+            return "manual(\(bundlePath))"
+        case .unknown:
+            return "unknown"
+        }
     }
 }
 

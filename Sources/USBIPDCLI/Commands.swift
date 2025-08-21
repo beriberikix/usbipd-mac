@@ -1009,7 +1009,8 @@ public class DiagnoseCommand: Command {
             if verbose {
                 print("   📁 Path: \(detectionResult.bundlePath ?? "unknown")")
                 print("   🆔 Bundle ID: \(detectionResult.bundleIdentifier ?? "unknown")")
-                print("   🏠 Environment: \(detectionResult.detectionEnvironment)")
+                print("   🏠 Environment: \(formatDetectionEnvironment(detectionResult.detectionEnvironment))")
+                print("   🕐 Detection Time: \(DateFormatter.localizedString(from: detectionResult.detectionTime, dateStyle: .medium, timeStyle: .short))")
                 
                 if let metadata = detectionResult.homebrewMetadata {
                     print("   📦 Homebrew Version: \(metadata.version ?? "unknown")")
@@ -1017,10 +1018,63 @@ public class DiagnoseCommand: Command {
                         print("   📅 Installation Date: \(DateFormatter.localizedString(from: installDate, dateStyle: .medium, timeStyle: .short))")
                     }
                 }
+                
+                // Show enhanced diagnostic information
+                if !detectionResult.skippedPaths.isEmpty {
+                    print("   ⏭️  Skipped Paths (\(detectionResult.skippedPaths.count)):")
+                    let pathsToShow = Array(detectionResult.skippedPaths.prefix(5))
+                    for skippedPath in pathsToShow {
+                        let reason = detectionResult.rejectionReasons[skippedPath]
+                        let reasonText = formatRejectionReason(reason)
+                        print("      • \(skippedPath) (\(reasonText))")
+                    }
+                    if detectionResult.skippedPaths.count > 5 {
+                        print("      ... and \(detectionResult.skippedPaths.count - 5) more paths")
+                    }
+                }
             }
         } else {
             print("❌ System Extension bundle NOT detected")
-            print("   💡 Install usbipd-mac via Homebrew: brew install usbipd-mac")
+            
+            // Provide enhanced diagnostic information for troubleshooting
+            if !detectionResult.issues.isEmpty {
+                print("   Issues encountered:")
+                for issue in detectionResult.issues.prefix(verbose ? 10 : 3) {
+                    print("      • \(issue)")
+                }
+                if !verbose && detectionResult.issues.count > 3 {
+                    print("      ... and \(detectionResult.issues.count - 3) more issues (use --verbose to see all)")
+                }
+            }
+            
+            if !detectionResult.skippedPaths.isEmpty && verbose {
+                print("   Searched paths (\(detectionResult.skippedPaths.count)):")
+                for skippedPath in detectionResult.skippedPaths.prefix(5) {
+                    let reason = detectionResult.rejectionReasons[skippedPath]
+                    let reasonText = formatRejectionReason(reason)
+                    print("      • \(skippedPath) (\(reasonText))")
+                }
+                if detectionResult.skippedPaths.count > 5 {
+                    print("      ... and \(detectionResult.skippedPaths.count - 5) more paths")
+                }
+            }
+            
+            // Provide specific recommendations based on detection environment
+            switch detectionResult.detectionEnvironment {
+            case .development:
+                print("   💡 Recommendations:")
+                print("      • Run 'swift build' to build the System Extension")
+                print("      • Ensure you're in the project root directory")
+            case .homebrew:
+                print("   💡 Recommendations:")
+                print("      • Install usbipd-mac via Homebrew: brew install usbipd-mac")
+                print("      • If already installed, try: brew reinstall usbipd-mac")
+            case .manual, .unknown:
+                print("   💡 Recommendations:")
+                print("      • Install usbipd-mac via Homebrew: brew install usbipd-mac")
+                print("      • Or run 'swift build' if in development environment")
+            }
+            
             status = .critical
         }
         
@@ -1366,6 +1420,40 @@ public class DiagnoseCommand: Command {
         }
     }
     
+    // MARK: - Diagnostic Formatting Utilities
+    
+    private func formatDetectionEnvironment(_ environment: SystemExtensionBundleDetector.DetectionEnvironment) -> String {
+        switch environment {
+        case .development(let buildPath):
+            return "Development (\(buildPath))"
+        case .homebrew(let cellarPath, let version):
+            if let version = version {
+                return "Homebrew (\(version))"
+            } else {
+                return "Homebrew (\(cellarPath))"
+            }
+        case .manual(let bundlePath):
+            return "Manual (\(bundlePath))"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+    
+    private func formatRejectionReason(_ reason: SystemExtensionBundleDetector.RejectionReason?) -> String {
+        guard let reason = reason else { return "Unknown" }
+        
+        switch reason {
+        case .dSYMPath:
+            return "dSYM directory"
+        case .missingExecutable:
+            return "missing executable"
+        case .invalidBundleStructure:
+            return "invalid bundle structure"
+        case .missingInfoPlist:
+            return "missing Info.plist"
+        }
+    }
+    
     // MARK: - Summary and Utilities
     
     private func updateOverallStatus(_ overallStatus: inout DiagnosticStatus, with sectionStatus: DiagnosticStatus, _ issueCount: inout Int, _ warningCount: inout Int) {
@@ -1413,9 +1501,13 @@ public class DiagnoseCommand: Command {
             print("   • System may still function with current warnings")
         case .critical:
             print("   • Address critical issues before using the system")
-            print("   • Try reinstalling: 'brew reinstall usbipd-mac'")
-            print("   • Run installation: 'usbipd install-system-extension'")
-            print("   • Check System Preferences > Security & Privacy for approvals")
+            print("   • If no System Extension bundle found:")
+            print("     - Development: Run 'swift build' in project directory")
+            print("     - Production: Install via 'brew install usbipd-mac'")
+            print("   • If bundle found but installation failed:")
+            print("     - Run installation: 'usbipd install-system-extension'")
+            print("     - Check System Preferences > Security & Privacy for approvals")
+            print("   • If persistent issues: 'brew reinstall usbipd-mac'")
         }
     }
     
