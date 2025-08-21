@@ -110,7 +110,7 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
             "CFBundleExecutable": "USBIPDSystemExtension"
         ]
         
-        let mockFileManager = fileManager
+        let mockFileManager = fileManager!
         mockFileManager.mockPlistData[infoPlistPath.path] = plistDict
         
         // Test validation
@@ -162,7 +162,7 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
             "CFBundleExecutable": "USBIPDSystemExtension"
         ]
         
-        let mockFileManager = fileManager
+        let mockFileManager = fileManager!
         mockFileManager.mockPlistData[infoPlistPath.path] = plistDict
         
         let prodResult = detector.validateBundle(at: productionPath)
@@ -208,7 +208,7 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
             "CFBundleExecutable": "USBIPDSystemExtension"
         ]
         
-        let mockFileManager = fileManager
+        let mockFileManager = fileManager!
         mockFileManager.mockPlistData[infoPlistPath.path] = plistDict
         
         let resultMissingProdExec = detector.validateBundle(at: prodBundlePath)
@@ -309,7 +309,7 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
             "CFBundleExecutable": "MissingExecutable"
         ]
         
-        let mockFileManager = fileManager
+        let mockFileManager = fileManager!
         mockFileManager.mockPlistData[infoPlistPath.path] = plistDict
         
         let prodResultMissingExec = detector.validateBundle(at: prodPathMissingExec)
