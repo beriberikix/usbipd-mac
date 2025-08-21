@@ -80,7 +80,7 @@ final class SystemExtensionInstallationFixTests: XCTestCase {
                      "Should have skipped dSYM paths during detection")
         
         // Verify rejection reasons include dSYM exclusions
-        let dsymRejections = detectionResult.rejectionReasons.filter { (_, reason) in
+        let dsymRejections = detectionResult.rejectionReasons.filter { _, reason in
             reason == .dSYMPath
         }
         XCTAssertFalse(dsymRejections.isEmpty, "Should have dSYM rejection reasons")
@@ -154,7 +154,7 @@ final class SystemExtensionInstallationFixTests: XCTestCase {
         let dsymSkips = detectionResult.skippedPaths.filter { $0.contains(".dSYM") }
         XCTAssertFalse(dsymSkips.isEmpty, "Should have skipped dSYM paths")
         
-        let dsymRejections = detectionResult.rejectionReasons.filter { (_, reason) in
+        let dsymRejections = detectionResult.rejectionReasons.filter { _, reason in
             reason == .dSYMPath
         }
         XCTAssertEqual(dsymSkips.count, dsymRejections.count,
@@ -310,7 +310,7 @@ final class SystemExtensionInstallationFixTests: XCTestCase {
         // Create production bundle environment (simulate Homebrew installation)
         
         let homebrewDir = URL(fileURLWithPath: "/opt/homebrew/Cellar/usbipd-mac/v1.0.0/Library/SystemExtensions")
-        let _ = homebrewDir.appendingPathComponent("USBIPDSystemExtension.systemextension")
+        _ = homebrewDir.appendingPathComponent("USBIPDSystemExtension.systemextension")
         
         // For testing, create this structure in our temp directory
         let testHomebrewDir = tempBuildDirectory.appendingPathComponent("opt/homebrew/Cellar/usbipd-mac/v1.0.0/Library/SystemExtensions")

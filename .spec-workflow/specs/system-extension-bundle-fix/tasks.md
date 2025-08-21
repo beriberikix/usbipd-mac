@@ -127,12 +127,12 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing manual testing procedures and System Extension validation workflows_
   - _Requirements: All_
 
-- [-] 15. Create a pull request from the feature branch to the main branch.
+- [x] 15. Create a pull request from the feature branch to the main branch.
   - Push the feature branch to the remote repository.
   - Create a pull request in the repository's web interface.
   - Purpose: Initiate code review and merge process.
 
-- [ ] 16. Address any CI/CD issues that arise from the pull request.
+- [-] 16. Address any CI/CD issues that arise from the pull request.
   - Monitor the CI/CD pipeline for the pull request.
   - Fix any build, test, or linting errors.
   - Push fixes to the feature branch to update the pull request.

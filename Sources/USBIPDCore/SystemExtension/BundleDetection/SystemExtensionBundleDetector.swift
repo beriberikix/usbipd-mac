@@ -132,7 +132,7 @@ public struct SystemExtensionBundleDetector {
             logger.debug("Production bundle detection failed, trying development environment")
             issues.append(contentsOf: productionResult.issues)
             skippedPaths.append(contentsOf: productionResult.skippedPaths)
-            rejectionReasons.merge(productionResult.rejectionReasons) { (_, new) in new }
+            rejectionReasons.merge(productionResult.rejectionReasons) { _, new in new }
         }
         
         // Fall back to development environment detection
@@ -169,11 +169,11 @@ public struct SystemExtensionBundleDetector {
         
         for searchPath in searchPaths {
             logger.debug("Searching path for bundle", context: ["searchPath": searchPath.path])
-            let (bundlePath, newSkipped, newReasons) = findBundleInPath(searchPath)
-            skippedPaths.append(contentsOf: newSkipped)
-            rejectionReasons.merge(newReasons) { (_, new) in new }
+            let searchResult = findBundleInPath(searchPath)
+            skippedPaths.append(contentsOf: searchResult.skippedPaths)
+            rejectionReasons.merge(searchResult.rejectionReasons) { _, new in new }
 
-            if let bundlePath = bundlePath {
+            if let bundlePath = searchResult.bundlePath {
                 logger.debug("Found potential bundle, validating", context: ["bundlePath": bundlePath.path])
                 // Validate the found bundle
                 let validationResult = validateBundle(at: bundlePath)
@@ -245,11 +245,11 @@ public struct SystemExtensionBundleDetector {
         
         // Search each Homebrew path for System Extension bundles
         for homebrewPath in homebrewPaths {
-            let (bundlePath, newSkipped, newReasons) = findBundleInPath(homebrewPath)
-            skippedPaths.append(contentsOf: newSkipped)
-            rejectionReasons.merge(newReasons) { (_, new) in new }
+            let searchResult = findBundleInPath(homebrewPath)
+            skippedPaths.append(contentsOf: searchResult.skippedPaths)
+            rejectionReasons.merge(searchResult.rejectionReasons) { _, new in new }
 
-            if let bundlePath = bundlePath {
+            if let bundlePath = searchResult.bundlePath {
                 // Validate the found bundle
                 let validationResult = validateBundle(at: bundlePath)
                 if validationResult.isValid {
@@ -424,7 +424,7 @@ public struct SystemExtensionBundleDetector {
     }
     
     /// Find System Extension bundle in specific path
-    private func findBundleInPath(_ path: URL) -> (bundlePath: URL?, skippedPaths: [String], rejectionReasons: [String: RejectionReason]) {
+    internal func findBundleInPath(_ path: URL) -> BundleSearchResult {
         var skippedPaths: [String] = []
         var rejectionReasons: [String: RejectionReason] = [: ]
         
@@ -453,7 +453,7 @@ public struct SystemExtensionBundleDetector {
                         "bundlePath": item.path,
                         "bundleType": "production"
                     ])
-                    return (item, skippedPaths, rejectionReasons)
+                    return BundleSearchResult(bundlePath: item, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
                 }
                 
                 // Look for development SystemExtension executable
@@ -465,26 +465,30 @@ public struct SystemExtensionBundleDetector {
                     ])
                     // In development mode, return the parent directory as bundle path
                     // This allows the rest of the system to work with development builds
-                    return (path, skippedPaths, rejectionReasons)
+                    return BundleSearchResult(bundlePath: path, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
                 }
                 
                 // Recursively search subdirectories
                 var isDirectory: ObjCBool = false
                 if fileManager.fileExists(atPath: item.path, isDirectory: &isDirectory),
                    isDirectory.boolValue {
-                    let (bundleInSubdir, newSkipped, newReasons) = findBundleInPath(item)
-                    if let bundleInSubdir = bundleInSubdir {
-                        return (bundleInSubdir, skippedPaths + newSkipped, rejectionReasons.merging(newReasons) { (_, new) in new })
+                    let subdirResult = findBundleInPath(item)
+                    if let bundlePath = subdirResult.bundlePath {
+                        return BundleSearchResult(
+                            bundlePath: bundlePath,
+                            skippedPaths: skippedPaths + subdirResult.skippedPaths,
+                            rejectionReasons: rejectionReasons.merging(subdirResult.rejectionReasons) { _, new in new }
+                        )
                     }
-                    skippedPaths.append(contentsOf: newSkipped)
-                    rejectionReasons.merge(newReasons) { (_, new) in new }
+                    skippedPaths.append(contentsOf: subdirResult.skippedPaths)
+                    rejectionReasons.merge(subdirResult.rejectionReasons) { _, new in new }
                 }
             }
         } catch {
             // Silently continue searching other paths
         }
         
-        return (nil, skippedPaths, rejectionReasons)
+        return BundleSearchResult(bundlePath: nil, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
     }
 
     /// Check if a given path is a dSYM bundle
@@ -496,16 +500,23 @@ public struct SystemExtensionBundleDetector {
     
     /// Type of bundle detected
     public enum BundleType: String {
-        case development = "development"
-        case production = "production"
+        case development
+        case production
     }
 
     /// Reason for bundle validation rejection
     public enum RejectionReason: String, Codable {
-        case dSYMPath = "dSYMPath"
-        case missingExecutable = "missingExecutable"
-        case invalidBundleStructure = "invalidBundleStructure"
-        case missingInfoPlist = "missingInfoPlist"
+        case dSYMPath
+        case missingExecutable
+        case invalidBundleStructure
+        case missingInfoPlist
+    }
+
+    /// Result of bundle search operation
+    private struct BundleSearchResult {
+        let bundlePath: URL?
+        let skippedPaths: [String]
+        let rejectionReasons: [String: RejectionReason]
     }
 
     /// Validation result for bundle

@@ -55,14 +55,13 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
         fileManager.mockDirectoryContents[dsymDir.appendingPathComponent("Contents/Resources").path] = ["DWARF"]
         fileManager.mockDirectoryContents[dsymDir.appendingPathComponent("Contents/Resources/DWARF").path] = ["usbipd-mac"]
 
-
         // 2. Run detection
-        let (foundPath, _, _) = detector.findBundleInPath(buildDir)
+        let result = detector.findBundleInPath(buildDir)
 
         // 3. Assert
-        XCTAssertNotNil(foundPath, "Should have found a bundle path")
-        XCTAssertEqual(foundPath, realExecutableDir, "Should have found the real executable path, not the dSYM path")
-        XCTAssertNotEqual(foundPath, dsymDir, "Should not have found the dSYM path")
+        XCTAssertNotNil(result.bundlePath, "Should have found a bundle path")
+        XCTAssertEqual(result.bundlePath, realExecutableDir, "Should have found the real executable path, not the dSYM path")
+        XCTAssertNotEqual(result.bundlePath, dsymDir, "Should not have found the dSYM path")
     }
     
     func testDevelopmentBundleValidation() throws {
@@ -258,9 +257,15 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
         XCTAssertTrue(detector.isDSYMPath(dsymPath), "Should detect dSYM path")
         
         // Test different bundle validation scenarios and their rejection reasons
-        let testCases: [(path: String, expectedReason: SystemExtensionBundleDetector.RejectionReason?, description: String)] = [
-            ("/nonexistent", .invalidBundleStructure, "Non-existent path should map to invalid bundle structure"),
-            ("/valid/development", nil, "Valid development bundle should have no rejection reason"),
+        struct TestCase {
+            let path: String
+            let expectedReason: SystemExtensionBundleDetector.RejectionReason?
+            let description: String
+        }
+        
+        let testCases = [
+            TestCase(path: "/nonexistent", expectedReason: .invalidBundleStructure, description: "Non-existent path should map to invalid bundle structure"),
+            TestCase(path: "/valid/development", expectedReason: nil, description: "Valid development bundle should have no rejection reason")
         ]
         
         for testCase in testCases {
@@ -314,11 +319,17 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
 
 // MARK: - Private method access for testing
 private extension SystemExtensionBundleDetector {
+    struct BundleSearchResult {
+        let bundlePath: URL?
+        let skippedPaths: [String]
+        let rejectionReasons: [String: RejectionReason]
+    }
+    
     func isDSYMPath(_ path: URL) -> Bool {
         return path.pathComponents.contains { $0.hasSuffix(".dSYM") }
     }
     
-    func findBundleInPath(_ path: URL) -> (bundlePath: URL?, skippedPaths: [String], rejectionReasons: [String: RejectionReason]) {
+    func findBundleInPath(_ path: URL) -> BundleSearchResult {
         var skippedPaths: [String] = []
         var rejectionReasons: [String: RejectionReason] = [:]
         
@@ -337,29 +348,33 @@ private extension SystemExtensionBundleDetector {
                 }
 
                 if item.pathExtension == "systemextension" {
-                    return (item, skippedPaths, rejectionReasons)
+                    return BundleSearchResult(bundlePath: item, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
                 }
                 
                 if item.lastPathComponent == "USBIPDSystemExtension" {
-                    return (path, skippedPaths, rejectionReasons)
+                    return BundleSearchResult(bundlePath: path, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
                 }
                 
                 var isDirectory: ObjCBool = false
                 if fileManager.fileExists(atPath: item.path, isDirectory: &isDirectory),
                    isDirectory.boolValue {
-                    let (bundleInSubdir, newSkipped, newReasons) = findBundleInPath(item)
-                    if let bundleInSubdir = bundleInSubdir {
-                        return (bundleInSubdir, skippedPaths + newSkipped, rejectionReasons.merging(newReasons) { (_, new) in new })
+                    let subdirResult = findBundleInPath(item)
+                    if let bundlePath = subdirResult.bundlePath {
+                        return BundleSearchResult(
+                            bundlePath: bundlePath,
+                            skippedPaths: skippedPaths + subdirResult.skippedPaths,
+                            rejectionReasons: rejectionReasons.merging(subdirResult.rejectionReasons) { _, new in new }
+                        )
                     }
-                    skippedPaths.append(contentsOf: newSkipped)
-                    rejectionReasons.merge(newReasons) { (_, new) in new }
+                    skippedPaths.append(contentsOf: subdirResult.skippedPaths)
+                    rejectionReasons.merge(subdirResult.rejectionReasons) { _, new in new }
                 }
             }
         } catch {
             // Silently continue
         }
         
-        return (nil, skippedPaths, rejectionReasons)
+        return BundleSearchResult(bundlePath: nil, skippedPaths: skippedPaths, rejectionReasons: rejectionReasons)
     }
     
     struct BundleValidationResult {

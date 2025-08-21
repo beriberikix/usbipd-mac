@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755779932801_xwm2beg9a",
+  "title": "Approval for tasks.md",
+  "filePath": ".spec-workflow/specs/system-extension-bundle-fix/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-21T12:38:52.801Z",
+  "category": "spec",
+  "categoryName": "system-extension-bundle-fix",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow git workflow. Git commit at relevant points with useful messages. First task should create a feature branch and commits spec documents. Last task should create PR and fix all CI issues.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Git commit at relevant points with useful messages. First task should create a feature branch and commits spec documents. Last task should create PR and fix all CI issues.\",\n      \"timestamp\": \"2025-08-21T12:39:50.858Z\",\n      \"id\": \"comment_1755779990858_yjdafe34l\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Git commit at relevant points with useful messages. First task should create a feature branch and commits spec documents. Last task should create PR and fix all CI issues.\\n\\n\",\n  \"timestamp\": \"2025-08-21T12:40:13.222Z\"\n}",
+  "respondedAt": "2025-08-21T12:40:13.231Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Git commit at relevant points with useful messages. First task should create a feature branch and commits spec documents. Last task should create PR and fix all CI issues.",
+      "timestamp": "2025-08-21T12:39:50.858Z",
+      "id": "comment_1755779990858_yjdafe34l"
+    }
+  ]
+}
