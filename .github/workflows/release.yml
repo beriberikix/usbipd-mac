@@ -94,7 +94,7 @@ jobs:
   ci-validation:
     name: CI Validation
     needs: release-validation
-    if: ${{ !inputs.skip_tests }}
+    if: ${{ !github.event.inputs.skip_tests || github.event.inputs.skip_tests == 'false' }}
     uses: ./.github/workflows/ci.yml
     with:
       release_validation: true
@@ -106,7 +106,7 @@ jobs:
     name: Build Release Artifacts
     runs-on: macos-latest
     needs: [release-validation, ci-validation]
-    if: always() && needs.release-validation.result == 'success' && (needs.ci-validation.result == 'success' || inputs.skip_tests)
+    if: always() && needs.release-validation.result == 'success' && (needs.ci-validation.result == 'success' || github.event.inputs.skip_tests == 'true')
     outputs:
       artifact-paths: ${{ steps.build-artifacts.outputs.paths }}
       checksums: ${{ steps.generate-checksums.outputs.checksums }}
@@ -564,39 +564,43 @@ jobs:
             
             # Create an issue for failed formula updates
             if command -v gh > /dev/null 2>&1; then
-              echo "📋 Creating issue for failed formula update..."
-              ISSUE_BODY=$(cat <<'ISSUE_EOF'
-## Formula Update Failure
-
-**Release Version**: $VERSION
-**Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-**Timestamp**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-### Problem
-The homebrew-releaser GitHub Action failed during the release workflow for version $VERSION. The Homebrew formula in the tap repository was not updated automatically.
-
-### Impact
-- Users cannot install the latest version via Homebrew
-- Manual formula update is required
-
-### Action Required
-1. Review the workflow logs for the homebrew-releaser step
-2. Check HOMEBREW_TAP_TOKEN permissions and expiration
-3. Manually update the formula if necessary using the rollback procedures
-4. Consider re-running the release workflow if the issue is resolved
-
-### Workflow Logs
-${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-/cc @maintainers
-ISSUE_EOF
-)
-
+              echo "Creating issue for failed formula update..."
+              
+              TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+              WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              
+              # Create issue body without heredoc to avoid YAML parsing issues
+              echo "## Formula Update Failure" > /tmp/issue_body.md
+              echo "" >> /tmp/issue_body.md
+              echo "Release Version: $VERSION" >> /tmp/issue_body.md
+              echo "Workflow Run: $WORKFLOW_URL" >> /tmp/issue_body.md
+              echo "Timestamp: $TIMESTAMP" >> /tmp/issue_body.md
+              echo "" >> /tmp/issue_body.md
+              echo "### Problem" >> /tmp/issue_body.md
+              echo "The homebrew-releaser GitHub Action failed during the release workflow for version $VERSION. The Homebrew formula in the tap repository was not updated automatically." >> /tmp/issue_body.md
+              echo "" >> /tmp/issue_body.md
+              echo "### Impact" >> /tmp/issue_body.md
+              echo "- Users cannot install the latest version via Homebrew" >> /tmp/issue_body.md
+              echo "- Manual formula update is required" >> /tmp/issue_body.md
+              echo "" >> /tmp/issue_body.md
+              echo "### Action Required" >> /tmp/issue_body.md
+              echo "1. Review the workflow logs for the homebrew-releaser step" >> /tmp/issue_body.md
+              echo "2. Check HOMEBREW_TAP_TOKEN permissions and expiration" >> /tmp/issue_body.md
+              echo "3. Manually update the formula if necessary using the rollback procedures" >> /tmp/issue_body.md
+              echo "4. Consider re-running the release workflow if the issue is resolved" >> /tmp/issue_body.md
+              echo "" >> /tmp/issue_body.md
+              echo "### Workflow Logs" >> /tmp/issue_body.md
+              echo "$WORKFLOW_URL" >> /tmp/issue_body.md
+              echo "" >> /tmp/issue_body.md
+              echo "/cc @maintainers" >> /tmp/issue_body.md
+              
               gh issue create \
-                --title "🚨 Formula Update Failed for $VERSION" \
-                --body "$ISSUE_BODY" \
+                --title "Formula Update Failed for $VERSION" \
+                --body-file /tmp/issue_body.md \
                 --label "bug,homebrew,release" \
                 --assignee "${{ github.actor }}" || echo "Failed to create issue"
+              
+              rm -f /tmp/issue_body.md
             fi
           fi
           echo "::endgroup::"
