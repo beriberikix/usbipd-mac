@@ -10,12 +10,12 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - Run `git checkout -b feature/system-extension-bundle-fix`
   - Purpose: Isolate development work for the new feature.
 
-- [-] 2. Commit the spec documents to the feature branch.
+- [x] 2. Commit the spec documents to the feature branch.
   - Add `requirements.md`, `design.md`, and `tasks.md` to staging.
   - Commit with a message such as "docs: add spec for system extension bundle fix".
   - Purpose: Version control the specification documents.
 
-- [ ] 3. Add dSYM path detection utility method in SystemExtensionBundleDetector.swift
+- [x] 3. Add dSYM path detection utility method in SystemExtensionBundleDetector.swift
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift
   - Add private method `isDSYMPath(_ path: URL) -> Bool` to detect .dSYM directories
   - Implement logic to check if path contains ".dSYM" component anywhere in the path
@@ -23,7 +23,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing URL path component analysis patterns_
   - _Requirements: 1.1, 1.2_
 
-- [ ] 4. Enhance findBundleInPath method to exclude dSYM directories
+- [x] 4. Enhance findBundleInPath method to exclude dSYM directories
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift (continue from task 3)
   - Modify `findBundleInPath(_ path: URL) -> URL?` method to call `isDSYMPath` before processing directories
   - Add early return when dSYM paths are encountered to skip recursive search
@@ -32,7 +32,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing recursive search logic and Logger infrastructure_
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 5. Add bundle type enumeration and rejection reason types
+- [x] 5. Add bundle type enumeration and rejection reason types
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift (continue from task 4)
   - Add `BundleType` enum with `.development` and `.production` cases
   - Add `RejectionReason` enum with `.dSYMPath`, `.missingExecutable`, `.invalidBundleStructure`, `.missingInfoPlist` cases
@@ -41,7 +41,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing Swift enum patterns and error handling structures_
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 6. Enhance validateBundle method with improved development bundle support
+- [x] 6. Enhance validateBundle method with improved development bundle support
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift (continue from task 5)
   - Modify `validateBundle(at bundlePath: URL) -> BundleValidationResult` to properly detect bundle type
   - Add logic to determine if bundle is development (contains USBIPDSystemExtension executable) or production (.systemextension)
@@ -51,7 +51,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing bundle validation framework and file system checks_
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 7. Update DetectionResult structure with enhanced diagnostic information
+- [x] 7. Update DetectionResult structure with enhanced diagnostic information
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift (continue from task 6)
   - Add `skippedPaths: [String]` property to `DetectionResult` struct to track paths that were skipped during detection
   - Add `rejectionReasons: [String: RejectionReason]` property to map paths to their rejection reasons
@@ -60,7 +60,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing DetectionResult structure and detection workflow_
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 8. Create unit tests for dSYM path detection and exclusion logic
+- [x] 8. Create unit tests for dSYM path detection and exclusion logic
   - File: Tests/USBIPDCoreTests/SystemExtensionBundleDetectorTests.swift
   - Add test method `testDSYMPathDetection()` to verify `isDSYMPath` correctly identifies dSYM directories
   - Add test method `testDSYMPathExclusion()` to verify `findBundleInPath` skips dSYM directories during search
@@ -69,7 +69,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing test framework patterns and mock file system utilities_
   - _Requirements: 1.1, 1.2_
 
-- [ ] 9. Create unit tests for enhanced bundle validation logic
+- [x] 9. Create unit tests for enhanced bundle validation logic
   - File: Tests/USBIPDCoreTests/SystemExtensionBundleDetectorTests.swift (continue from task 8)
   - Add test method `testDevelopmentBundleValidation()` to verify development bundle validation accepts valid structures
   - Add test method `testProductionBundleValidation()` to verify production bundle validation works correctly
@@ -79,7 +79,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing test utilities and bundle validation test patterns_
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 10. Create unit tests for enhanced error reporting and diagnostics
+- [x] 10. Create unit tests for enhanced error reporting and diagnostics
   - File: Tests/USBIPDCoreTests/SystemExtensionBundleDetectorTests.swift (continue from task 9)
   - Add test method `testEnhancedErrorReporting()` to verify detailed error messages are generated for different failure scenarios
   - Add test method `testDiagnosticInformation()` to verify skipped paths and rejection reasons are properly tracked
@@ -88,7 +88,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing error handling test patterns and logging verification utilities_
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 11. Create integration test for end-to-end System Extension installation workflow
+- [x] 11. Create integration test for end-to-end System Extension installation workflow
   - File: Tests/IntegrationTests/SystemExtensionInstallationFixTests.swift
   - Create integration test that builds actual System Extension, runs bundle detection, and verifies installation succeeds
   - Test full workflow from `swift build` through bundle detection to installation attempt
@@ -98,7 +98,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing integration test framework and System Extension testing utilities_
   - _Requirements: 1.4, 2.3, 4.3_
 
-- [ ] 12. Update diagnostic command output to include enhanced bundle information
+- [x] 12. Update diagnostic command output to include enhanced bundle information
   - File: Sources/USBIPDCLI/Commands.swift
   - Modify `diagnose` command implementation to display detailed bundle detection results
   - Add output formatting for skipped paths, rejection reasons, and bundle type information
@@ -107,7 +107,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing command output formatting utilities and diagnostic reporting patterns_
   - _Requirements: 3.3, 4.4_
 
-- [ ] 13. Add enhanced logging for bundle detection workflow
+- [x] 13. Add enhanced logging for bundle detection workflow
   - File: Sources/USBIPDCore/SystemExtension/BundleDetection/SystemExtensionBundleDetector.swift (final enhancement)
   - Add debug-level logging when dSYM paths are encountered and skipped
   - Add info-level logging for successful bundle detection with bundle type information
@@ -117,7 +117,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing Logger infrastructure and logging patterns throughout the codebase_
   - _Requirements: 3.1, 3.2_
 
-- [ ] 14. Manual validation testing of the complete fix
+- [x] 14. Manual validation testing of the complete fix
   - Test the complete fix by building the project and running System Extension installation
   - Verify `usbipd install-system-extension` succeeds with corrected bundle detection
   - Test `usbipd diagnose` output shows enhanced diagnostic information
@@ -127,7 +127,7 @@ The implementation focuses on fixing the System Extension bundle detection bugs 
   - _Leverage: Existing manual testing procedures and System Extension validation workflows_
   - _Requirements: All_
 
-- [ ] 15. Create a pull request from the feature branch to the main branch.
+- [-] 15. Create a pull request from the feature branch to the main branch.
   - Push the feature branch to the remote repository.
   - Create a pull request in the repository's web interface.
   - Purpose: Initiate code review and merge process.

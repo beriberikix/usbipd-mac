@@ -296,7 +296,7 @@ public extension TestUSBDeviceFixtures {
         for i in 0..<count {
             let busID = startingBusID + (i / 10) // 10 devices per bus
             let deviceID = (i % 10) + 1
-            let locationID = UInt32((busID << 24) | deviceID)
+            let locationID = UInt32((busID << 24) | (deviceID << 16))
             
             devices.append(MockUSBDevice(
                 vendorID: UInt16(0x1000 + i),
@@ -320,7 +320,7 @@ public extension TestUSBDeviceFixtures {
     /// Convert MockUSBDevice to expected USBDevice result
     static func expectedUSBDevice(from mockDevice: MockUSBDevice) -> USBDevice {
         let busID = String((mockDevice.locationID >> 24) & 0xFF)
-        let deviceID = String(mockDevice.locationID & 0xFF)
+        let deviceID = String((mockDevice.locationID >> 16) & 0xFF)
         
         let speed: USBSpeed
         switch mockDevice.speed {
