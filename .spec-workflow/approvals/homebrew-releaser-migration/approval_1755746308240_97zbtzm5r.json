@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755746308240_97zbtzm5r",
+  "title": "Requirements Phase: homebrew-releaser-migration - Ready for Review",
+  "filePath": ".spec-workflow/specs/homebrew-releaser-migration/requirements.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-21T03:18:28.240Z",
+  "category": "spec",
+  "categoryName": "homebrew-releaser-migration",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Will https://github.com/Justintime50/homebrew-releaser be able to use https://github.com/beriberikix/homebrew-usbipd-mac so that homebrew can easily find it?\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Will https://github.com/Justintime50/homebrew-releaser be able to use https://github.com/beriberikix/homebrew-usbipd-mac so that homebrew can easily find it?\",\n      \"timestamp\": \"2025-08-21T03:29:47.200Z\",\n      \"id\": \"comment_1755746987200_u7soq0c6o\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Will https://github.com/Justintime50/homebrew-releaser be able to use https://github.com/beriberikix/homebrew-usbipd-mac so that homebrew can easily find it?\\n\\n\",\n  \"timestamp\": \"2025-08-21T03:29:48.317Z\"\n}",
+  "respondedAt": "2025-08-21T03:29:48.325Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Will https://github.com/Justintime50/homebrew-releaser be able to use https://github.com/beriberikix/homebrew-usbipd-mac so that homebrew can easily find it?",
+      "timestamp": "2025-08-21T03:29:47.200Z",
+      "id": "comment_1755746987200_u7soq0c6o"
+    }
+  ]
+}

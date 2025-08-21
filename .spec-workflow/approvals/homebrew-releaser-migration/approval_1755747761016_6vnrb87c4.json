@@ -1,0 +1,21 @@
+{
+  "id": "approval_1755747761016_6vnrb87c4",
+  "title": "Tasks Phase: homebrew-releaser-migration - Ready for Review",
+  "filePath": ".spec-workflow/specs/homebrew-releaser-migration/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-21T03:42:41.016Z",
+  "category": "spec",
+  "categoryName": "homebrew-releaser-migration",
+  "response": "Feedback Summary (1 comments):\n\nGeneral Comments:\n1. Follow git workflow. Git commit at relevant task milestones. First task create feature branch and commits specs. Last task creates PR and ensures CI passes without issues.\n\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"general\",\n      \"comment\": \"Follow git workflow. Git commit at relevant task milestones. First task create feature branch and commits specs. Last task creates PR and ensures CI passes without issues.\",\n      \"timestamp\": \"2025-08-21T03:45:42.001Z\",\n      \"id\": \"comment_1755747942001_3i5uwn94r\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nGeneral Comments:\\n1. Follow git workflow. Git commit at relevant task milestones. First task create feature branch and commits specs. Last task creates PR and ensures CI passes without issues.\\n\\n\",\n  \"timestamp\": \"2025-08-21T03:45:42.713Z\"\n}",
+  "respondedAt": "2025-08-21T03:45:42.719Z",
+  "comments": [
+    {
+      "type": "general",
+      "comment": "Follow git workflow. Git commit at relevant task milestones. First task create feature branch and commits specs. Last task creates PR and ensures CI passes without issues.",
+      "timestamp": "2025-08-21T03:45:42.001Z",
+      "id": "comment_1755747942001_3i5uwn94r"
+    }
+  ]
+}

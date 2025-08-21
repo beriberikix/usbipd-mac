@@ -443,9 +443,9 @@ netstat -an | grep 3240
 
 ## External Tap Repository Issues
 
-This section covers troubleshooting issues specific to the external tap repository architecture introduced in the migration from embedded Formula/ directory to webhook-driven formula updates.
+This section covers troubleshooting issues specific to the external tap repository architecture that uses homebrew-releaser for automated formula updates.
 
-### Webhook Integration Problems
+### Homebrew-Releaser Integration Problems
 
 #### Problem: Formula not updating after new release
 ```bash
@@ -463,48 +463,18 @@ brew info usbipd-mac
    brew update
    ```
 
-2. Check if webhook triggered successfully:
-   - Visit: https://github.com/beriberikix/homebrew-usbipd-mac/actions
-   - Look for recent "Formula Update" workflow runs
-   - Check for any failed runs after the release timestamp
+2. Check if homebrew-releaser action succeeded:
+   - Visit: https://github.com/beriberikix/usbipd-mac/actions
+   - Look for recent "Production Release" workflow runs
+   - Check the "Update Homebrew Formula" step for any failures
 
-3. Manual formula update via workflow dispatch:
+3. Verify the tap repository was updated:
+   - Visit: https://github.com/beriberikix/homebrew-usbipd-mac/commits/main
+   - Look for recent formula update commits from github-actions[bot]
+
+4. If homebrew-releaser failed, re-run the release workflow:
    ```bash
-   # Use GitHub CLI to trigger manual update
-   gh workflow run formula-update.yml \
-     --repo beriberikix/homebrew-usbipd-mac \
-     -f version=v0.0.9 \
-     -f source_repository=beriberikix/usbipd-mac
-   ```
-
-4. If webhook is consistently failing, check release assets:
-   ```bash
-   # Verify metadata file exists in release assets
-   curl -L https://github.com/beriberikix/usbipd-mac/releases/download/v0.0.9/homebrew-metadata.json
-   ```
-
-#### Problem: Webhook workflow fails with metadata errors
-```
-Error: Could not download metadata after 3 attempts
-URL: https://github.com/beriberikix/usbipd-mac/releases/download/v0.0.9/homebrew-metadata.json
-```
-
-**Solution:**
-1. Check if the release has the metadata asset:
-   ```bash
-   # List release assets
-   gh release view v0.0.9 --repo beriberikix/usbipd-mac --json assets
-   ```
-
-2. Verify metadata file structure:
-   ```bash
-   # Download and validate metadata
-   curl -L https://github.com/beriberikix/usbipd-mac/releases/download/v0.0.9/homebrew-metadata.json | jq .
-   ```
-
-3. Re-run the main repository release workflow if metadata is missing:
-   ```bash
-   # This will regenerate and upload metadata
+   # Re-run the release workflow which includes homebrew-releaser
    gh workflow run release.yml --repo beriberikix/usbipd-mac -f version=v0.0.9
    ```
 
@@ -546,41 +516,39 @@ Homebrew structure: ✗ Missing required component: Install method
    brew install --build-from-source ./Formula/usbipd-mac.rb
    ```
 
-### Metadata Generation Problems
+### Homebrew-Releaser Configuration Problems
 
-#### Problem: Invalid metadata format or missing fields
+#### Problem: Homebrew-releaser action fails with configuration errors
 ```
-Error: Metadata validation failed: 1 errors
-✗ Invalid SHA256 format in metadata: abc123...
+Error: Formula generation failed: missing required parameter 'install'
 ```
 
 **Solution:**
-1. Validate metadata generation script:
+1. Check the homebrew-releaser configuration in `.github/workflows/release.yml`:
    ```bash
-   # Test metadata generation locally
-   cd /path/to/main/repository
-   ./Scripts/generate-homebrew-metadata.sh --version v0.0.9 --dry-run
+   # Review the homebrew-releaser step configuration
+   grep -A 20 "uses: Justintime50/homebrew-releaser" .github/workflows/release.yml
    ```
 
-2. Check metadata validation script:
-   ```bash
-   # Validate existing metadata
-   ./Scripts/validate-homebrew-metadata.sh .build/homebrew-metadata/homebrew-metadata.json
-   ```
+2. Verify required parameters are present:
+   - `homebrew_owner`: beriberikix
+   - `homebrew_tap`: homebrew-usbipd-mac  
+   - `formula_folder`: Formula
+   - `github_token`: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+   - `install`: Installation instructions
+   - `test`: Formula test commands
 
-3. Fix common metadata issues:
+3. Validate the HOMEBREW_TAP_TOKEN secret:
    ```bash
-   # Regenerate with specific checksum
-   ./Scripts/generate-homebrew-metadata.sh \
-     --version v0.0.9 \
-     --checksum $(shasum -a 256 /path/to/archive.tar.gz | cut -d' ' -f1) \
-     --force
+   # Test token permissions (requires token access)
+   gh auth status --hostname github.com
+   gh repo view beriberikix/homebrew-usbipd-mac --json permissions
    ```
 
 ### Recovery Procedures
 
 #### Emergency Formula Update
-If automated systems fail and you need to update the formula immediately:
+If homebrew-releaser fails and you need to update the formula immediately:
 
 1. **Manual formula update in tap repository:**
    ```bash
@@ -588,9 +556,8 @@ If automated systems fail and you need to update the formula immediately:
    git clone https://github.com/beriberikix/homebrew-usbipd-mac.git
    cd homebrew-usbipd-mac
    
-   # Update formula manually
-   sed -i 's/VERSION_PLACEHOLDER/v0.0.9/g' Formula/usbipd-mac.rb
-   sed -i 's/SHA256_PLACEHOLDER/[ACTUAL_SHA256]/g' Formula/usbipd-mac.rb
+   # Update formula manually (check current formula for exact format)
+   # Update version and SHA256 in Formula/usbipd-mac.rb
    
    # Validate and commit
    ruby -c Formula/usbipd-mac.rb
@@ -607,22 +574,20 @@ If automated systems fail and you need to update the formula immediately:
    brew install usbipd-mac
    ```
 
-#### Workflow Dispatch Recovery
-Use manual workflow dispatch when webhooks fail:
+#### Re-run Release Workflow
+When homebrew-releaser fails, re-run the entire release workflow:
 
 1. **Via GitHub web interface:**
-   - Go to: https://github.com/beriberikix/homebrew-usbipd-mac/actions/workflows/formula-update.yml
+   - Go to: https://github.com/beriberikix/usbipd-mac/actions/workflows/release.yml
    - Click "Run workflow"
-   - Enter version (e.g., v0.0.9) and source repository
+   - Enter version (e.g., v0.0.9)
    - Click "Run workflow"
 
 2. **Via GitHub CLI:**
    ```bash
-   gh workflow run formula-update.yml \
-     --repo beriberikix/homebrew-usbipd-mac \
-     -f version=v0.0.9 \
-     -f source_repository=beriberikix/usbipd-mac \
-     -f force_update=true
+   gh workflow run release.yml \
+     --repo beriberikix/usbipd-mac \
+     -f version=v0.0.9
    ```
 
 ### Monitoring and Diagnostics
@@ -635,26 +600,26 @@ brew tap-info beriberikix/usbipd-mac
 # Check recent commits in tap repository
 gh repo view beriberikix/homebrew-usbipd-mac --json defaultBranch,updatedAt,pushedAt
 
-# Monitor workflow runs
-gh run list --repo beriberikix/homebrew-usbipd-mac --limit 5
+# Monitor release workflow runs in main repository
+gh run list --repo beriberikix/usbipd-mac --workflow=release.yml --limit 5
 ```
 
-#### Webhook Debugging
+#### Homebrew-Releaser Debugging
 ```bash
-# Check webhook deliveries (requires admin access)
-gh api repos/beriberikix/usbipd-mac/hooks
+# Check release workflow logs for homebrew-releaser step
+gh run view [RUN_ID] --repo beriberikix/usbipd-mac --log
 
-# View workflow run logs
-gh run view [RUN_ID] --repo beriberikix/homebrew-usbipd-mac --log
+# Verify tap repository commits from github-actions[bot]
+gh api repos/beriberikix/homebrew-usbipd-mac/commits --jq '.[] | select(.author.login == "github-actions[bot]") | {message: .commit.message, date: .commit.author.date}'
 ```
 
 #### Get Support for Tap Issues
 If you encounter persistent issues with the external tap repository:
 
-1. **Check GitHub Actions status**: https://github.com/beriberikix/homebrew-usbipd-mac/actions
-2. **Review workflow logs**: Look for detailed error messages in failed workflow runs
-3. **File tap-specific issues**: Create issues in the tap repository for formula-related problems
-4. **Escalate to main repository**: File issues in the main repository for metadata generation problems
+1. **Check main repository GitHub Actions**: https://github.com/beriberikix/usbipd-mac/actions
+2. **Review release workflow logs**: Look for homebrew-releaser step failures
+3. **Check tap repository**: Look for successful formula update commits
+4. **File issues**: Create issues in the main repository for homebrew-releaser problems
 
 ## Getting Additional Help
 

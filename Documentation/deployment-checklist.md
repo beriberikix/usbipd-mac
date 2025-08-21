@@ -1,8 +1,10 @@
 # Deployment Checklist and Rollback Procedures
 
-## External Tap Repository Integration Deployment Guide
+## Homebrew-Releaser Integration Deployment Guide
 
-This document provides comprehensive deployment procedures for migrating from embedded Formula/ directory to external tap repository architecture. It includes validation checkpoints, rollback procedures, and troubleshooting guidance for safe production deployment.
+This document provides comprehensive deployment procedures for the homebrew-releaser GitHub Action integration. It includes validation checkpoints, rollback procedures, and troubleshooting guidance for safe production deployment.
+
+**Note**: This document is archived as it was created for the webhook-based architecture. The current architecture uses homebrew-releaser which is simpler and more reliable. See [homebrew-releaser-setup.md](homebrew-releaser-setup.md) for current configuration.
 
 ## Table of Contents
 
