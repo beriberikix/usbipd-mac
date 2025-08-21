@@ -505,7 +505,7 @@ public struct SystemExtensionBundleDetector {
     }
 
     /// Reason for bundle validation rejection
-    public enum RejectionReason: String, Codable {
+    public enum RejectionReason: String, Codable, Equatable {
         case dSYMPath
         case missingExecutable
         case invalidBundleStructure

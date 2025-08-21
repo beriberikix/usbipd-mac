@@ -238,17 +238,17 @@ final class SystemExtensionBundleDetectorTests: XCTestCase {
         fileManager.mockDirectoryContents[buildDir.path] = ["usbipd-mac.dSYM", "SomeOtherTool.dSYM", "USBIPDSystemExtension"]
         
         // Run detection and check diagnostic information
-        let (foundPath, skippedPaths, rejectionReasons) = detector.findBundleInPath(buildDir)
+        let result = detector.findBundleInPath(buildDir)
         
-        XCTAssertNotNil(foundPath, "Should have found a bundle path")
-        XCTAssertEqual(skippedPaths.count, 2, "Should have skipped 2 dSYM paths")
-        XCTAssertTrue(skippedPaths.contains(dsymDir.path), "Should have skipped first dSYM path")
-        XCTAssertTrue(skippedPaths.contains(anotherDsymDir.path), "Should have skipped second dSYM path")
+        XCTAssertNotNil(result.bundlePath, "Should have found a bundle path")
+        XCTAssertEqual(result.skippedPaths.count, 2, "Should have skipped 2 dSYM paths")
+        XCTAssertTrue(result.skippedPaths.contains(dsymDir.path), "Should have skipped first dSYM path")
+        XCTAssertTrue(result.skippedPaths.contains(anotherDsymDir.path), "Should have skipped second dSYM path")
         
         // Verify rejection reasons
-        XCTAssertEqual(rejectionReasons.count, 2, "Should have 2 rejection reasons")
-        XCTAssertEqual(rejectionReasons[dsymDir.path], .dSYMPath, "Should have dSYM rejection reason for first path")
-        XCTAssertEqual(rejectionReasons[anotherDsymDir.path], .dSYMPath, "Should have dSYM rejection reason for second path")
+        XCTAssertEqual(result.rejectionReasons.count, 2, "Should have 2 rejection reasons")
+        XCTAssertEqual(result.rejectionReasons[dsymDir.path], .dSYMPath, "Should have dSYM rejection reason for first path")
+        XCTAssertEqual(result.rejectionReasons[anotherDsymDir.path], .dSYMPath, "Should have dSYM rejection reason for second path")
     }
     
     func testRejectionReasonMapping() throws {
