@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.0.17] - 2025-08-21
+
+### Fixed
+- **Release Automation**: Complete resolution of GitHub Actions workflow automation issues
+  - Fixed critical YAML syntax errors preventing workflow execution
+  - Resolved conditional logic in job dependencies
+  - Fixed GitHub Actions context variable usage in shell environments
+  - Restored proper tag-triggered releases vs branch push filtering
+  - Enabled manual workflow_dispatch testing with parameter validation
+
+### Improved
+- Enhanced error handling in release workflows
+- Improved homebrew-releaser integration reliability
+- Better validation of release triggers and conditions
+
 ## [v0.0.14] - 2025-08-21
 
 ### Added
