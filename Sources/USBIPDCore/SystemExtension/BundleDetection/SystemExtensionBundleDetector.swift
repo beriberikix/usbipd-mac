@@ -513,7 +513,7 @@ public struct SystemExtensionBundleDetector {
     }
 
     /// Result of bundle search operation
-    private struct BundleSearchResult {
+    internal struct BundleSearchResult {
         let bundlePath: URL?
         let skippedPaths: [String]
         let rejectionReasons: [String: RejectionReason]
