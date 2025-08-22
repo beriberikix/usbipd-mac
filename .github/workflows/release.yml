@@ -513,18 +513,21 @@ jobs:
           # Extract metadata fields using jq
           VERSION=$(jq -r '.metadata.version' "$METADATA_FILE")
           ARCHIVE_URL=$(jq -r '.metadata.archive_url' "$METADATA_FILE")
+          BINARY_URL=$(jq -r '.metadata.binary_url' "$METADATA_FILE")
           SHA256=$(jq -r '.metadata.sha256' "$METADATA_FILE")
           TIMESTAMP=$(jq -r '.metadata.timestamp' "$METADATA_FILE")
           
           echo "🔍 Extracted metadata:"
           echo "   • Version: $VERSION"
           echo "   • Archive URL: $ARCHIVE_URL"
+          echo "   • Binary URL: $BINARY_URL"
           echo "   • SHA256: ${SHA256:0:16}..."
           echo "   • Timestamp: $TIMESTAMP"
           
           # Output for next step
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "archive_url=$ARCHIVE_URL" >> $GITHUB_OUTPUT
+          echo "binary_url=$BINARY_URL" >> $GITHUB_OUTPUT
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
           echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
           echo "::endgroup::"
@@ -536,6 +539,7 @@ jobs:
           
           VERSION="${{ steps.extract-metadata.outputs.version }}"
           ARCHIVE_URL="${{ steps.extract-metadata.outputs.archive_url }}"
+          BINARY_URL="${{ steps.extract-metadata.outputs.binary_url }}"
           SHA256="${{ steps.extract-metadata.outputs.sha256 }}"
           TIMESTAMP="${{ steps.extract-metadata.outputs.timestamp }}"
           PRERELEASE="${{ needs.release-validation.outputs.is-prerelease }}"
@@ -555,7 +559,7 @@ jobs:
               "event_type": "formula_update",
               "client_payload": {
                 "version": "'"$VERSION"'",
-                "binary_url": "https://github.com/'"${{ github.repository }}"'/releases/download/'"$VERSION"'/usbipd-'"$VERSION"'-macos",
+                "binary_url": "'"$BINARY_URL"'",
                 "sha256": "'"$SHA256"'",
                 "timestamp": "'"$TIMESTAMP"'",
                 "source_repository": "'"${{ github.repository }}"'",

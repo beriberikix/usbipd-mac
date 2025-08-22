@@ -26,6 +26,7 @@ readonly NC='\033[0m' # No Color
 VERSION=""
 SHA256_CHECKSUM=""
 ARCHIVE_URL=""
+BINARY_URL=""
 RELEASE_NOTES=""
 DRY_RUN=false
 FORCE_OVERWRITE=false
@@ -73,6 +74,7 @@ print_header() {
     echo "Version: ${VERSION:-'[required]'}"
     echo "Checksum: ${SHA256_CHECKSUM:-'[auto-calculate]'}"
     echo "Archive URL: ${ARCHIVE_URL:-'[auto-detect]'}"
+    echo "Binary URL: ${BINARY_URL:-'[auto-detect]'}"
     echo "Release Notes: ${RELEASE_NOTES:-'[auto-extract]'}"
     echo "Output File: $OUTPUT_FILE"
     echo "Dry Run: $([ "$DRY_RUN" = true ] && echo "YES" || echo "NO")"
@@ -177,12 +179,13 @@ validate_version() {
     log_success "Version validation completed: $VERSION"
 }
 
-# Generate archive URL from version
-generate_archive_url() {
-    log_step "Generating archive URL"
+# Generate archive and binary URLs from version
+generate_urls() {
+    log_step "Generating archive and binary URLs"
     
-    if [ -n "$ARCHIVE_URL" ]; then
+    if [ -n "$ARCHIVE_URL" ] && [ -n "$BINARY_URL" ]; then
         log_info "Using provided archive URL: $ARCHIVE_URL"
+        log_info "Using provided binary URL: $BINARY_URL"
         return 0
     fi
     
@@ -197,7 +200,9 @@ generate_archive_url() {
             local owner="${BASH_REMATCH[1]}"
             local repo="${BASH_REMATCH[2]%.git}"
             ARCHIVE_URL="https://github.com/$owner/$repo/archive/$VERSION.tar.gz"
+            BINARY_URL="https://github.com/$owner/$repo/releases/download/$VERSION/usbipd-$VERSION-macos"
             log_success "Generated archive URL: $ARCHIVE_URL"
+            log_success "Generated binary URL: $BINARY_URL"
         else
             log_error "Cannot determine GitHub repository from remote URL: $repo_url"
             exit $EXIT_VALIDATION_FAILED
@@ -208,29 +213,29 @@ generate_archive_url() {
     fi
 }
 
-# Calculate SHA256 checksum for archive
+# Calculate SHA256 checksum for binary
 calculate_checksum() {
-    log_step "Calculating SHA256 checksum"
+    log_step "Calculating SHA256 checksum for binary"
     
     if [ -n "$SHA256_CHECKSUM" ]; then
         log_info "Using provided SHA256 checksum: $SHA256_CHECKSUM"
         return 0
     fi
     
-    if [ -z "$ARCHIVE_URL" ]; then
-        log_error "Archive URL is required for checksum calculation"
+    if [ -z "$BINARY_URL" ]; then
+        log_error "Binary URL is required for checksum calculation"
         exit $EXIT_VALIDATION_FAILED
     fi
     
-    log_info "Downloading archive for checksum calculation..."
-    log_info "URL: $ARCHIVE_URL"
+    log_info "Downloading binary for checksum calculation..."
+    log_info "URL: $BINARY_URL"
     
     local temp_file
     temp_file=$(mktemp)
     
-    # Download archive with progress
-    if curl -L -f -o "$temp_file" "$ARCHIVE_URL"; then
-        log_success "Archive downloaded successfully"
+    # Download binary with progress
+    if curl -L -f -o "$temp_file" "$BINARY_URL"; then
+        log_success "Binary downloaded successfully"
         
         # Calculate SHA256 checksum
         SHA256_CHECKSUM=$(shasum -a 256 "$temp_file" | cut -d' ' -f1)
@@ -245,8 +250,8 @@ calculate_checksum() {
         # Clean up
         rm -f "$temp_file"
     else
-        log_error "Failed to download archive from: $ARCHIVE_URL"
-        log_error "Please verify the URL is accessible and the release exists"
+        log_error "Failed to download binary from: $BINARY_URL"
+        log_error "Please verify the binary URL is accessible and the release exists"
         rm -f "$temp_file"
         exit $EXIT_NETWORK_FAILED
     fi
@@ -330,6 +335,7 @@ generate_metadata_json() {
     metadata_json=$(jq -n \
         --arg version "$VERSION" \
         --arg archive_url "$ARCHIVE_URL" \
+        --arg binary_url "$BINARY_URL" \
         --arg sha256 "$SHA256_CHECKSUM" \
         --arg release_notes "$RELEASE_NOTES" \
         --arg timestamp "$timestamp" \
@@ -339,6 +345,7 @@ generate_metadata_json() {
             "metadata": {
                 "version": $version,
                 "archive_url": $archive_url,
+                "binary_url": $binary_url,
                 "sha256": $sha256,
                 "release_notes": $release_notes,
                 "timestamp": $timestamp,
@@ -347,7 +354,7 @@ generate_metadata_json() {
             "formula_updates": {
                 "version_placeholder": "{{VERSION}}",
                 "sha256_placeholder": "{{SHA256}}",
-                "url_pattern": "archive/{{VERSION}}.tar.gz"
+                "url_pattern": "releases/download/{{VERSION}}/usbipd-{{VERSION}}-macos"
             }
         }')
     
@@ -397,7 +404,7 @@ validate_metadata() {
     local schema_errors=0
     
     # Check required fields
-    local required_fields=("metadata.version" "metadata.archive_url" "metadata.sha256" "metadata.timestamp")
+    local required_fields=("metadata.version" "metadata.archive_url" "metadata.binary_url" "metadata.sha256" "metadata.timestamp")
     for field in "${required_fields[@]}"; do
         if jq -e ".$field" "$OUTPUT_FILE" >/dev/null 2>&1; then
             log_info "✓ Required field found: $field"
@@ -427,13 +434,22 @@ validate_metadata() {
         ((schema_errors++))
     fi
     
-    # Validate URL format
-    local json_url
-    json_url=$(jq -r '.metadata.archive_url' "$OUTPUT_FILE")
-    if [[ "$json_url" =~ ^https://github\.com/[^/]+/[^/]+/archive/v[0-9].+\.tar\.gz$ ]]; then
+    # Validate URL formats
+    local archive_url
+    archive_url=$(jq -r '.metadata.archive_url' "$OUTPUT_FILE")
+    if [[ "$archive_url" =~ ^https://github\.com/[^/]+/[^/]+/archive/v[0-9].+\.tar\.gz$ ]]; then
         log_success "✓ Archive URL format is valid"
     else
-        log_error "✗ Invalid archive URL format in metadata: $json_url"
+        log_error "✗ Invalid archive URL format in metadata: $archive_url"
+        ((schema_errors++))
+    fi
+    
+    local binary_url
+    binary_url=$(jq -r '.metadata.binary_url' "$OUTPUT_FILE")
+    if [[ "$binary_url" =~ ^https://github\.com/[^/]+/[^/]+/releases/download/v[0-9].+-macos$ ]]; then
+        log_success "✓ Binary URL format is valid"
+    else
+        log_error "✗ Invalid binary URL format in metadata: $binary_url"
         ((schema_errors++))
     fi
     
@@ -464,6 +480,7 @@ Metadata Information:
   Version: $VERSION
   SHA256 Checksum: $SHA256_CHECKSUM
   Archive URL: $ARCHIVE_URL
+  Binary URL: $BINARY_URL
   Output File: $OUTPUT_FILE
   File Size: $([ -f "$OUTPUT_FILE" ] && wc -c < "$OUTPUT_FILE" || echo "0") bytes
 
@@ -523,6 +540,7 @@ REQUIRED OPTIONS:
 OPTIONAL OPTIONS:
   --checksum CHECKSUM         SHA256 checksum (auto-calculated if not provided)
   --archive-url URL           Archive URL (auto-generated if not provided)
+  --binary-url URL            Binary URL (auto-generated if not provided)
   --release-notes TEXT        Release notes (auto-extracted if not provided)
   --dry-run                   Preview generation without creating files
   --force                     Force overwrite existing output file
@@ -612,6 +630,10 @@ main() {
                 ARCHIVE_URL="$2"
                 shift 2
                 ;;
+            --binary-url)
+                BINARY_URL="$2"
+                shift 2
+                ;;
             --release-notes)
                 RELEASE_NOTES="$2"
                 shift 2
@@ -654,7 +676,7 @@ main() {
     setup_environment
     validate_prerequisites
     validate_version
-    generate_archive_url
+    generate_urls
     calculate_checksum
     extract_release_notes
     generate_metadata_json
