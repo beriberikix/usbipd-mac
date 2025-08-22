@@ -6,14 +6,14 @@ This implementation plan converts the homebrew-releaser approach to a repository
 
 ## Tasks
 
-- [ ] 1. Remove homebrew-releaser from main repository workflow
+- [x] 1. Remove homebrew-releaser from main repository workflow
   - File: .github/workflows/release.yml
   - Remove the entire update-homebrew-formula job (lines 479-623)
   - Remove homebrew-releaser dependency and configuration
   - Purpose: Clean up existing implementation to prepare for new approach
   - _Requirements: 1.1, 5.1_
 
-- [ ] 2. Add repository dispatch step to release workflow
+- [x] 2. Add repository dispatch step to release workflow
   - File: .github/workflows/release.yml
   - Add new job to send repository_dispatch event after create-release job succeeds
   - Use peter-evans/repository-dispatch action with structured payload
@@ -21,7 +21,7 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - Purpose: Trigger tap repository updates via dispatch events
   - _Requirements: 1.1, 1.2, 5.1, 5.3_
 
-- [ ] 3. Create tap repository workflow file
+- [x] 3. Create tap repository workflow file
   - File: /Users/jberi/code/homebrew-usbipd-mac/.github/workflows/formula-update.yml
   - Create GitHub Actions workflow triggered by repository_dispatch events
   - Set up environment with necessary tools (git, curl, GitHub CLI)
@@ -29,7 +29,7 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - Purpose: Establish workflow infrastructure for receiving dispatch events
   - _Requirements: 1.3, 3.1_
 
-- [ ] 4. Create binary download and validation script
+- [x] 4. Create binary download and validation script
   - File: /Users/jberi/code/homebrew-usbipd-mac/Scripts/validate-binary.sh
   - Implement binary download with retry logic and timeout handling
   - Add SHA256 checksum verification against expected value
@@ -37,7 +37,7 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - Purpose: Ensure binary integrity before formula updates
   - _Requirements: 2.2, 3.2, 3.3, 4.1, 4.3_
 
-- [ ] 5. Create formula update script
+- [x] 5. Create formula update script
   - File: /Users/jberi/code/homebrew-usbipd-mac/Scripts/update-formula-from-dispatch.sh
   - Parse repository dispatch payload and extract release metadata
   - Update formula file with new version, URL, and SHA256 values
@@ -46,7 +46,7 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - _Leverage: /Users/jberi/code/homebrew-usbipd-mac/Scripts/manual-update.sh_
   - _Requirements: 2.1, 2.2, 2.3, 4.2_
 
-- [ ] 6. Implement error handling and issue creation
+- [x] 6. Implement error handling and issue creation
   - File: /Users/jberi/code/homebrew-usbipd-mac/Scripts/create-update-issue.sh
   - Create GitHub issues for failed formula updates with detailed context
   - Include error stage, release metadata, and troubleshooting information
@@ -54,7 +54,7 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - Purpose: Provide visibility and actionable information for failed updates
   - _Requirements: 3.4, 3.5_
 
-- [ ] 7. Add atomic formula update with rollback
+- [x] 7. Add atomic formula update with rollback
   - File: /Users/jberi/code/homebrew-usbipd-mac/Scripts/update-formula-from-dispatch.sh (extend from task 5)
   - Create backup of formula file before making changes
   - Implement rollback mechanism for failed updates
@@ -62,14 +62,14 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - Purpose: Prevent corrupted formula files and maintain repository integrity
   - _Requirements: 3.1, 3.5_
 
-- [ ] 8. Configure GitHub secrets for repository dispatch
+- [x] 8. Configure GitHub secrets for repository dispatch
   - Configure HOMEBREW_TAP_DISPATCH_TOKEN secret in main repository
   - Set up token with minimal permissions for repository dispatch events
   - Document token requirements and rotation procedures
   - Purpose: Enable secure communication between repositories
   - _Requirements: 5.2_
 
-- [ ] 9. Create integration test script for dispatch workflow
+- [x] 9. Create integration test script for dispatch workflow
   - File: /Users/jberi/code/usbipd-mac/Scripts/test-homebrew-dispatch.sh
   - Test repository dispatch sending with mock payloads
   - Validate payload structure and required fields
@@ -77,7 +77,7 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - Purpose: Ensure dispatch mechanism works correctly before production use
   - _Requirements: All_
 
-- [ ] 10. Create validation script for tap repository workflow
+- [x] 10. Create validation script for tap repository workflow
   - File: /Users/jberi/code/homebrew-usbipd-mac/Scripts/test-formula-update.sh
   - Test formula update workflow with mock dispatch events
   - Validate binary download, checksum verification, and formula updates
@@ -85,7 +85,7 @@ This implementation plan converts the homebrew-releaser approach to a repository
   - Purpose: Ensure tap repository workflow handles all scenarios correctly
   - _Requirements: All_
 
-- [ ] 11. Update workflow documentation and README files
+- [x] 11. Update workflow documentation and README files
   - File: /Users/jberi/code/usbipd-mac/CLAUDE.md
   - Document new repository dispatch workflow and troubleshooting procedures
   - Update release automation section with new approach

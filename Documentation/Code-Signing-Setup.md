@@ -184,6 +184,21 @@ Configure these secrets in your GitHub repository settings:
 10. **`APPLE_ASC_PROVIDER`**
     - Apple ASC provider short name (if multiple teams)
 
+#### Repository Dispatch Tokens
+
+11. **`HOMEBREW_TAP_DISPATCH_TOKEN`**
+    - GitHub Personal Access Token for triggering repository dispatch events
+    - Target repository: `beriberikix/homebrew-usbipd-mac`
+    - Required permissions: `repo` scope (for repository dispatch actions)
+    - Token rotation: Recommended every 90 days for security
+    - **Note**: This is separate from `HOMEBREW_TAP_TOKEN` (used by homebrew-releaser action)
+
+#### Token Purpose Clarification
+
+- **`HOMEBREW_TAP_TOKEN`**: Used by homebrew-releaser GitHub Action for direct formula updates
+- **`HOMEBREW_TAP_DISPATCH_TOKEN`**: Used by repository dispatch system for triggering tap repository workflows
+- **Migration Note**: During the transition from homebrew-releaser to repository dispatch, both tokens will coexist
+
 ### Setting Up Secrets
 
 1. **Export certificates from Keychain**:
@@ -207,6 +222,73 @@ Configure these secrets in your GitHub repository settings:
        security create-keychain -p temp-password temp.keychain
        security import certificate.p12 -k temp.keychain -P "$DEVELOPER_ID_CERT_PASSWORD"
    ```
+
+### GitHub Token Setup and Management
+
+#### Creating HOMEBREW_TAP_DISPATCH_TOKEN
+
+1. **Generate Personal Access Token**:
+   - Go to GitHub Settings > Developer settings > Personal access tokens > Tokens (classic)
+   - Click "Generate new token (classic)"
+   - Set expiration to 90 days for security
+   - Select scopes:
+     - `repo` (Full control of private repositories)
+   - Generate and copy the token immediately
+
+2. **Configure in Repository Secrets**:
+   - Navigate to repository Settings > Secrets and variables > Actions
+   - Click "New repository secret"
+   - Name: `HOMEBREW_TAP_DISPATCH_TOKEN`
+   - Value: The generated Personal Access Token
+   - Click "Add secret"
+
+3. **Test Token Permissions**:
+   ```bash
+   # Test repository dispatch capability
+   curl -X POST \
+     -H "Authorization: token $HOMEBREW_TAP_DISPATCH_TOKEN" \
+     -H "Accept: application/vnd.github.v3+json" \
+     https://api.github.com/repos/beriberikix/homebrew-usbipd-mac/dispatches \
+     -d '{"event_type":"test"}'
+   ```
+
+#### Token Rotation and Maintenance
+
+1. **Rotation Schedule**:
+   - Create calendar reminders for token rotation every 90 days
+   - Monitor token expiration dates in GitHub settings
+   - Plan rotation during low-activity periods to minimize disruption
+
+2. **Rotation Process**:
+   ```bash
+   # 1. Generate new token with same permissions
+   # 2. Update GitHub secret with new token value
+   # 3. Test functionality with a test release
+   # 4. Revoke the old token
+   # 5. Document the rotation date
+   ```
+
+3. **Emergency Token Recovery**:
+   - Keep backup tokens with similar permissions (separate GitHub account)
+   - Document emergency contact procedures for token issues
+   - Maintain offline backup of token rotation procedures
+
+#### Token Security Best Practices
+
+1. **Access Control**:
+   - Limit token creation to repository administrators only
+   - Use separate tokens for different automation purposes
+   - Never store tokens in code or commit them to repositories
+
+2. **Monitoring and Auditing**:
+   - Review GitHub audit logs regularly for token usage
+   - Monitor repository dispatch events for unexpected activity
+   - Set up alerts for failed authentication attempts
+
+3. **Minimal Permissions**:
+   - Grant only the `repo` scope required for repository dispatch
+   - Avoid broader permissions like `admin:repo_hook` unless specifically needed
+   - Regular review of token permissions and usage patterns
 
 ## Code Signing Commands
 

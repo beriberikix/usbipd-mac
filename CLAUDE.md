@@ -213,6 +213,12 @@ Located in `Scripts/` directory:
 - `test-environment-setup.sh`: Environment detection and setup
 - `generate-test-report.sh`: Unified test execution reporting
 
+### Release and Distribution Scripts
+- `test-homebrew-dispatch.sh`: Test repository dispatch workflow integration
+- `prepare-release.sh`: Comprehensive release preparation and validation
+- `validate-release-artifacts.sh`: Release artifact integrity verification
+- `rollback-release.sh`: Release rollback and cleanup utilities
+
 ### Usage Examples
 ```bash
 # Quick development feedback
@@ -223,6 +229,15 @@ Located in `Scripts/` directory:
 
 # Generate comprehensive test report
 ./Scripts/generate-test-report.sh --environment production
+
+# Test repository dispatch workflow
+./Scripts/test-homebrew-dispatch.sh
+
+# Prepare and validate release
+./Scripts/prepare-release.sh --dry-run v1.2.3
+
+# Validate release artifacts
+./Scripts/validate-release-artifacts.sh --expected-version v1.2.3
 ```
 
 ## QEMU Testing Infrastructure
@@ -403,6 +418,100 @@ Reusable workflow components that eliminate duplication:
 - Consistent environment setup and validation
 - Improved caching and performance
 - Enhanced reusability through workflow_call interface
+
+### Homebrew Formula Distribution
+
+The project uses a repository dispatch pattern to automatically update the Homebrew tap repository when new releases are published.
+
+#### Repository Dispatch Workflow
+
+The main repository (`usbipd-mac`) triggers updates to the tap repository (`homebrew-usbipd-mac`) using GitHub's repository dispatch events:
+
+1. **Release Workflow Trigger**: When a new release is created, the release workflow sends a `repository_dispatch` event
+2. **Tap Repository Response**: The tap repository receives the event and updates the formula file
+3. **Automated Validation**: Binary download, checksum verification, and formula syntax validation
+4. **Error Handling**: Automatic issue creation for failed updates with detailed diagnostics
+
+```bash
+# Manual repository dispatch trigger (for testing)
+gh api repos/beriberikix/homebrew-usbipd-mac/dispatches \
+  --method POST \
+  --field event_type=formula_update \
+  --field client_payload='{"version":"v1.2.3","binary_url":"https://github.com/beriberikix/usbipd-mac/releases/download/v1.2.3/usbipd-v1.2.3-macos","sha256":"abc123..."}'
+
+# Test repository dispatch workflow validation
+cd ~/path/to/homebrew-usbipd-mac
+./Scripts/test-formula-update.sh
+```
+
+#### Formula Update Process
+
+The tap repository workflow (`homebrew-usbipd-mac/.github/workflows/formula-update.yml`) handles the following steps:
+
+1. **Payload Validation**: Verify required fields (version, binary_url, sha256)
+2. **Binary Download**: Download and validate the binary against expected checksum
+3. **Formula Update**: Update version, URL, and SHA256 in the formula file
+4. **Syntax Validation**: Ensure Ruby syntax is correct using `ruby -c`
+5. **Atomic Operations**: Rollback on failure to maintain repository integrity
+
+#### Emergency Procedures for Homebrew Updates
+
+In case of automated update failures:
+
+```bash
+# Manual formula update (emergency procedure)
+cd ~/path/to/homebrew-usbipd-mac
+./Scripts/manual-update.sh v1.2.3 https://github.com/beriberikix/usbipd-mac/releases/download/v1.2.3/usbipd-v1.2.3-macos abc123...
+
+# Force update with validation bypass (emergency only)
+./Scripts/manual-update.sh --force --skip-validation v1.2.3-hotfix
+
+# Check update status and logs
+gh run list --repo beriberikix/homebrew-usbipd-mac
+gh run view --repo beriberikix/homebrew-usbipd-mac [run-id]
+```
+
+#### Troubleshooting Formula Updates
+
+Common issues and solutions:
+
+1. **Repository Dispatch Failures**:
+   - Verify `HOMEBREW_TAP_DISPATCH_TOKEN` secret is configured
+   - Check token permissions (requires `repository` scope)
+   - Validate payload structure and required fields
+
+2. **Binary Download Issues**:
+   - Confirm binary is accessible at the provided URL
+   - Verify SHA256 checksum matches the expected value
+   - Check network connectivity and GitHub release availability
+
+3. **Formula Syntax Errors**:
+   - Review Ruby syntax using `ruby -c Formula/usbipd-mac.rb`
+   - Check for proper escaping of special characters
+   - Validate version format and URL structure
+
+4. **Rollback Scenarios**:
+   - Repository automatically rolls back to previous formula on failure
+   - Manual rollback: `git checkout HEAD~1 -- Formula/usbipd-mac.rb`
+   - Issue creation provides detailed failure context for investigation
+
+#### Testing and Validation Scripts
+
+Available testing utilities in the tap repository:
+
+```bash
+# Validate tap repository workflow
+./Scripts/test-formula-update.sh
+
+# Test binary validation process
+./Scripts/validate-binary.sh [binary_url] [expected_sha256]
+
+# Test formula update with mock data
+./Scripts/update-formula-from-dispatch.sh # Uses GITHUB_EVENT_PATH
+
+# Create test issue (dry run)
+DRY_RUN=true ./Scripts/create-update-issue.sh "Test error" "validation" "v1.2.3" "Test details"
+```
 
 ### Release Artifact Management
 

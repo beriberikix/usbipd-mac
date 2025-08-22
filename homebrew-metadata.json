@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "version": "v0.1.19",
+    "archive_url": "https://github.com/beriberikix/usbipd-mac/archive/v0.1.19.tar.gz",
+    "sha256": "26e97fcbfe041803d12cf06b8a7bfadef84ddc7be5fbf3ec35a4d8553376bac8",
+    "release_notes": "Update CHANGELOG.md for v0.1.19 release\n\nAdded changelog entry documenting the BundleSearchResult struct\ncompilation fix.\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+    "timestamp": "2025-08-21T20:56:33Z",
+    "generator": "usbipd-mac homebrew metadata generator v1.0"
+  },
+  "formula_updates": {
+    "version_placeholder": "{{VERSION}}",
+    "sha256_placeholder": "{{SHA256}}",
+    "url_pattern": "archive/{{VERSION}}.tar.gz"
+  }
+}
