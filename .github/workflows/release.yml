@@ -237,11 +237,15 @@ jobs:
           if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
             echo "📦 Creating compressed system extension bundle..."
             tar -czf "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension.tar.gz" -C "$ARTIFACTS_DIR" USBIPDSystemExtension.systemextension
+            # Remove the directory after creating the tar.gz to avoid upload conflicts
+            rm -rf "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension"
           fi
           
-          # Create archive with all components
+          # Create archive with all non-tar.gz files 
           ARCHIVE_PATH="$ARTIFACTS_DIR/usbipd-mac-$VERSION.tar.gz"
-          tar -czf "$ARCHIVE_PATH" -C "$ARTIFACTS_DIR" $(ls "$ARTIFACTS_DIR" | grep -v ".tar.gz")
+          # Include all files except other .tar.gz files
+          find "$ARTIFACTS_DIR" -maxdepth 1 -type f ! -name "*.tar.gz" -exec basename {} \; | \
+            xargs -I {} tar -czf "$ARCHIVE_PATH" -C "$ARTIFACTS_DIR" {}
           
           # Output artifact paths
           PATHS="$USBIPD_PATH"
