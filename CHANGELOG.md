@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **System Extension Bundle Distribution**: Release workflow now builds and distributes system extension bundles
+  - Builds USBIPDSystemExtension target explicitly in release workflow
+  - Creates proper system extension bundle structure with Info.plist
+  - Applies code signing to system extension bundle
+  - Includes system extension bundle in release artifacts as compressed tar.gz
+  - Generates checksums for both CLI binary and system extension
+  - Updates Homebrew metadata to include system extension download URLs and checksums
+  - Enhances release notes with system extension installation instructions
+
+### Fixed
+- **Homebrew System Extension Support**: Fixed "System Extension Status: Not Available" error for Homebrew users
+  - System extension bundle now properly distributed with releases
+  - Homebrew formula can install complete functionality including system extensions
+  - Users can now successfully run `sudo usbipd install-system-extension`
+
 ## [v0.1.19] - 2025-08-21
 
 ### Fixed
