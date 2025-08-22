@@ -162,9 +162,51 @@ jobs:
           # Build optimized release binaries
           swift build --configuration release
           
+          # Build system extension explicitly
+          echo "🏗️ Building system extension bundle..."
+          swift build --configuration release --product USBIPDSystemExtension
+          
           # Package main executable
           USBIPD_PATH="$ARTIFACTS_DIR/usbipd-$VERSION-macos"
           cp .build/release/usbipd "$USBIPD_PATH"
+          
+          # Package system extension bundle
+          echo "📦 Packaging system extension bundle..."
+          BUNDLE_PATH=$(find .build/release -name "*.systemextension" -type d | head -1)
+          if [ -n "$BUNDLE_PATH" ]; then
+            echo "Found system extension bundle at: $BUNDLE_PATH"
+            cp -R "$BUNDLE_PATH" "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension"
+          else
+            echo "Creating system extension bundle structure..."
+            mkdir -p "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension/Contents/MacOS"
+            cp .build/release/USBIPDSystemExtension "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension/Contents/MacOS/"
+            
+            # Create Info.plist for system extension
+            cat > "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>USBIPDSystemExtension</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.github.usbipd-mac.systemextension</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>USBIPD System Extension</string>
+              <key>CFBundlePackageType</key>
+              <string>SYSX</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$VERSION</string>
+              <key>CFBundleVersion</key>
+              <string>$VERSION</string>
+              <key>NSSystemExtensionUsageDescription</key>
+              <string>Enables USB device sharing over IP networks</string>
+          </dict>
+          </plist>
+          EOF
+          fi
           
           # Package QEMU test server if available
           if [ -f .build/release/QEMUTestServer ]; then
@@ -176,6 +218,13 @@ jobs:
           if [ -n "$DEVELOPER_ID_CERTIFICATE" ]; then
             echo "🔒 Code signing release artifacts..."
             codesign --sign "Developer ID Application" --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
+            
+            # Sign system extension bundle
+            if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
+              echo "🔒 Code signing system extension bundle..."
+              codesign --sign "Developer ID Application" --timestamp "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" || echo "::warning::Code signing failed for system extension"
+            fi
+            
             if [ -f "$QEMU_SERVER_PATH" ]; then
               codesign --sign "Developer ID Application" --timestamp "$QEMU_SERVER_PATH" || echo "::warning::Code signing failed for QEMUTestServer"
             fi
@@ -184,7 +233,13 @@ jobs:
             echo "::warning::No code signing certificates available - binaries will be unsigned"
           fi
           
-          # Create archive
+          # Create compressed system extension bundle for release
+          if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
+            echo "📦 Creating compressed system extension bundle..."
+            tar -czf "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension.tar.gz" -C "$ARTIFACTS_DIR" USBIPDSystemExtension.systemextension
+          fi
+          
+          # Create archive with all components
           ARCHIVE_PATH="$ARTIFACTS_DIR/usbipd-mac-$VERSION.tar.gz"
           tar -czf "$ARCHIVE_PATH" -C "$ARTIFACTS_DIR" $(ls "$ARTIFACTS_DIR" | grep -v ".tar.gz")
           
@@ -192,6 +247,9 @@ jobs:
           PATHS="$USBIPD_PATH"
           if [ -f "$QEMU_SERVER_PATH" ]; then
             PATHS="$PATHS,$QEMU_SERVER_PATH"
+          fi
+          if [ -f "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension.tar.gz" ]; then
+            PATHS="$PATHS,$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension.tar.gz"
           fi
           PATHS="$PATHS,$ARCHIVE_PATH"
           
@@ -212,8 +270,22 @@ jobs:
           echo "📊 Generating checksums..."
           shasum -a 256 * > "$CHECKSUMS_FILE"
           
+          # Extract specific checksums for metadata generation
+          CLI_SHA256=$(shasum -a 256 usbipd-${{ needs.release-validation.outputs.version }}-macos | cut -d' ' -f1)
+          echo "CLI_SHA256=$CLI_SHA256" >> $GITHUB_ENV
+          
+          if [ -f "USBIPDSystemExtension.systemextension.tar.gz" ]; then
+            SYSEXT_SHA256=$(shasum -a 256 USBIPDSystemExtension.systemextension.tar.gz | cut -d' ' -f1)
+            echo "SYSEXT_SHA256=$SYSEXT_SHA256" >> $GITHUB_ENV
+            echo "✅ System extension checksum: ${SYSEXT_SHA256:0:16}..."
+          else
+            echo "SYSEXT_SHA256=" >> $GITHUB_ENV
+            echo "⚠️  System extension bundle not found"
+          fi
+          
           echo "::notice title=Checksums Generated::SHA256 checksums created for all artifacts"
           echo "✅ Checksums saved to $CHECKSUMS_FILE"
+          echo "✅ CLI binary checksum: ${CLI_SHA256:0:16}..."
           
           echo "checksums=$CHECKSUMS_FILE" >> $GITHUB_OUTPUT
           echo "::endgroup::"
@@ -311,14 +383,61 @@ jobs:
           echo "   SHA256: $SHA256_CHECKSUM"
           echo "   Archive URL: $ARCHIVE_URL"
           
-          # Generate metadata using the new script
-          ./Scripts/generate-homebrew-metadata.sh \
-            --version "$VERSION" \
-            --checksum "$SHA256_CHECKSUM" \
-            --archive-url "$ARCHIVE_URL"
+          # Create enhanced metadata with system extension support
+          mkdir -p .build/homebrew-metadata
+          METADATA_FILE=".build/homebrew-metadata/homebrew-metadata.json"
+          
+          # Get release notes from latest commit
+          RELEASE_NOTES=$(git log -1 --pretty=format:"%s")
+          
+          cat > "$METADATA_FILE" << EOF
+          {
+            "schema_version": "1.0",
+            "metadata": {
+              "version": "$VERSION",
+              "archive_url": "$ARCHIVE_URL",
+              "binary_url": "https://github.com/beriberikix/usbipd-mac/releases/download/$VERSION/usbipd-$VERSION-macos",
+              "sha256": "$SHA256_CHECKSUM",
+              "release_notes": "$RELEASE_NOTES",
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "generator": "usbipd-mac homebrew metadata generator v2.0"
+          EOF
+          
+          # Add system extension metadata if available
+          if [ -n "${SYSEXT_SHA256:-}" ] && [ "$SYSEXT_SHA256" != "" ]; then
+            cat >> "$METADATA_FILE" << EOF
+          ,
+              "systemextension_url": "https://github.com/beriberikix/usbipd-mac/releases/download/$VERSION/USBIPDSystemExtension.systemextension.tar.gz",
+              "systemextension_sha256": "$SYSEXT_SHA256"
+          EOF
+            echo "✅ System extension metadata included"
+          else
+            echo "⚠️  System extension metadata not available"
+          fi
+          
+          cat >> "$METADATA_FILE" << EOF
+            },
+            "formula_updates": {
+              "version_placeholder": "{{VERSION}}",
+              "sha256_placeholder": "{{SHA256}}",
+              "url_pattern": "releases/download/{{VERSION}}/usbipd-{{VERSION}}-macos"
+          EOF
+          
+          # Add system extension formula updates if available
+          if [ -n "${SYSEXT_SHA256:-}" ] && [ "$SYSEXT_SHA256" != "" ]; then
+            cat >> "$METADATA_FILE" << EOF
+          ,
+              "sysext_sha256_placeholder": "{{SYSEXT_SHA256}}",
+              "sysext_url_pattern": "releases/download/{{VERSION}}/USBIPDSystemExtension.systemextension.tar.gz"
+          EOF
+          fi
+          
+          cat >> "$METADATA_FILE" << EOF
+            }
+          }
+          EOF
           
           # Verify metadata was generated
-          METADATA_FILE=".build/homebrew-metadata/homebrew-metadata.json"
           if [ ! -f "$METADATA_FILE" ]; then
             echo "::error title=Metadata Missing::Generated metadata file not found"
             exit 1
@@ -434,20 +553,38 @@ jobs:
           
           This release includes the following artifacts:
           - **usbipd**: Main USB/IP daemon executable for macOS
+          - **USBIPDSystemExtension.systemextension.tar.gz**: System Extension bundle for advanced USB device access
           - **QEMUTestServer**: QEMU integration test server (if available)
           - **Archive**: Complete packaged release (tar.gz)
           - **Checksums**: SHA256 verification checksums
           
           ## Installation
           
-          Download the appropriate binary for your system and verify with the provided checksums.
+          **Homebrew (Recommended):**
+          \`\`\`bash
+          brew tap beriberikix/usbipd-mac
+          brew install usbipd-mac
+          sudo usbipd install-system-extension
+          sudo brew services start usbipd-mac
+          \`\`\`
+          
+          **Manual Installation:**
+          1. Download \`usbipd-$VERSION-macos\` and \`USBIPDSystemExtension.systemextension.tar.gz\`
+          2. Make the binary executable: \`chmod +x usbipd-$VERSION-macos\`
+          3. Extract and install the system extension bundle
+          4. Install the system extension: \`sudo ./usbipd-$VERSION-macos install-system-extension\`
           
           ## Requirements
           
           - macOS 11.0 or later
           - Administrator privileges for USB device access
+          - System extension approval in System Preferences
           
-          **Note**: Binaries are code-signed with Apple Developer ID when available.
+          ## Notes
+          
+          - Binaries are code-signed with Apple Developer ID when available
+          - System extension requires user approval on first installation
+          - Full functionality requires both the CLI binary and system extension
           EOF
           
           echo "::notice title=Release Notes Ready::Release notes generated successfully"
