@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.1.26] - 2025-08-22
+
 ### Added
 - **System Extension Bundle Distribution**: Release workflow now builds and distributes system extension bundles
   - Builds USBIPDSystemExtension target explicitly in release workflow
