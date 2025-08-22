@@ -268,7 +268,8 @@ jobs:
           CHECKSUMS_FILE="checksums-${{ needs.release-validation.outputs.version }}.sha256"
           
           echo "📊 Generating checksums..."
-          shasum -a 256 * > "$CHECKSUMS_FILE"
+          # Only checksum files, not directories
+          find . -maxdepth 1 -type f \( -name "*.macos" -o -name "*.tar.gz" \) -exec shasum -a 256 {} \; > "$CHECKSUMS_FILE"
           
           # Extract specific checksums for metadata generation
           CLI_SHA256=$(shasum -a 256 usbipd-${{ needs.release-validation.outputs.version }}-macos | cut -d' ' -f1)
