@@ -476,7 +476,112 @@ jobs:
           echo "::endgroup::"
 
 
-  
+  update-homebrew-formula:
+    name: Update Homebrew Formula
+    runs-on: ubuntu-latest
+    needs: [release-validation, create-release, generate-homebrew-metadata]
+    if: always() && needs.create-release.result == 'success'
+    steps:
+      - name: 🏺 Starting Homebrew Formula Update
+        run: |
+          echo "::notice title=Homebrew Update::Starting automated Homebrew formula update via repository dispatch"
+          echo "🏺 This stage triggers formula update in the tap repository"
+          echo "📊 Status: STARTING"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Homebrew Metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-metadata-${{ needs.release-validation.outputs.version }}
+          path: homebrew-metadata/
+
+      - name: 🔧 Extract Metadata for Dispatch
+        id: extract-metadata
+        run: |
+          echo "::group::Metadata Extraction"
+          echo "::notice title=Metadata::Extracting metadata for repository dispatch"
+          
+          METADATA_FILE="homebrew-metadata/homebrew-metadata.json"
+          
+          if [ ! -f "$METADATA_FILE" ]; then
+            echo "::error title=Metadata Missing::Homebrew metadata file not found"
+            exit 1
+          fi
+          
+          # Extract metadata fields using jq
+          VERSION=$(jq -r '.metadata.version' "$METADATA_FILE")
+          ARCHIVE_URL=$(jq -r '.metadata.archive_url' "$METADATA_FILE")
+          SHA256=$(jq -r '.metadata.sha256' "$METADATA_FILE")
+          TIMESTAMP=$(jq -r '.metadata.timestamp' "$METADATA_FILE")
+          
+          echo "🔍 Extracted metadata:"
+          echo "   • Version: $VERSION"
+          echo "   • Archive URL: $ARCHIVE_URL"
+          echo "   • SHA256: ${SHA256:0:16}..."
+          echo "   • Timestamp: $TIMESTAMP"
+          
+          # Output for next step
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "archive_url=$ARCHIVE_URL" >> $GITHUB_OUTPUT
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+      - name: 🚀 Send Repository Dispatch
+        run: |
+          echo "::group::Repository Dispatch"
+          echo "::notice title=Repository Dispatch::Sending formula update event to tap repository"
+          
+          VERSION="${{ steps.extract-metadata.outputs.version }}"
+          ARCHIVE_URL="${{ steps.extract-metadata.outputs.archive_url }}"
+          SHA256="${{ steps.extract-metadata.outputs.sha256 }}"
+          TIMESTAMP="${{ steps.extract-metadata.outputs.timestamp }}"
+          PRERELEASE="${{ needs.release-validation.outputs.is-prerelease }}"
+          
+          echo "🏺 Sending repository dispatch to tap repository..."
+          echo "   • Target: beriberikix/homebrew-usbipd-mac"
+          echo "   • Event: formula_update"
+          echo "   • Version: $VERSION"
+          
+          # Send repository dispatch event
+          gh api repos/beriberikix/homebrew-usbipd-mac/dispatches \
+            --method POST \
+            --field event_type=formula_update \
+            --raw-field client_payload="{
+              \"version\": \"$VERSION\",
+              \"archive_url\": \"$ARCHIVE_URL\",
+              \"sha256\": \"$SHA256\",
+              \"timestamp\": \"$TIMESTAMP\",
+              \"source_repository\": \"${{ github.repository }}\",
+              \"source_workflow_run\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"triggered_by\": \"automated-release\",
+              \"prerelease\": $PRERELEASE
+            }" \
+            --header "Authorization: token ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}"
+          
+          echo "::notice title=Dispatch Sent::Repository dispatch event sent successfully"
+          echo "✅ Formula update event dispatched to tap repository"
+          echo "🔗 Monitor tap repository: https://github.com/beriberikix/homebrew-usbipd-mac/actions"
+          echo "::endgroup::"
+
+      - name: ⏳ Wait for Formula Update
+        run: |
+          echo "::group::Formula Update Monitoring"
+          echo "::notice title=Monitoring::Waiting for tap repository formula update"
+          
+          echo "⏳ Allowing time for tap repository to process update..."
+          echo "   • Repository dispatch events are processed asynchronously"
+          echo "   • Tap repository workflow will validate and update formula"
+          echo "   • Check tap repository actions for detailed progress"
+          
+          # Wait 30 seconds to allow dispatch to be processed
+          sleep 30
+          
+          echo "✅ Formula update dispatch completed"
+          echo "🔍 Check tap repository for update status: https://github.com/beriberikix/homebrew-usbipd-mac/actions"
+          echo "::endgroup::"
 
   post-release:
     name: Post-Release Validation
