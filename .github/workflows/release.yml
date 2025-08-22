@@ -476,151 +476,7 @@ jobs:
           echo "::endgroup::"
 
 
-  update-homebrew-formula:
-    name: Update Homebrew Formula
-    runs-on: ubuntu-latest
-    needs: [release-validation, create-release, generate-homebrew-metadata]
-    if: always() && needs.create-release.result == 'success'
-    steps:
-      - name: 🏺 Starting Homebrew Formula Update
-        run: |
-          echo "::notice title=Homebrew Formula Update::Starting homebrew-releaser for formula updates"
-          echo "🏺 This stage updates the formula using homebrew-releaser"
-          echo "📊 Status: STARTING"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🏺 Update Homebrew Formula with homebrew-releaser
-        id: homebrew-releaser
-        uses: Justintime50/homebrew-releaser@v1
-        with:
-          # Repository configuration
-          homebrew_owner: beriberikix
-          homebrew_tap: homebrew-usbipd-mac
-          formula_folder: Formula
-          github_token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          
-          # Release configuration
-          version: ${{ needs.release-validation.outputs.version }}
-          
-          # Formula configuration
-          install: |
-            bin.install "usbipd"
-          test: |
-            assert_match "usbipd", shell_output("#{bin}/usbipd --version")
-          
-          # Platform configuration
-          target_darwin_amd64: true
-          target_darwin_arm64: true
-          
-          # Production configuration (debug disabled after validation period)
-          skip_commit: false
-          debug: false
-          
-          # Optimized commit configuration
-          commit_owner: github-actions[bot]
-          commit_email: 41898282+github-actions[bot]@users.noreply.github.com
-          commit_message: |
-            feat: update formula to ${{ needs.release-validation.outputs.version }}
-            
-            - Updated version and SHA256 checksum for release ${{ needs.release-validation.outputs.version }}
-            - Automated update via homebrew-releaser GitHub Action
-            
-            🤖 Generated with homebrew-releaser
-          
-          # Additional configuration
-          update_readme_table: false
-
-      - name: 🔍 Validate Formula Update Success
-        if: always()
-        run: |
-          echo "::group::Formula Update Validation"
-          echo "::notice title=Formula Validation::Validating homebrew-releaser execution and formula update"
-          
-          VERSION="${{ needs.release-validation.outputs.version }}"
-          
-          # Check if homebrew-releaser step succeeded
-          if [ "${{ steps.homebrew-releaser.outcome }}" = "success" ]; then
-            echo "✅ Homebrew-releaser executed successfully"
-            
-            # Wait a moment for commit to propagate
-            sleep 10
-            
-            # Verify the formula was actually updated in the tap repository
-            echo "🔍 Verifying formula update in tap repository..."
-            FORMULA_CONTENT=$(curl -s "https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/main/Formula/usbipd-mac.rb" || echo "")
-            
-            if echo "$FORMULA_CONTENT" | grep -q "$VERSION"; then
-              echo "✅ Formula updated successfully with version $VERSION"
-              echo "::notice title=Formula Updated::Formula successfully updated in tap repository"
-            else
-              echo "⚠️ Formula may not have been updated with correct version"
-              echo "::warning title=Formula Verification::Could not verify formula update - manual check recommended"
-            fi
-          else
-            echo "❌ Homebrew-releaser execution failed"
-            echo "::error title=Formula Update Failed::Homebrew-releaser step failed - formula was not updated"
-            
-            # Create an issue for failed formula updates
-            if command -v gh > /dev/null 2>&1; then
-              echo "Creating issue for failed formula update..."
-              
-              TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-              WORKFLOW_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              
-              # Create issue body without heredoc to avoid YAML parsing issues
-              echo "## Formula Update Failure" > /tmp/issue_body.md
-              echo "" >> /tmp/issue_body.md
-              echo "Release Version: $VERSION" >> /tmp/issue_body.md
-              echo "Workflow Run: $WORKFLOW_URL" >> /tmp/issue_body.md
-              echo "Timestamp: $TIMESTAMP" >> /tmp/issue_body.md
-              echo "" >> /tmp/issue_body.md
-              echo "### Problem" >> /tmp/issue_body.md
-              echo "The homebrew-releaser GitHub Action failed during the release workflow for version $VERSION. The Homebrew formula in the tap repository was not updated automatically." >> /tmp/issue_body.md
-              echo "" >> /tmp/issue_body.md
-              echo "### Impact" >> /tmp/issue_body.md
-              echo "- Users cannot install the latest version via Homebrew" >> /tmp/issue_body.md
-              echo "- Manual formula update is required" >> /tmp/issue_body.md
-              echo "" >> /tmp/issue_body.md
-              echo "### Action Required" >> /tmp/issue_body.md
-              echo "1. Review the workflow logs for the homebrew-releaser step" >> /tmp/issue_body.md
-              echo "2. Check HOMEBREW_TAP_TOKEN permissions and expiration" >> /tmp/issue_body.md
-              echo "3. Manually update the formula if necessary using the rollback procedures" >> /tmp/issue_body.md
-              echo "4. Consider re-running the release workflow if the issue is resolved" >> /tmp/issue_body.md
-              echo "" >> /tmp/issue_body.md
-              echo "### Workflow Logs" >> /tmp/issue_body.md
-              echo "$WORKFLOW_URL" >> /tmp/issue_body.md
-              echo "" >> /tmp/issue_body.md
-              echo "/cc @maintainers" >> /tmp/issue_body.md
-              
-              gh issue create \
-                --title "Formula Update Failed for $VERSION" \
-                --body-file /tmp/issue_body.md \
-                --label "bug,homebrew,release" \
-                --assignee "${{ github.actor }}" || echo "Failed to create issue"
-              
-              rm -f /tmp/issue_body.md
-            fi
-          fi
-          echo "::endgroup::"
-
-      - name: 📊 Homebrew Formula Update Summary
-        run: |
-          echo "::group::Homebrew Formula Update Summary"
-          echo "::notice title=Formula Update Complete::Homebrew formula update completed"
-          echo "🏺 Homebrew-releaser summary:"
-          echo "   • Version: ${{ needs.release-validation.outputs.version }}"
-          echo "   • Target Repository: beriberikix/homebrew-usbipd-mac"
-          echo "   • Formula Folder: Formula"
-          echo "   • Debug Logging: Disabled (production mode)"
-          echo "   • Monitoring: Enabled with automatic issue creation on failure"
-          echo "   • Status: Formula committed to tap repository"
-          echo ""
-          echo "✅ Formula update committed successfully"
-          echo "🔄 Users can now upgrade via: brew upgrade usbipd-mac"
-          echo "🔍 Formula update validation and monitoring active"
-          echo "::endgroup::"
+  
 
   post-release:
     name: Post-Release Validation
@@ -657,7 +513,7 @@ jobs:
             echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
             echo "   • Artifacts: Available"
             echo "   • Status: Published"
-            echo "   • Homebrew Update: ${{ needs.update-homebrew-formula.result }}"
+
           else
             echo "::error title=Release Verification Failed::Cannot verify release accessibility"
             echo "❌ Release verification failed"
@@ -676,7 +532,7 @@ jobs:
           echo "   • Pre-release: ${{ needs.release-validation.outputs.is-prerelease }}"
           echo "   • Release type: ${{ needs.release-validation.outputs.release-type }}"
           echo "   • Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-validation.outputs.version }}"
-          echo "   • Homebrew Update: ${{ needs.update-homebrew-formula.result }}"
+          
           echo ""
           echo "✅ **Completed Steps:**"
           echo "   • Release version validation"

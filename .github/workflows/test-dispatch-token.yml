@@ -1,0 +1,93 @@
+name: Test Repository Dispatch Token
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options:
+          - 'dry-run'
+          - 'actual-dispatch'
+
+jobs:
+  test-dispatch-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test Token Access (Dry Run)
+        if: inputs.test_type == 'dry-run'
+        run: |
+          echo "Testing HOMEBREW_TAP_DISPATCH_TOKEN accessibility..."
+          if [ -n "${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}" ]; then
+            echo "✅ Token is accessible"
+            echo "Token length: ${#HOMEBREW_TAP_DISPATCH_TOKEN}"
+          else
+            echo "❌ Token is not accessible"
+            exit 1
+          fi
+        env:
+          HOMEBREW_TAP_DISPATCH_TOKEN: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+
+      - name: Test Repository Access
+        if: inputs.test_type == 'dry-run'
+        run: |
+          echo "Testing repository access..."
+          response=$(curl -s -w "%{http_code}" -o response.json \
+            -H "Authorization: token $HOMEBREW_TAP_DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/beriberikix/homebrew-usbipd-mac)
+          
+          if [ "$response" = "200" ]; then
+            echo "✅ Can access target repository"
+            echo "Repository: $(cat response.json | jq -r '.full_name')"
+          else
+            echo "❌ Cannot access repository (HTTP $response)"
+            cat response.json
+            exit 1
+          fi
+        env:
+          HOMEBREW_TAP_DISPATCH_TOKEN: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+
+      - name: Test Dispatch Permissions (Dry Run)
+        if: inputs.test_type == 'dry-run'
+        run: |
+          echo "Testing repository dispatch permissions (dry run)..."
+          echo "This would send the following payload:"
+          cat << 'EOF'
+          {
+            "event_type": "test_token_validation",
+            "client_payload": {
+              "test": true,
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "source": "token-validation-workflow"
+            }
+          }
+          EOF
+          echo "✅ Dry run test completed"
+
+      - name: Send Test Repository Dispatch
+        if: inputs.test_type == 'actual-dispatch'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+          repository: beriberikix/homebrew-usbipd-mac
+          event-type: test_token_validation
+          client-payload: |
+            {
+              "test": true,
+              "timestamp": "${{ github.run_id }}",
+              "source": "token-validation-workflow",
+              "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Actual Dispatch Success
+        if: inputs.test_type == 'actual-dispatch'
+        run: |
+          echo "✅ Repository dispatch sent successfully!"
+          echo "Check the tap repository for the dispatch event:"
+          echo "https://github.com/beriberikix/homebrew-usbipd-mac/actions"
