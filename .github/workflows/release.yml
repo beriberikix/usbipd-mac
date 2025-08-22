@@ -263,20 +263,28 @@ jobs:
           echo "✅ Environment ready for metadata generation"
           echo "::endgroup::"
 
-      - name: 🔢 Calculate Archive SHA256
+      - name: 🔢 Calculate Binary SHA256
         id: calculate-sha256
         run: |
           echo "::group::SHA256 Calculation"
-          echo "::notice title=SHA256::Calculating GitHub source archive checksum for metadata"
+          echo "::notice title=SHA256::Calculating release binary checksum for metadata"
           
           VERSION="${{ needs.release-validation.outputs.version }}"
-          ARCHIVE_URL="https://github.com/beriberikix/usbipd-mac/archive/$VERSION.tar.gz"
+          BINARY_URL="https://github.com/beriberikix/usbipd-mac/releases/download/$VERSION/usbipd-$VERSION-macos"
           
-          echo "📊 Downloading and calculating SHA256 for GitHub source archive..."
-          echo "   URL: $ARCHIVE_URL"
+          echo "📊 Downloading and calculating SHA256 for release binary..."
+          echo "   URL: $BINARY_URL"
           
-          # Download and calculate SHA256 of the GitHub source archive
-          SHA256_CHECKSUM=$(curl -sL "$ARCHIVE_URL" | shasum -a 256 | cut -d' ' -f1)
+          # Download and calculate SHA256 of the release binary from artifacts
+          # Use local binary from artifacts instead of downloading from GitHub
+          BINARY_FILE="release-artifacts/usbipd-$VERSION-macos"
+          
+          if [ ! -f "$BINARY_FILE" ]; then
+            echo "::error title=Binary Not Found::Release binary not found in artifacts: $BINARY_FILE"
+            exit 1
+          fi
+          
+          SHA256_CHECKSUM=$(shasum -a 256 "$BINARY_FILE" | cut -d' ' -f1)
           
           if [[ ! "$SHA256_CHECKSUM" =~ ^[a-fA-F0-9]{64}$ ]]; then
             echo "::error title=Invalid Checksum::Generated checksum format is invalid"
@@ -284,7 +292,7 @@ jobs:
           fi
           
           echo "✅ SHA256 calculated: $SHA256_CHECKSUM"
-          echo "   This checksum will be included in the metadata for tap repository"
+          echo "   This checksum will be used for binary validation in tap repository"
           echo "sha256=$SHA256_CHECKSUM" >> $GITHUB_OUTPUT
           echo "::endgroup::"
 
