@@ -208,6 +208,10 @@ jobs:
           EOF
           fi
           
+          # Copy entitlements file for code signing
+          echo "📋 Copying System Extension entitlements..."
+          cp Sources/SystemExtension/SystemExtension.entitlements "$ARTIFACTS_DIR/"
+          
           # Package QEMU test server if available
           if [ -f .build/release/QEMUTestServer ]; then
             QEMU_SERVER_PATH="$ARTIFACTS_DIR/QEMUTestServer-$VERSION-macos"
@@ -222,7 +226,7 @@ jobs:
             # Sign system extension bundle
             if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
               echo "🔒 Code signing system extension bundle..."
-              codesign --sign "Developer ID Application" --timestamp "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" || echo "::warning::Code signing failed for system extension"
+              codesign --sign "Developer ID Application" --entitlements "$ARTIFACTS_DIR/SystemExtension.entitlements" --options runtime --timestamp "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" || echo "::warning::Code signing failed for system extension"
             fi
             
             if [ -f "$QEMU_SERVER_PATH" ]; then
