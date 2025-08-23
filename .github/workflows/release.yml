@@ -229,6 +229,38 @@ jobs:
               codesign --sign "Developer ID Application" --timestamp "$QEMU_SERVER_PATH" || echo "::warning::Code signing failed for QEMUTestServer"
             fi
             echo "✅ Code signing completed"
+            
+            # Notarize system extension bundle if notarization credentials available
+            if [ -n "$NOTARIZATION_USERNAME" ] && [ -n "$NOTARIZATION_PASSWORD" ] && [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
+              echo "🔒 Notarizing system extension bundle..."
+              
+              # Create zip for notarization (required format)
+              ditto -c -k --keepParent "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" "$ARTIFACTS_DIR/USBIPDSystemExtension_notarization.zip"
+              
+              # Submit for notarization with timeout
+              echo "📤 Submitting system extension for notarization..."
+              xcrun notarytool submit "$ARTIFACTS_DIR/USBIPDSystemExtension_notarization.zip" \
+                --apple-id "$NOTARIZATION_USERNAME" \
+                --password "$NOTARIZATION_PASSWORD" \
+                --team-id "592A3U6J26" \
+                --wait --timeout 10m || {
+                  echo "::warning::System extension notarization failed or timed out"
+                  echo "::warning::This may prevent proper System Extension installation"
+                }
+              
+              # Staple the notarization if successful
+              if xcrun stapler staple "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" 2>/dev/null; then
+                echo "✅ System extension notarization completed and stapled"
+              else
+                echo "::warning::Failed to staple notarization to system extension"
+              fi
+              
+              # Clean up notarization zip
+              rm -f "$ARTIFACTS_DIR/USBIPDSystemExtension_notarization.zip"
+            else
+              echo "::warning::Notarization credentials not available - System Extension will not be notarized"
+              echo "::warning::This will prevent proper System Extension installation on user machines"
+            fi
           else
             echo "::warning::No code signing certificates available - binaries will be unsigned"
           fi
