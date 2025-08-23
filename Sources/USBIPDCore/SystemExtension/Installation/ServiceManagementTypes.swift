@@ -148,14 +148,14 @@ public enum ServiceIssue: Error, Equatable {
             ]
         case .homebrewFormulaNotFound:
             return [
-                "Install usbipd-mac via Homebrew",
+                "Install usbip via Homebrew",
                 "Update Homebrew: brew update",
-                "Check formula availability: brew search usbipd-mac"
+                "Check formula availability: brew search usbip"
             ]
         case .missingDependencies:
             return [
                 "Install missing system dependencies",
-                "Reinstall usbipd-mac package",
+                "Reinstall usbip package",
                 "Check System Extension installation"
             ]
         case .healthCheckFailed:

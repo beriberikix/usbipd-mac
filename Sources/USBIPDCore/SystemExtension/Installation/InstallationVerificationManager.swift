@@ -27,8 +27,8 @@ public final class InstallationVerificationManager: @unchecked Sendable {
     public init(bundleIdentifier: String = "com.github.usbipd-mac.systemextension", expectedPaths: [String] = []) {
         self.bundleIdentifier = bundleIdentifier
         self.expectedPaths = expectedPaths.isEmpty ? [
-            "/opt/homebrew/Cellar/usbipd-mac/*/Library/SystemExtensions/",
-            "/usr/local/Cellar/usbipd-mac/*/Library/SystemExtensions/",
+            "/opt/homebrew/Cellar/usbip/*/Library/SystemExtensions/",
+            "/usr/local/Cellar/usbip/*/Library/SystemExtensions/",
             "./build/SystemExtension/"
         ] : expectedPaths
         

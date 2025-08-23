@@ -14,7 +14,7 @@ A personal access token (PAT) or fine-grained personal access token that grants 
 
 #### Token Requirements
 
-**Repository**: `beriberikix/homebrew-usbipd-mac`
+**Repository**: `beriberikix/homebrew-usbip`
 **Required Permissions**:
 - `contents: write` - To update formula files
 - `pull_requests: write` - To create/update pull requests (if using PR mode)
@@ -30,7 +30,7 @@ A personal access token (PAT) or fine-grained personal access token that grants 
    - **Token name**: `homebrew-releaser-usbipd-mac`
    - **Expiration**: 1 year (or as per organization policy)
    - **Resource owner**: Select your account or organization
-   - **Selected repositories**: Only `beriberikix/homebrew-usbipd-mac`
+   - **Selected repositories**: Only `beriberikix/homebrew-usbip`
    - **Repository permissions**:
      - Contents: Write
      - Pull requests: Write (if using PR mode)
@@ -38,7 +38,7 @@ A personal access token (PAT) or fine-grained personal access token that grants 
 
 3. **Alternative: Classic Token**:
    - Click "Tokens (classic)" > "Generate new token (classic)"
-   - **Note**: `homebrew-releaser-usbipd-mac`
+   - **Note**: `homebrew-releaser-usbip`
    - **Expiration**: 1 year (or as per organization policy)
    - **Scopes**: 
      - `public_repo` (for public tap repository)
@@ -67,7 +67,7 @@ The homebrew-releaser action will be configured in `.github/workflows/release.ym
   with:
     # Required
     homebrew_owner: beriberikix
-    homebrew_tap: homebrew-usbipd-mac
+    homebrew_tap: homebrew-usbip
     formula_folder: Formula
     github_token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     
@@ -117,7 +117,7 @@ pullrequest_reviewer: maintainer-username
 ```bash
 # Test token permissions (run locally with token)
 curl -H "Authorization: token YOUR_TOKEN" \
-  https://api.github.com/repos/beriberikix/homebrew-usbipd-mac
+  https://api.github.com/repos/beriberikix/homebrew-usbip
 ```
 
 2. **Dry Run Testing**:
@@ -128,7 +128,7 @@ curl -H "Authorization: token YOUR_TOKEN" \
 3. **Production Validation**:
    - Monitor release workflow execution
    - Verify formula updates in tap repository
-   - Test user installation: `brew upgrade usbipd-mac`
+   - Test user installation: `brew upgrade usbip`
 
 ## Security Considerations
 
@@ -186,7 +186,7 @@ For persistent issues with homebrew-releaser:
 
 - **Release Workflow Logs**: Monitor homebrew-releaser step execution
 - **Tap Repository**: Verify formula commits appear correctly
-- **Formula Validation**: Test `brew install usbipd-mac` after updates
+- **Formula Validation**: Test `brew install usbip` after updates
 
 ### Failure Handling
 

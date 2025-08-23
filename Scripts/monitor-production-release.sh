@@ -138,7 +138,7 @@ monitor_formula_update() {
     # Download current formula
     local temp_file=$(mktemp)
     
-    if curl -s "https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/main/Formula/usbipd-mac.rb" -o "$temp_file"; then
+    if curl -s "https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/main/Formula/usbip.rb" -o "$temp_file"; then
         log_success "✓ Formula downloaded successfully"
         
         # Extract version and SHA256 from formula
@@ -185,11 +185,11 @@ test_user_experience() {
         
         # Check if formula is discoverable
         log_info "Testing formula discovery..."
-        if brew info usbipd-mac &>/dev/null; then
+        if brew info usbip &>/dev/null; then
             log_success "✓ Formula discovered successfully"
             
             # Get formula information
-            local formula_info=$(brew info usbipd-mac --json | jq -r '.[0] | "Version: \(.versions.stable), Description: \(.desc)"')
+            local formula_info=$(brew info usbip --json | jq -r '.[0] | "Version: \(.versions.stable), Description: \(.desc)"')
             log_info "Formula info: $formula_info"
             
         else

@@ -307,7 +307,7 @@ public enum VerificationInstallationIssue: String, CaseIterable, Hashable {
         case .serviceNotConfigured:
             return "Configure the associated service using the appropriate configuration commands"
         case .serviceNotRunning:
-            return "Start the associated service: brew services start usbipd-mac"
+            return "Start the associated service: brew services start usbip"
         case .communicationFailed:
             return "Restart both the service and System Extension"
         case .processNotRunning:

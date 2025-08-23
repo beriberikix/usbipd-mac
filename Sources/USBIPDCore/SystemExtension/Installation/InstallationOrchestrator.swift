@@ -480,8 +480,8 @@ public final class InstallationOrchestrator: @unchecked Sendable {
             }
             
         case OrchestrationError.serviceIntegrationFailed:
-            recommendations.append("Check if usbipd-mac service is running (brew services list)")
-            recommendations.append("Restart service: brew services restart usbipd-mac")
+            recommendations.append("Check if usbip service is running (brew services list)")
+            recommendations.append("Restart service: brew services restart usbip")
             recommendations.append("Check launchd service registration")
             
         case OrchestrationError.verificationFailed:

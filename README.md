@@ -28,11 +28,11 @@ usbipd-mac is a macOS implementation of the USB/IP protocol that allows sharing 
 The easiest way to install usbipd-mac is through Homebrew:
 
 ```bash
-# Add the usbipd-mac tap
+# Add the usbip tap
 brew tap beriberikix/usbipd-mac
 
-# Install usbipd-mac
-brew install usbipd-mac
+# Install usbip
+brew install usbip
 ```
 
 #### Service Management
@@ -41,16 +41,16 @@ After installation, you can manage the usbipd daemon using Homebrew services:
 
 ```bash
 # Start the service (requires sudo for System Extension access)
-sudo brew services start usbipd-mac
+sudo brew services start usbip
 
 # Stop the service
-sudo brew services stop usbipd-mac
+sudo brew services stop usbip
 
 # Restart the service
-sudo brew services restart usbipd-mac
+sudo brew services restart usbip
 
 # Check service status
-brew services info usbipd-mac
+brew services info usbip
 ```
 
 #### System Extension Setup
@@ -83,7 +83,7 @@ Common installation issues and solutions:
 - **Permission Errors**: Ensure you run service commands with `sudo` as the daemon requires System Extension privileges
 - **System Extension Blocked**: Check System Preferences > Security & Privacy and approve the extension
 - **Service Won't Start**: Verify the binary installed correctly with `which usbipd` and check logs with `brew services list`
-- **Version Issues**: Update with `brew upgrade usbipd-mac` or reinstall with `brew reinstall usbipd-mac`
+- **Version Issues**: Update with `brew upgrade usbip` or reinstall with `brew reinstall usbip`
 
 #### System Extension Installation Troubleshooting
 
@@ -122,7 +122,7 @@ For development or manual installation, see the [Building the Project](#building
 
 ## Usage
 
-Once installed, you can use usbipd-mac to share USB devices over the network:
+Once installed, you can use usbip to share USB devices over the network:
 
 ### Basic Commands
 
@@ -180,7 +180,7 @@ For Docker Desktop users:
 
 ```bash
 # Ensure the service is running
-sudo brew services start usbipd-mac
+sudo brew services start usbip
 
 # USB devices will be available to Docker containers
 # through the USB/IP protocol integration
@@ -328,10 +328,10 @@ The release workflow uses homebrew-releaser for direct formula updates:
 **Formula Testing and Validation**:
 ```bash
 # Test installation from tap
-brew uninstall usbipd-mac || true
+brew uninstall usbip || true
 brew untap beriberikix/usbipd-mac || true
 brew tap beriberikix/usbipd-mac
-brew install usbipd-mac
+brew install usbip
 ```
 
 **Formula Repository**: The formula and automation workflows are maintained in the separate [`homebrew-usbipd-mac`](https://github.com/beriberikix/homebrew-usbipd-mac) repository.

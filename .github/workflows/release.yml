@@ -604,9 +604,9 @@ jobs:
           **Homebrew (Recommended):**
           \`\`\`bash
           brew tap beriberikix/usbipd-mac
-          brew install usbipd-mac
+          brew install usbip
           sudo usbipd install-system-extension
-          sudo brew services start usbipd-mac
+          sudo brew services start usbip
           \`\`\`
           
           **Manual Installation:**
@@ -853,7 +853,7 @@ jobs:
           if [[ "${{ needs.update-homebrew-formula.result }}" == "success" ]]; then
             echo "   • ✅ Homebrew formula update completed successfully"
             echo "   • ✅ Formula committed to tap repository via homebrew-releaser"
-            echo "   • ✅ Users can upgrade via: brew upgrade usbipd-mac"
+            echo "   • ✅ Users can upgrade via: brew upgrade usbip"
           else
             echo "   • ⚠️ Homebrew formula update failed"
             echo "   • 🔧 Review action logs for configuration issues"

@@ -15,7 +15,7 @@ public final class ServiceLifecycleManager: @unchecked Sendable {
     private static let serviceIdentifier = "com.github.usbipd-mac"
     
     /// Homebrew formula name
-    private static let formulaName = "usbipd-mac"
+    private static let formulaName = "usbip"
     
     /// Default homebrew prefix
     private let homebrewPrefix: String

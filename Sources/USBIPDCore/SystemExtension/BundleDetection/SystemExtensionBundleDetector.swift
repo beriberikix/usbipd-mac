@@ -233,7 +233,7 @@ public struct SystemExtensionBundleDetector {
         let homebrewPaths = getHomebrewSearchPaths()
         
         if homebrewPaths.isEmpty {
-            issues.append("No Homebrew installation paths found at /opt/homebrew/Cellar/usbipd-mac/")
+            issues.append("No Homebrew installation paths found at /opt/homebrew/Cellar/usbip/")
             return DetectionResult(
                 found: false,
                 issues: issues,
@@ -253,7 +253,7 @@ public struct SystemExtensionBundleDetector {
                 // Validate the found bundle
                 let validationResult = validateBundle(at: bundlePath)
                 if validationResult.isValid {
-                    // Extract version from path (e.g., /opt/homebrew/Cellar/usbipd-mac/v1.0.0/…)
+                    // Extract version from path (e.g., /opt/homebrew/Cellar/usbip/v1.0.0/…)
                     let versionFromPath = extractVersionFromHomebrewPath(homebrewPath)
                     
                     // Parse Homebrew metadata from bundle
@@ -282,7 +282,7 @@ public struct SystemExtensionBundleDetector {
         return DetectionResult(
             found: false,
             issues: issues,
-            detectionEnvironment: .homebrew(cellarPath: "/opt/homebrew/Cellar/usbipd-mac", version: nil),
+            detectionEnvironment: .homebrew(cellarPath: "/opt/homebrew/Cellar/usbip", version: nil),
             skippedPaths: skippedPaths,
             rejectionReasons: rejectionReasons
         )
@@ -293,8 +293,8 @@ public struct SystemExtensionBundleDetector {
     private func getHomebrewSearchPaths() -> [URL] {
         var searchPaths: [URL] = []
         
-        // Check for Homebrew installation at /opt/homebrew/Cellar/usbipd-mac/
-        let homebrewCellarPath = URL(fileURLWithPath: "/opt/homebrew/Cellar/usbipd-mac")
+        // Check for Homebrew installation at /opt/homebrew/Cellar/usbip/
+        let homebrewCellarPath = URL(fileURLWithPath: "/opt/homebrew/Cellar/usbip")
         
         guard fileManager.fileExists(atPath: homebrewCellarPath.path) else {
             return searchPaths
@@ -336,7 +336,7 @@ public struct SystemExtensionBundleDetector {
     private func extractVersionFromHomebrewPath(_ homebrewPath: URL) -> String? {
         let pathComponents = homebrewPath.pathComponents
         
-        // Look for version pattern in path like: /opt/homebrew/Cellar/usbipd-mac/v1.0.0/…
+        // Look for version pattern in path like: /opt/homebrew/Cellar/usbip/v1.0.0/…
         for component in pathComponents {
             if component.hasPrefix("v") && component.count > 1 {
                 return component

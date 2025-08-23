@@ -1067,11 +1067,11 @@ public class DiagnoseCommand: Command {
                 print("      • Ensure you're in the project root directory")
             case .homebrew:
                 print("   💡 Recommendations:")
-                print("      • Install usbipd-mac via Homebrew: brew install usbipd-mac")
-                print("      • If already installed, try: brew reinstall usbipd-mac")
+                print("      • Install usbipd-mac via Homebrew: brew install usbip")
+                print("      • If already installed, try: brew reinstall usbip")
             case .manual, .unknown:
                 print("   💡 Recommendations:")
-                print("      • Install usbipd-mac via Homebrew: brew install usbipd-mac")
+                print("      • Install usbipd-mac via Homebrew: brew install usbip")
                 print("      • Or run 'swift build' if in development environment")
             }
             
@@ -1119,7 +1119,7 @@ public class DiagnoseCommand: Command {
             for file in missingFiles {
                 print("      • \(file)")
             }
-            print("   💡 Reinstall usbipd-mac: brew reinstall usbipd-mac")
+            print("   💡 Reinstall usbipd-mac: brew reinstall usbip")
             return .warning
         }
     }
@@ -1503,11 +1503,11 @@ public class DiagnoseCommand: Command {
             print("   • Address critical issues before using the system")
             print("   • If no System Extension bundle found:")
             print("     - Development: Run 'swift build' in project directory")
-            print("     - Production: Install via 'brew install usbipd-mac'")
+            print("     - Production: Install via 'brew install usbip'")
             print("   • If bundle found but installation failed:")
             print("     - Run installation: 'usbipd install-system-extension'")
             print("     - Check System Preferences > Security & Privacy for approvals")
-            print("   • If persistent issues: 'brew reinstall usbipd-mac'")
+            print("   • If persistent issues: 'brew reinstall usbip'")
         }
     }
     
