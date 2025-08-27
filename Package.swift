@@ -25,7 +25,7 @@ let package = Package(
         .executable(
             name: "USBIPDSystemExtension",
             targets: ["SystemExtension"]),
-        // Plugin temporarily disabled - completion generation works via CLI and scripts
+        // Plugin temporarily disabled - completion generation works via CLI scripts
         // .plugin(
         //     name: "CompletionGeneratorPlugin",
         //     targets: ["CompletionGeneratorPlugin"]),
