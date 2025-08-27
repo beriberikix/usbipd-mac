@@ -38,9 +38,7 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         .executableTarget(
             name: "USBIPDCLI",
-            dependencies: ["USBIPDCore", "Common"],
-            // Plugin integration working but temporarily disabled due to build timeout
-            // plugins: ["CompletionGeneratorPlugin"]
+            dependencies: ["USBIPDCore", "Common"]
         ),
         .target(
             name: "USBIPDCore",
