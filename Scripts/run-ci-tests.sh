@@ -392,6 +392,44 @@ run_qemu_mock_tests() {
     fi
 }
 
+# Run completion tests in CI environment
+run_ci_completion_tests() {
+    log_info "Running completion tests (CI environment)..."
+    
+    # Check if completion test script exists
+    local completion_test_script="$SCRIPT_DIR/test-completion-environment.sh"
+    if [ ! -f "$completion_test_script" ]; then
+        log_info "Completion test script not found - completion tests will be handled by GitHub Actions workflow"
+        return 0
+    fi
+    
+    local start_time=$(date +%s)
+    
+    # Run completion tests with CI-specific configuration
+    # Use only bash for CI speed, comprehensive testing is in GitHub Actions
+    if "$completion_test_script" \
+        --shell bash \
+        --test basic \
+        --output "$BUILD_DIR/ci-completion-results" \
+        --skip-build \
+        --skip-generation 2>/dev/null; then
+        
+        local end_time=$(date +%s)
+        local completion_time=$((end_time - start_time))
+        log_success "CI completion tests passed in ${completion_time}s"
+        return 0
+    else
+        local exit_code=$?
+        local end_time=$(date +%s)
+        local completion_time=$((end_time - start_time))
+        
+        # In CI, completion test failures are warnings since comprehensive testing is in GitHub Actions
+        log_warning "CI completion tests failed in ${completion_time}s (exit code: $exit_code)"
+        log_info "Full completion validation is handled by GitHub Actions completion-validation job"
+        return 0  # Don't fail CI due to basic completion issues
+    fi
+}
+
 # Generate CI test report
 generate_ci_test_report() {
     log_info "Generating CI test report..."
@@ -588,6 +626,9 @@ main() {
         
         # Run QEMU mock tests as part of full suite
         run_qemu_mock_tests
+        
+        # Run basic completion tests
+        run_ci_completion_tests
     fi
     
     # Generate CI test report

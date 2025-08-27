@@ -16,7 +16,7 @@ public class CompletionWriter {
     /// Initialize completion writer with shell formatters
     /// - Parameter formatters: Array of shell completion formatters
     public init(formatters: [ShellCompletionFormatter] = []) {
-        self.formatters = formatters.isEmpty ? createDefaultFormatters() : formatters
+        self.formatters = formatters.isEmpty ? CompletionWriter.createDefaultFormatters() : formatters
     }
     
     /// Write completion scripts to the specified output directory
@@ -31,7 +31,7 @@ public class CompletionWriter {
         ])
         
         // Validate output directory
-        try validateOutputDirectory(path: outputDirectory)
+        _ = try validateOutputDirectory(path: outputDirectory)
         
         // Ensure output directory exists
         try createOutputDirectory(path: outputDirectory)
@@ -208,7 +208,6 @@ public class CompletionWriter {
                 "filePath": filePath,
                 "size": scriptContent.count
             ])
-            
         } catch {
             logger.error("Failed to write completion script", context: [
                 "shell": formatter.shellType,
@@ -232,14 +231,14 @@ public class CompletionWriter {
             return "usbipd.fish" // fish completions have .fish extension
         default:
             // Fallback for unknown shell types
-            let extension = formatter.fileExtension.isEmpty ? "" : ".\(formatter.fileExtension)"
-            return "usbipd\(extension)"
+            let fileExtension = formatter.fileExtension.isEmpty ? "" : ".\(formatter.fileExtension)"
+            return "usbipd\(fileExtension)"
         }
     }
     
     /// Create default shell formatters if none provided
     /// - Returns: Array of default shell completion formatters
-    private func createDefaultFormatters() -> [ShellCompletionFormatter] {
+    private static func createDefaultFormatters() -> [ShellCompletionFormatter] {
         return [
             BashCompletionFormatter(),
             ZshCompletionFormatter(),

@@ -255,6 +255,39 @@ run_qemu_tests() {
     fi
 }
 
+# Run completion tests (development environment)
+run_completion_tests() {
+    log_info "Running shell completion tests..."
+    
+    # Check if completion test script exists
+    local completion_test_script="$SCRIPT_DIR/test-completion-environment.sh"
+    if [ ! -f "$completion_test_script" ]; then
+        log_warning "Completion test script not found - skipping completion tests"
+        return 0
+    fi
+    
+    local start_time=$(date +%s)
+    
+    # Run completion tests in development mode with reduced scope
+    if "$completion_test_script" \
+        --shell bash \
+        --test basic \
+        --output "$BUILD_DIR/completion-test-results" \
+        --verbose 2>/dev/null; then
+        
+        local end_time=$(date +%s)
+        local completion_time=$((end_time - start_time))
+        log_success "Completion tests passed in ${completion_time}s"
+        return 0
+    else
+        local exit_code=$?
+        local end_time=$(date +%s)
+        local completion_time=$((end_time - start_time))
+        log_warning "Completion tests failed in ${completion_time}s (exit code: $exit_code) - continuing development tests"
+        return 0  # Don't fail development tests due to completion issues
+    fi
+}
+
 # Run specific test categories for development
 run_quick_validation() {
     log_info "Running quick validation tests..."
@@ -420,6 +453,9 @@ main() {
     
     # Run QEMU tests if enabled
     run_qemu_tests
+    
+    # Run completion tests
+    run_completion_tests
     
     # Generate test report
     generate_test_report

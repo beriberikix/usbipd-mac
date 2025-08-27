@@ -222,6 +222,10 @@ public enum CompletionFormattingUtilities {
             if !script.contains("complete") {
                 issues.append("Fish completion script should contain 'complete' command")
             }
+            
+        default:
+            // Unknown shell type - basic validation only
+            break
         }
         
         return issues

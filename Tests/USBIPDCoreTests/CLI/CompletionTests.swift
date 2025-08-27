@@ -148,7 +148,7 @@ extension CompletionTests {
         
         let ipProvider = completionData.dynamicProviders.first { $0.context == "ip-address" }
         XCTAssertNotNil(ipProvider)
-        XCTAssertContains(ipProvider?.fallback ?? [], "localhost")
+        XCTAssertTrue((ipProvider?.fallback ?? []).contains("localhost"), "IP provider should contain localhost as fallback")
     }
 }
 
@@ -460,7 +460,7 @@ private class MockShellFormatter: ShellCompletionFormatter {
         return "# Mock completion script for \(data.metadata.version)"
     }
     
-    func formatCommand(_ command: CompletionCommand, depth: Int) -> String {
+    func formatCommand(_ command: USBIPDCore.CompletionCommand, depth: Int) -> String {
         return "mock command: \(command.name)"
     }
     

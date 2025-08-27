@@ -6,12 +6,12 @@ import Foundation
 @testable import USBIPDCLI
 @testable import USBIPDCore
 @testable import Common
-import SharedUtilities
+// Note: SharedUtilities functions are used inline to avoid module dependency
 
 final class CompletionIntegrationTests: XCTestCase {
     
     var tempDirectory: URL!
-    var completionCommand: CompletionCommand!
+    var completionCommand: USBIPDCLI.CompletionCommand!
     
     override func setUp() {
         super.setUp()
@@ -21,7 +21,7 @@ final class CompletionIntegrationTests: XCTestCase {
         try! FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true, attributes: nil)
         
         // Initialize completion command with test dependencies
-        completionCommand = CompletionCommand()
+        completionCommand = USBIPDCLI.CompletionCommand()
     }
     
     override func tearDown() {
@@ -136,11 +136,7 @@ extension CompletionIntegrationTests {
         // Validate bash syntax using basic checks
         let syntaxIssues = validateBashSyntax(bashContent)
         
-        TestExecutionAssertions.assertCollectionEmpty(
-            syntaxIssues,
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertTrue(syntaxIssues.isEmpty, "Syntax issues: \(syntaxIssues)", file: #filePath, line: #line)
     }
     
     /// Test zsh completion script syntax validation
@@ -154,11 +150,7 @@ extension CompletionIntegrationTests {
         // Validate zsh syntax using basic checks
         let syntaxIssues = validateZshSyntax(zshContent)
         
-        TestExecutionAssertions.assertCollectionEmpty(
-            syntaxIssues,
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertTrue(syntaxIssues.isEmpty, "Syntax issues: \(syntaxIssues)", file: #filePath, line: #line)
     }
     
     /// Test fish completion script syntax validation
@@ -172,11 +164,7 @@ extension CompletionIntegrationTests {
         // Validate fish syntax using basic checks
         let syntaxIssues = validateFishSyntax(fishContent)
         
-        TestExecutionAssertions.assertCollectionEmpty(
-            syntaxIssues,
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertTrue(syntaxIssues.isEmpty, "Syntax issues: \(syntaxIssues)", file: #filePath, line: #line)
     }
     
     /// Test completion script includes expected commands
@@ -228,48 +216,36 @@ extension CompletionIntegrationTests {
     func testInvalidShellArgumentHandling() {
         let arguments = ["generate", "--shell", "invalid-shell"]
         
-        ErrorAssertions.assertThrowsError(
-            CommandLineError.self,
-            try completionCommand.execute(with: arguments),
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertThrowsError(try completionCommand.execute(with: arguments), "Should throw CommandLineError", file: #filePath, line: #line) { error in
+            XCTAssertTrue(error is CommandLineError, "Error should be CommandLineError but got \(type(of: error))", file: #filePath, line: #line)
+        }
     }
     
     /// Test invalid action argument handling
     func testInvalidActionArgumentHandling() {
         let arguments = ["invalid-action"]
         
-        ErrorAssertions.assertThrowsError(
-            CommandLineError.self,
-            try completionCommand.execute(with: arguments),
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertThrowsError(try completionCommand.execute(with: arguments), "Should throw CommandLineError", file: #filePath, line: #line) { error in
+            XCTAssertTrue(error is CommandLineError, "Error should be CommandLineError but got \(type(of: error))", file: #filePath, line: #line)
+        }
     }
     
     /// Test missing output directory handling
     func testMissingOutputDirectoryHandling() {
         let arguments = ["generate", "--output"]
         
-        ErrorAssertions.assertThrowsError(
-            CommandLineError.self,
-            try completionCommand.execute(with: arguments),
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertThrowsError(try completionCommand.execute(with: arguments), "Should throw CommandLineError", file: #filePath, line: #line) { error in
+            XCTAssertTrue(error is CommandLineError, "Error should be CommandLineError but got \(type(of: error))", file: #filePath, line: #line)
+        }
     }
     
     /// Test empty output directory validation
     func testEmptyOutputDirectoryValidation() {
         let arguments = ["generate", "--output", ""]
         
-        ErrorAssertions.assertThrowsError(
-            CommandLineError.self,
-            try completionCommand.execute(with: arguments),
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertThrowsError(try completionCommand.execute(with: arguments), "Should throw CommandLineError", file: #filePath, line: #line) { error in
+            XCTAssertTrue(error is CommandLineError, "Error should be CommandLineError but got \(type(of: error))", file: #filePath, line: #line)
+        }
     }
     
     /// Test validation with missing completion files
@@ -279,12 +255,9 @@ extension CompletionIntegrationTests {
         
         let arguments = ["validate", "--output", emptyDirectory.path]
         
-        ErrorAssertions.assertThrowsError(
-            CommandHandlerError.self,
-            try completionCommand.execute(with: arguments),
-            file: #filePath,
-            line: #line
-        )
+        XCTAssertThrowsError(try completionCommand.execute(with: arguments), "Should throw CommandHandlerError", file: #filePath, line: #line) { error in
+            XCTAssertTrue(error is CommandHandlerError, "Error should be CommandHandlerError but got \(type(of: error))", file: #filePath, line: #line)
+        }
     }
 }
 
@@ -296,12 +269,26 @@ extension CompletionIntegrationTests {
     func testCompletionGenerationPerformance() {
         let arguments = ["generate", "--output", tempDirectory.path]
         
-        TestExecutionAssertions.assertCompletesWithinTimeLimit(
-            5.0, // 5 seconds should be plenty for completion generation
-            { try self.completionCommand.execute(with: arguments) },
-            file: #filePath,
-            line: #line
-        )
+        // Test completion generation performance within 5 seconds
+        let expectation = XCTestExpectation(description: "Completion generation should complete within time limit")
+        let startTime = Date()
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try self.completionCommand.execute(with: arguments)
+                let executionTime = Date().timeIntervalSince(startTime)
+                if executionTime <= 5.0 {
+                    expectation.fulfill()
+                } else {
+                    XCTFail("Operation took \(executionTime)s, expected <= 5.0s", file: #filePath, line: #line)
+                }
+            } catch {
+                XCTFail("Operation failed with error: \(error)", file: #filePath, line: #line)
+            }
+        }
+        
+        let waiterResult = XCTWaiter().wait(for: [expectation], timeout: 6.0)
+        XCTAssertEqual(waiterResult, .completed, "Operation should complete within time limit", file: #filePath, line: #line)
     }
     
     /// Test completion validation performance
@@ -311,12 +298,26 @@ extension CompletionIntegrationTests {
         
         let arguments = ["validate", "--output", tempDirectory.path]
         
-        TestExecutionAssertions.assertCompletesWithinTimeLimit(
-            3.0, // 3 seconds should be sufficient for validation
-            { try self.completionCommand.execute(with: arguments) },
-            file: #filePath,
-            line: #line
-        )
+        // Test completion validation performance within 3 seconds
+        let expectation = XCTestExpectation(description: "Completion validation should complete within time limit")
+        let startTime = Date()
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try self.completionCommand.execute(with: arguments)
+                let executionTime = Date().timeIntervalSince(startTime)
+                if executionTime <= 3.0 {
+                    expectation.fulfill()
+                } else {
+                    XCTFail("Operation took \(executionTime)s, expected <= 3.0s", file: #filePath, line: #line)
+                }
+            } catch {
+                XCTFail("Operation failed with error: \(error)", file: #filePath, line: #line)
+            }
+        }
+        
+        let waiterResult = XCTWaiter().wait(for: [expectation], timeout: 4.0)
+        XCTAssertEqual(waiterResult, .completed, "Operation should complete within time limit", file: #filePath, line: #line)
     }
 }
 

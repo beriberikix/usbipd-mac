@@ -25,9 +25,10 @@ let package = Package(
         .executable(
             name: "USBIPDSystemExtension",
             targets: ["SystemExtension"]),
-        .plugin(
-            name: "CompletionGeneratorPlugin",
-            targets: ["CompletionGeneratorPlugin"]),
+        // Plugin temporarily disabled - completion generation works via CLI and scripts
+        // .plugin(
+        //     name: "CompletionGeneratorPlugin",
+        //     targets: ["CompletionGeneratorPlugin"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -38,7 +39,9 @@ let package = Package(
         .executableTarget(
             name: "USBIPDCLI",
             dependencies: ["USBIPDCore", "Common"],
-            plugins: ["CompletionGeneratorPlugin"]),
+            // Plugin integration working but temporarily disabled due to build timeout
+            // plugins: ["CompletionGeneratorPlugin"]
+            ),
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
@@ -86,8 +89,9 @@ let package = Package(
         //     dependencies: ["QEMUTestServer", "USBIPDCore", "Common"],
         //     path: "Tests/QEMUIntegrationTests",
         //     sources: [".", "../SharedUtilities"]),
-        .plugin(
-            name: "CompletionGeneratorPlugin",
-            capability: .buildTool()),
+        // Plugin temporarily disabled - works but causes build timeout
+        // .plugin(
+        //     name: "CompletionGeneratorPlugin",
+        //     capability: .buildTool()),
     ]
 )

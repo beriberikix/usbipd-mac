@@ -4,6 +4,12 @@
 import Foundation
 import Common
 
+/// Minimal interface for commands to extract completion data from
+public protocol CompletableCommand {
+    var name: String { get }
+    var description: String { get }
+}
+
 /// Service that extracts completion data from CLI command structure
 public class CompletionExtractor {
     
@@ -13,9 +19,9 @@ public class CompletionExtractor {
     public init() {}
     
     /// Extract completion data from registered commands
-    /// - Parameter commands: Array of registered Command instances
+    /// - Parameter commands: Array of registered CompletableCommand instances
     /// - Returns: Complete CompletionData structure for shell script generation
-    public func extractCompletions(from commands: [Command]) -> CompletionData {
+    public func extractCompletions(from commands: [CompletableCommand]) -> CompletionData {
         logger.debug("Starting completion extraction", context: ["commandCount": commands.count])
         
         let completionCommands = commands.compactMap { command in
@@ -43,9 +49,9 @@ public class CompletionExtractor {
     }
     
     /// Extract completion metadata from a single command
-    /// - Parameter command: The Command instance to analyze
+    /// - Parameter command: The CompletableCommand instance to analyze
     /// - Returns: CompletionCommand with extracted metadata or nil if extraction fails
-    public func extractCommandMetadata(from command: Command) -> CompletionCommand? {
+    public func extractCommandMetadata(from command: CompletableCommand) -> CompletionCommand? {
         logger.debug("Extracting metadata from command", context: ["commandName": command.name])
         
         let options = extractCommandOptions(from: command)
@@ -70,9 +76,9 @@ public class CompletionExtractor {
     }
     
     /// Extract command-line options from a command
-    /// - Parameter command: The Command instance to analyze
+    /// - Parameter command: The CompletableCommand instance to analyze
     /// - Returns: Array of CompletionOption instances
-    public func extractCommandOptions(from command: Command) -> [CompletionOption] {
+    public func extractCommandOptions(from command: CompletableCommand) -> [CompletionOption] {
         // Map known command options based on command name and existing help text patterns
         switch command.name {
         case "list":
@@ -250,9 +256,9 @@ public class CompletionExtractor {
     }
     
     /// Extract command arguments from a command
-    /// - Parameter command: The Command instance to analyze
+    /// - Parameter command: The CompletableCommand instance to analyze
     /// - Returns: Array of CompletionArgument instances
-    private func extractCommandArguments(from command: Command) -> [CompletionArgument] {
+    private func extractCommandArguments(from command: CompletableCommand) -> [CompletionArgument] {
         switch command.name {
         case "bind", "unbind":
             return [

@@ -217,7 +217,7 @@ public class ZshCompletionFormatter: ShellCompletionFormatter {
         for (index, argument) in command.arguments.enumerated() {
             let argPosition = index + 2 // Position after command
             let required = argument.required ? "" : "::"
-            let escapedDescription = CompletionFormattingUtilities.escapeForShell(argument.description, shellType: shellType)
+            _ = CompletionFormattingUtilities.escapeForShell(argument.description, shellType: shellType)
             
             switch argument.valueType {
             case .file:

@@ -18,9 +18,9 @@ struct CompletionGeneratorPlugin: BuildToolPlugin {
         // Generate completion scripts for all supported shells
         let completionCommand = Command.buildCommand(
             displayName: "Generate Shell Completion Scripts",
-            executable: target.directory.appending("generate-completions.sh"),
+            executable: context.package.directory.appending("Scripts").appending("generate-completions.sh"),
             arguments: [
-                outputDirectory.string
+                "--output", outputDirectory.string
             ],
             environment: [
                 "PLUGIN_WORK_DIR": context.pluginWorkDirectory.string,

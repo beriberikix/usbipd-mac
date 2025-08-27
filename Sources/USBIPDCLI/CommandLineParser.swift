@@ -9,12 +9,7 @@ import Common
 private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "cli-parser")
 
 /// Represents a command that can be executed by the CLI
-public protocol Command {
-    /// The name of the command
-    var name: String { get }
-    
-    /// Description of the command for help text
-    var description: String { get }
+public protocol Command: USBIPDCore.CompletableCommand {
     
     /// Execute the command with the given arguments
     func execute(with arguments: [String]) throws

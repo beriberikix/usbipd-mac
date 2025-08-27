@@ -5,6 +5,8 @@ import Foundation
 import USBIPDCore
 import Common
 
+// Command protocol already has name and description properties that CompletableCommand requires
+
 /// Command for generating and testing completion scripts
 public class CompletionCommand: Command {
     public let name = "completion"
@@ -490,10 +492,10 @@ public class CompletionCommand: Command {
 
 /// Completion command actions
 private enum CompletionAction: String {
-    case generate = "generate"
-    case test = "test"
-    case validate = "validate"
-    case list = "list"
+    case generate
+    case test
+    case validate
+    case list
 }
 
 /// Completion command options
