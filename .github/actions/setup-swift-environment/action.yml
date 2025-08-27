@@ -59,8 +59,6 @@ runs:
           /usr/local/bin/swiftlint
           /opt/homebrew/bin/swiftlint
         key: ${{ runner.os }}-swiftlint-${{ hashFiles('.swiftlint.yml') }}${{ inputs.cache-key-suffix }}
-        restore-keys: |
-          ${{ runner.os }}-swiftlint-
 
     - name: 🔧 Install SwiftLint
       id: swiftlint-info
@@ -95,8 +93,6 @@ runs:
           ~/Library/Caches/org.swift.swiftpm
           ~/Library/org.swift.swiftpm
         key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift', 'Package.resolved') }}${{ inputs.cache-key-suffix }}
-        restore-keys: |
-          ${{ runner.os }}-swift-
 
     - name: 📦 Resolve Dependencies
       shell: bash
