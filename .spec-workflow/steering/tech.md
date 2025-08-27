@@ -56,6 +56,34 @@ The architecture follows a **layered service pattern** with dependency injection
 - **Code Review Process**: Pull request reviews with required status checks and maintainer approval
 - **CI/CD**: GitHub Actions with parallel job execution and comprehensive validation
 
+#### Required Git Workflow for Spec Implementation
+All specification implementation tasks must follow this mandatory workflow:
+
+1. **Feature Branch Creation**: 
+   ```bash
+   git checkout -b feature/[spec-name]-[task-description]
+   git push -u origin feature/[spec-name]-[task-description]
+   ```
+
+2. **Incremental Development**:
+   - Commit changes at logical completion points during implementation
+   - Push commits regularly to track progress and enable collaboration
+   - Use descriptive commit messages following conventional commit format
+
+3. **Continuous Integration**:
+   - Run local validation before pushing: `swiftlint lint --strict && swift build --verbose && ./Scripts/run-ci-tests.sh`
+   - Monitor GitHub Actions CI status for all pushed commits
+   - Address any CI failures immediately
+
+4. **Pull Request Workflow** (Final Task):
+   - Create pull request with comprehensive description of changes
+   - Link to related specification documents and issues
+   - Ensure all CI checks pass (SwiftLint, build validation, test suite)
+   - Request code review from maintainers
+   - Address review feedback before merge approval
+
+This workflow ensures code quality, enables collaborative review, and maintains project stability through automated validation.
+
 ## Deployment & Distribution
 
 ### Target Platform(s)

@@ -56,6 +56,18 @@ Their key pain points include:
 5. **Open Development**: Transparent development process with community input and contribution
 6. **Production Ready**: Focus on reliability, error handling, and production deployment scenarios
 
+## Development Workflow Requirements
+
+All feature development and implementation work must follow a structured git workflow:
+
+1. **Feature Branch Creation**: Always create a feature branch from main before starting any spec implementation
+2. **Incremental Commits**: Commit and push changes at logical completion points during implementation
+3. **Pull Request Process**: Final task must always include creating a pull request for code review
+4. **CI Validation**: Ensure all GitHub Actions CI checks pass before merging
+5. **Code Quality**: Maintain SwiftLint compliance and comprehensive test coverage throughout development
+
+This workflow ensures code quality, traceability, and collaborative review for all project contributions.
+
 ## Monitoring & Visibility
 
 - **Dashboard Type**: CLI-based status and monitoring tools

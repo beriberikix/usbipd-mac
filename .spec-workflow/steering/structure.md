@@ -120,6 +120,41 @@ import XCTest
 3. **Testability**: Code structured to support dependency injection and comprehensive test coverage
 4. **Consistency**: Follow established patterns from Swift standard library and Apple frameworks
 
+## Git Workflow Structure
+
+### Branch Naming Conventions
+```bash
+# Feature branches for spec implementation
+feature/[spec-name]-[task-description]
+
+# Examples:
+feature/homebrew-distribution-formula-creation
+feature/system-extension-installation-workflow
+feature/qemu-test-infrastructure-setup
+```
+
+### Commit Message Structure
+```
+type(scope): brief description
+
+Longer description of the change and why it was made.
+Include references to specification documents and tasks.
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+### Implementation Task Structure
+Every specification implementation must include these git workflow tasks:
+
+1. **Initial Setup**: Create and push feature branch
+2. **Incremental Implementation**: Commit and push at logical completion points
+3. **Validation**: Run local CI validation before each push
+4. **Pull Request Creation**: Final task to create PR with comprehensive description
+5. **CI Verification**: Ensure all GitHub Actions checks pass
+6. **Code Review**: Address reviewer feedback and maintain code quality standards
+
 ## Module Boundaries
 
 ### Core Architecture Boundaries
