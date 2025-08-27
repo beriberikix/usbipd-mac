@@ -337,7 +337,7 @@ public class XPCIPCHandler: NSObject, IPCHandler {
     }
     
     private func handleIncomingRequest(_ requestData: Data, from connection: NSXPCConnection) {
-        let connectionRef = connection
+        nonisolated(unsafe) let connectionRef = connection
         queue.async { @Sendable [weak self] in
             guard let self = self else { return }
             
