@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 usbipd-mac is a macOS USB/IP protocol implementation for sharing USB devices over IP networks. The project is built using Swift Package Manager and targets macOS 11+.
 
+**Main Repository**: https://github.com/beriberikix/usbipd-mac  
+**Homebrew Tap Repository**: https://github.com/beriberikix/homebrew-usbipd-mac
+
 ## Architecture
 
 The project is structured as a multi-target Swift package:

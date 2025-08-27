@@ -1,5 +1,9 @@
 # Project Structure
 
+## Project Repositories
+**Main Repository**: https://github.com/beriberikix/usbipd-mac  
+**Homebrew Tap Repository**: https://github.com/beriberikix/homebrew-usbipd-mac
+
 ## Directory Organization
 
 ```

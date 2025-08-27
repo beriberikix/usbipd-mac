@@ -1,5 +1,9 @@
 # Product Overview
 
+## Project Repositories
+**Main Repository**: https://github.com/beriberikix/usbipd-mac  
+**Homebrew Tap Repository**: https://github.com/beriberikix/homebrew-usbipd-mac
+
 ## Product Purpose
 usbipd-mac is a macOS implementation of the USB/IP protocol that enables sharing USB devices over IP networks. The project solves the critical problem of accessing USB devices from virtual environments, containers, and remote systems on macOS platforms, bridging the gap between physical hardware and virtualized workloads.
 
