@@ -41,7 +41,7 @@ let package = Package(
             dependencies: ["USBIPDCore", "Common"],
             // Plugin integration working but temporarily disabled due to build timeout
             // plugins: ["CompletionGeneratorPlugin"]
-            ),
+        ),
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
