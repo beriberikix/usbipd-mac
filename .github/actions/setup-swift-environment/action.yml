@@ -106,6 +106,12 @@ runs:
         echo "📦 Resolving Swift package dependencies..."
         echo "📊 Status: RESOLVING"
         
+        # Clean up potentially corrupted workspace state
+        if [ -f .build/workspace-state.json ]; then
+          echo "🧹 Removing potentially corrupted workspace state"
+          rm -f .build/workspace-state.json
+        fi
+        
         if swift package resolve; then
           echo "::notice title=Dependencies Success::All dependencies resolved successfully"
           echo "✅ Dependencies resolved successfully"
