@@ -337,7 +337,8 @@ public class XPCIPCHandler: NSObject, IPCHandler {
     }
     
     private func handleIncomingRequest(_ requestData: Data, from connection: NSXPCConnection) {
-        queue.async { [weak self] in
+        let connectionRef = connection
+        queue.async { @Sendable [weak self] in
             guard let self = self else { return }
             
             do {
@@ -364,7 +365,7 @@ public class XPCIPCHandler: NSObject, IPCHandler {
                 }
                 
                 // Store pending request
-                self.pendingRequests[request.requestID] = connection
+                self.pendingRequests[request.requestID] = connectionRef
                 
                 // Update statistics
                 self.statistics.recordRequest(command: request.command)
