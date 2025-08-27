@@ -81,7 +81,8 @@ public class CommandLineParser {
             DetachCommand(),
             DaemonCommand(server: server, serverConfig: serverConfig),
             InstallSystemExtensionCommand(),
-            DiagnoseCommand()
+            DiagnoseCommand(),
+            CompletionCommand()
         ]
         
         for command in commands {
