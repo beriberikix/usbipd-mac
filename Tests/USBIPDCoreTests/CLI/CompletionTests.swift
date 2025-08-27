@@ -4,7 +4,6 @@
 import XCTest
 import Foundation
 @testable import USBIPDCore
-@testable import USBIPDCLI
 @testable import Common
 
 final class CompletionTests: XCTestCase {
@@ -443,13 +442,9 @@ extension CompletionTests {
 
 // MARK: - Mock Classes
 
-private struct MockCommand: Command {
+private struct MockCommand: CompletableCommand {
     let name: String
     let description: String
-    
-    func execute(with arguments: [String]) throws {
-        // Mock implementation
-    }
 }
 
 private class MockShellFormatter: ShellCompletionFormatter {
