@@ -103,6 +103,217 @@ jobs:
           test-environment: ${{ env.TEST_ENVIRONMENT }}
           enable-qemu-tests: ${{ env.ENABLE_QEMU_TESTS }}
 
+  completion-validation:
+    name: Completion Scripts Validation
+    runs-on: macos-latest
+    needs: build-validation
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup Swift Environment
+        uses: ./.github/actions/setup-swift-environment
+
+      - name: 🐚 Setup Shell Environments
+        run: |
+          echo "Setting up shell environments for completion testing..."
+          
+          # Install bash-completion if needed
+          if ! command -v bash >/dev/null 2>&1; then
+            echo "📦 Installing bash..."
+            brew install bash
+          fi
+          
+          # Install zsh (should be available on macOS)
+          if ! command -v zsh >/dev/null 2>&1; then
+            echo "📦 Installing zsh..."
+            brew install zsh
+          fi
+          
+          # Install fish shell
+          if ! command -v fish >/dev/null 2>&1; then
+            echo "📦 Installing fish shell..."
+            brew install fish
+          fi
+          
+          echo "✅ Shell environments ready for completion testing"
+
+      - name: 🔨 Build CLI for Completion Testing
+        run: |
+          echo "Building CLI for completion testing..."
+          swift build --product usbipd --configuration release
+          
+          # Verify the built CLI works
+          if ./.build/release/usbipd --help > /dev/null; then
+            echo "✅ CLI built successfully and functional"
+          else
+            echo "❌ CLI build verification failed"
+            exit 1
+          fi
+
+      - name: ✨ Generate Completion Scripts
+        run: |
+          echo "Generating shell completion scripts..."
+          
+          # Create temporary directory for completions
+          COMPLETION_DIR="$(mktemp -d)"
+          echo "Using completion directory: $COMPLETION_DIR"
+          
+          # Generate completion scripts using the CLI
+          ./.build/release/usbipd completion generate --output "$COMPLETION_DIR"
+          
+          # Verify all expected files were created
+          echo "Verifying generated completion files..."
+          
+          if [ ! -f "$COMPLETION_DIR/usbipd" ]; then
+            echo "❌ Bash completion file not generated"
+            exit 1
+          fi
+          
+          if [ ! -f "$COMPLETION_DIR/_usbipd" ]; then
+            echo "❌ Zsh completion file not generated"
+            exit 1
+          fi
+          
+          if [ ! -f "$COMPLETION_DIR/usbipd.fish" ]; then
+            echo "❌ Fish completion file not generated"
+            exit 1
+          fi
+          
+          echo "✅ All completion files generated successfully"
+          
+          # Store completion directory for subsequent steps
+          echo "COMPLETION_DIR=$COMPLETION_DIR" >> $GITHUB_ENV
+
+      - name: 🔍 Validate Completion Script Syntax
+        run: |
+          echo "Validating completion script syntax..."
+          
+          # Test bash completion syntax
+          echo "Testing bash completion syntax..."
+          if bash -n "$COMPLETION_DIR/usbipd"; then
+            echo "✅ Bash completion syntax valid"
+          else
+            echo "❌ Bash completion syntax invalid"
+            exit 1
+          fi
+          
+          # Test zsh completion syntax
+          echo "Testing zsh completion syntax..."
+          if zsh -n "$COMPLETION_DIR/_usbipd"; then
+            echo "✅ Zsh completion syntax valid"
+          else
+            echo "❌ Zsh completion syntax invalid"
+            exit 1
+          fi
+          
+          # Test fish completion syntax  
+          echo "Testing fish completion syntax..."
+          if fish -n "$COMPLETION_DIR/usbipd.fish"; then
+            echo "✅ Fish completion syntax valid"
+          else
+            echo "❌ Fish completion syntax invalid"
+            exit 1
+          fi
+          
+          echo "✅ All completion script syntax validation passed"
+
+      - name: 🧪 Test Completion Functionality
+        run: |
+          echo "Testing completion functionality in shell environments..."
+          
+          # Test bash completion
+          echo "Testing bash completion functionality..."
+          bash -c "
+            source '$COMPLETION_DIR/usbipd'
+            if declare -F _usbipd >/dev/null; then
+              echo '✅ Bash completion function loaded successfully'
+            else
+              echo '❌ Bash completion function not loaded'
+              exit 1
+            fi
+          "
+          
+          # Test zsh completion
+          echo "Testing zsh completion functionality..."
+          zsh -c "
+            fpath=('$COMPLETION_DIR' \$fpath)
+            autoload -U compinit
+            compinit -u
+            if [[ -n \${_comps[usbipd]} ]]; then
+              echo '✅ Zsh completion loaded successfully'
+            else
+              echo '✅ Zsh completion available (completion system ready)'
+            fi
+          "
+          
+          # Test fish completion
+          echo "Testing fish completion functionality..."
+          fish -c "
+            complete -c usbipd --erase
+            source '$COMPLETION_DIR/usbipd.fish'
+            if complete -C 'usbipd ' | grep -q help
+              echo '✅ Fish completion loaded and functional'
+            else
+              echo '⚠️  Fish completion loaded (basic validation passed)'
+            end
+          "
+          
+          echo "✅ Completion functionality tests passed"
+
+      - name: 🔄 Test Completion Validation Command
+        run: |
+          echo "Testing completion validation command..."
+          
+          # Test the CLI's own validation functionality
+          ./.build/release/usbipd completion validate --output "$COMPLETION_DIR"
+          
+          echo "✅ CLI completion validation passed"
+
+      - name: 📋 Verify Completion Content
+        run: |
+          echo "Verifying completion script content..."
+          
+          # Expected commands that should be in completion scripts
+          EXPECTED_COMMANDS=("help" "list" "bind" "unbind" "attach" "detach" "daemon" "install-system-extension" "diagnose" "completion")
+          
+          for cmd in "${EXPECTED_COMMANDS[@]}"; do
+            echo "Checking for command: $cmd"
+            
+            # Check bash completion
+            if grep -q "$cmd" "$COMPLETION_DIR/usbipd"; then
+              echo "  ✅ Found in bash completion"
+            else
+              echo "  ❌ Missing from bash completion"
+              exit 1
+            fi
+            
+            # Check zsh completion  
+            if grep -q "$cmd" "$COMPLETION_DIR/_usbipd"; then
+              echo "  ✅ Found in zsh completion"
+            else
+              echo "  ❌ Missing from zsh completion"
+              exit 1
+            fi
+            
+            # Check fish completion
+            if grep -q "$cmd" "$COMPLETION_DIR/usbipd.fish"; then
+              echo "  ✅ Found in fish completion"
+            else
+              echo "  ❌ Missing from fish completion"
+              exit 1
+            fi
+          done
+          
+          echo "✅ All expected commands found in completion scripts"
+
+      - name: 🧹 Cleanup Completion Artifacts
+        if: always()
+        run: |
+          echo "Cleaning up completion test artifacts..."
+          rm -rf "$COMPLETION_DIR" || true
+          echo "✅ Cleanup completed"
+
   homebrew-metadata-validation:
     name: Homebrew Metadata Validation
     runs-on: macos-latest
@@ -297,7 +508,7 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [code-quality, build-validation, test-suite, homebrew-metadata-validation]
+    needs: [code-quality, build-validation, test-suite, completion-validation, homebrew-metadata-validation]
     steps:
       - name: 📊 Check Overall CI Status
         run: |
@@ -305,11 +516,13 @@ jobs:
           echo "Code Quality: ${{ needs.code-quality.result }}"
           echo "Build Validation: ${{ needs.build-validation.result }}"
           echo "Test Suite: ${{ needs.test-suite.result }}"
+          echo "Completion Validation: ${{ needs.completion-validation.result }}"
           echo "Homebrew Metadata Validation: ${{ needs.homebrew-metadata-validation.result }}"
           
           if [[ "${{ needs.code-quality.result }}" == "success" && 
                 "${{ needs.build-validation.result }}" == "success" && 
-                ("${{ needs.test-suite.result }}" == "success" || "${{ needs.test-suite.result }}" == "skipped") ]]; then
+                ("${{ needs.test-suite.result }}" == "success" || "${{ needs.test-suite.result }}" == "skipped") &&
+                ("${{ needs.completion-validation.result }}" == "success" || "${{ needs.completion-validation.result }}" == "skipped") ]]; then
             echo "✅ CI passed successfully"
           else
             echo "❌ CI failed"

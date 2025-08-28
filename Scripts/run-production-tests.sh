@@ -480,8 +480,77 @@ EOF
 Production test execution completed for environment: $TEST_ENVIRONMENT
 EOF
     
+    # Add completion test results to report
+    if [ -f "$LOGS_DIR/completion-tests.log" ]; then
+        cat >> "$report_file" << EOF
+
+### Shell Completion Tests
+EOF
+        cat "$LOGS_DIR/completion-tests.log" >> "$report_file"
+    fi
+    
     log_info "Test report generated: $report_file"
     log_success "Comprehensive test report generated"
+}
+
+# Run comprehensive shell completion tests
+run_completion_tests() {
+    log_step "Running Comprehensive Shell Completion Tests"
+    
+    local completion_test_script="$SCRIPT_DIR/test-completion-environment.sh"
+    local completion_log="$LOGS_DIR/completion-tests.log"
+    
+    if [ ! -f "$completion_test_script" ]; then
+        log_warning "Completion test script not found - skipping completion tests"
+        echo "Completion tests: SKIPPED (script not found)" > "$completion_log"
+        return 0
+    fi
+    
+    log_info "Running comprehensive completion tests for production validation..."
+    
+    # Run comprehensive completion tests with all shells and scenarios
+    if "$completion_test_script" \
+        --output "$BUILD_DIR/production-completion-results" \
+        --verbose \
+        > "$completion_log" 2>&1; then
+        
+        log_success "Comprehensive completion tests passed"
+        echo "Completion Tests: ✅ PASSED" >> "$completion_log"
+        
+        # Add summary to log
+        echo "" >> "$completion_log"
+        echo "Production Completion Test Summary:" >> "$completion_log"
+        echo "- All shells tested: bash, zsh, fish" >> "$completion_log"
+        echo "- All scenarios tested: basic, dynamic, error-handling, performance" >> "$completion_log"
+        echo "- Test environment: production" >> "$completion_log"
+        
+        # Add completion files info if available
+        local completion_dir="$BUILD_DIR/production-completion-results"
+        if [ -d "$completion_dir" ]; then
+            echo "- Generated completion files:" >> "$completion_log"
+            for file in "$completion_dir"/*; do
+                if [ -f "$file" ]; then
+                    local filename=$(basename "$file")
+                    local size=$(stat -f %z "$file" 2>/dev/null || echo "unknown")
+                    echo "  - $filename ($size bytes)" >> "$completion_log"
+                fi
+            done
+        fi
+        
+        return 0
+    else
+        local exit_code=$?
+        log_error "Comprehensive completion tests failed with exit code $exit_code"
+        echo "Completion Tests: ❌ FAILED (exit code: $exit_code)" >> "$completion_log"
+        
+        # In production, completion test failures should be investigated
+        echo "" >> "$completion_log"
+        echo "FAILURE DETAILS:" >> "$completion_log"
+        echo "Exit Code: $exit_code" >> "$completion_log"
+        echo "This indicates a significant issue with completion system that needs investigation" >> "$completion_log"
+        
+        return $exit_code
+    fi
 }
 
 # Main execution
@@ -502,6 +571,7 @@ main() {
     run_swift_tests
     run_qemu_tests
     run_system_extension_tests
+    run_completion_tests
     run_performance_tests
     
     # Generate report

@@ -429,6 +429,67 @@ validate_release_readiness() {
     fi
 }
 
+# Generate shell completion scripts
+generate_completion_scripts() {
+    log_step "Generating shell completion scripts"
+    
+    local completion_script="$SCRIPT_DIR/generate-completions.sh"
+    local completions_dir="$PROJECT_ROOT/completions"
+    
+    # Check if completion generation script exists
+    if [ ! -f "$completion_script" ]; then
+        log_warning "Completion generation script not found at: $completion_script"
+        log_info "Skipping completion generation"
+        return 0
+    fi
+    
+    # Remove existing completions directory to ensure fresh generation
+    if [ -d "$completions_dir" ]; then
+        log_info "Cleaning existing completions directory..."
+        rm -rf "$completions_dir"
+    fi
+    
+    # Generate completion scripts
+    log_info "Running completion generation..."
+    if [ "$DRY_RUN" = true ]; then
+        log_info "Dry run: Would generate completion scripts to $completions_dir"
+    else
+        # Execute completion generation script
+        if "$completion_script" --output "$completions_dir" --clean --verbose 2>&1; then
+            log_success "Shell completion scripts generated successfully"
+            
+            # Verify generated files
+            local generated_files=()
+            if [ -f "$completions_dir/usbipd" ]; then
+                generated_files+=("bash: usbipd")
+            fi
+            if [ -f "$completions_dir/_usbipd" ]; then
+                generated_files+=("zsh: _usbipd")
+            fi
+            if [ -f "$completions_dir/usbipd.fish" ]; then
+                generated_files+=("fish: usbipd.fish")
+            fi
+            
+            if [ ${#generated_files[@]} -gt 0 ]; then
+                log_info "Generated completion files:"
+                for file in "${generated_files[@]}"; do
+                    log_info "  ✓ $file"
+                done
+            else
+                log_warning "No completion files found after generation"
+            fi
+        else
+            log_error "Failed to generate shell completion scripts"
+            if [ "$FORCE_RELEASE" = false ]; then
+                log_error "Use --force to continue without completion scripts"
+                exit 1
+            else
+                log_warning "Continuing without completion scripts due to --force flag"
+            fi
+        fi
+    fi
+}
+
 # Generate release summary
 generate_release_summary() {
     log_step "Generating release summary"
@@ -453,6 +514,7 @@ Release Preparation Status:
   Git Status: ✓ Checked
   Code Quality: $([ "$SKIP_LINT" = true ] && echo "⚠ Skipped" || echo "✓ Passed")
   Build: ✓ Successful
+  Completions: $([ -d "$PROJECT_ROOT/completions" ] && [ "$(ls -A "$PROJECT_ROOT/completions" 2>/dev/null)" ] && echo "✓ Generated" || echo "⚠ Skipped")
   Tests: $([ "$SKIP_TESTS" = true ] && echo "⚠ Skipped" || echo "✓ Passed")
   Changelog: ✓ Updated
   Git Tag: $([ "$DRY_RUN" = true ] && echo "⚠ Dry Run" || echo "✓ Created")
@@ -640,6 +702,7 @@ main() {
     detect_version
     run_code_quality_checks
     build_project
+    generate_completion_scripts
     run_tests
     update_changelog
     validate_release_readiness

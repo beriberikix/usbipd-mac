@@ -52,10 +52,56 @@ private func isDaemonCommand(_ arguments: [String]) -> Bool {
     return !args.isEmpty && args[0] == "daemon"
 }
 
+/// Check if arguments require early exit (help, version, etc.)
+private func shouldExitEarly(_ arguments: [String]) -> Bool {
+    let args = Array(arguments.dropFirst())
+    if args.isEmpty { return true }  // No arguments, will show help
+    let command = args[0]
+    return command == "--help" || command == "-h" || command == "help" || command == "--version" || command == "-v"
+}
+
+/// Handle early exit commands without system initialization
+private func handleEarlyExit(_ arguments: [String]) {
+    let args = Array(arguments.dropFirst())
+    
+    if args.isEmpty || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+        print("USB/IP Daemon for macOS")
+        print("Usage: usbipd <command> [options]")
+        print("")
+        print("Commands:")
+        print("  list                    List USB devices")
+        print("  bind <device-id>        Bind a device for sharing")
+        print("  unbind <device-id>      Unbind a previously bound device")
+        print("  daemon [options]        Start the USB/IP daemon")
+        print("  status                  Show daemon status")
+        print("  help                    Show this help message")
+        print("")
+        print("Options:")
+        print("  -v, --version          Show version information")
+        print("  -h, --help             Show help message")
+        print("")
+        print("For more information about a specific command, use: usbipd <command> --help")
+        return
+    }
+    
+    if args[0] == "--version" || args[0] == "-v" {
+        print("USB/IP Daemon for macOS")
+        print("Version: 0.1.0") 
+        print("Build: Development")
+        return
+    }
+}
+
 /// Main entry point
 func main() {
     setupLogging()
     setupSignalHandlers()
+    
+    // Handle help/version commands early to avoid heavy initialization
+    if shouldExitEarly(CommandLine.arguments) {
+        handleEarlyExit(CommandLine.arguments)
+        return
+    }
     
     // Create core dependencies
     let deviceDiscovery = IOKitDeviceDiscovery()

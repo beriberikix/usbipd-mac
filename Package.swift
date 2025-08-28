@@ -25,6 +25,10 @@ let package = Package(
         .executable(
             name: "USBIPDSystemExtension",
             targets: ["SystemExtension"]),
+        // Plugin temporarily disabled - completion generation works via CLI scripts
+        // .plugin(
+        //     name: "CompletionGeneratorPlugin",
+        //     targets: ["CompletionGeneratorPlugin"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -34,7 +38,8 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         .executableTarget(
             name: "USBIPDCLI",
-            dependencies: ["USBIPDCore", "Common"]),
+            dependencies: ["USBIPDCore", "Common"]
+        ),
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
@@ -82,5 +87,9 @@ let package = Package(
         //     dependencies: ["QEMUTestServer", "USBIPDCore", "Common"],
         //     path: "Tests/QEMUIntegrationTests",
         //     sources: [".", "../SharedUtilities"]),
+        // Plugin temporarily disabled - works but causes build timeout
+        // .plugin(
+        //     name: "CompletionGeneratorPlugin",
+        //     capability: .buildTool()),
     ]
 )
