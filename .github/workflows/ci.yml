@@ -252,11 +252,11 @@ jobs:
           fish -c "
             complete -c usbipd --erase
             source '$COMPLETION_DIR/usbipd.fish'
-            if complete -C 'usbipd ' | grep -q help; then
+            if complete -C 'usbipd ' | grep -q help
               echo '✅ Fish completion loaded and functional'
             else
               echo '⚠️  Fish completion loaded (basic validation passed)'
-            fi
+            end
           "
           
           echo "✅ Completion functionality tests passed"
