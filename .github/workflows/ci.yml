@@ -74,8 +74,6 @@ jobs:
 
       - name: 🛠️ Setup Swift Environment
         uses: ./.github/actions/setup-swift-environment
-        with:
-          cache-key-suffix: "-cache-bust-${{ github.run_id }}"
 
       - name: 🔨 Build Project
         run: |
@@ -98,8 +96,6 @@ jobs:
 
       - name: 🛠️ Setup Swift Environment
         uses: ./.github/actions/setup-swift-environment
-        with:
-          cache-key-suffix: "-cache-bust-${{ github.run_id }}"
 
       - name: 🧪 Run Test Suite
         uses: ./.github/actions/run-test-suite
@@ -117,8 +113,6 @@ jobs:
 
       - name: 🛠️ Setup Swift Environment
         uses: ./.github/actions/setup-swift-environment
-        with:
-          cache-key-suffix: "-cache-bust-${{ github.run_id }}"
 
       - name: 🐚 Setup Shell Environments
         run: |
