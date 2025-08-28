@@ -21,13 +21,18 @@ public class CompletionCommand: Command {
     /// Completion writer for writing scripts to filesystem
     private let completionWriter: CompletionWriter
     
+    /// Completion installer for managing completion installation
+    private let completionInstaller: CompletionInstaller
+    
     /// Initialize completion command with dependencies
     /// - Parameters:
     ///   - completionExtractor: Service for extracting completion metadata
     ///   - completionWriter: Service for writing completion scripts
-    public init(completionExtractor: CompletionExtractor = CompletionExtractor(), completionWriter: CompletionWriter = CompletionWriter()) {
+    ///   - completionInstaller: Service for managing completion installation
+    public init(completionExtractor: CompletionExtractor = CompletionExtractor(), completionWriter: CompletionWriter = CompletionWriter(), completionInstaller: CompletionInstaller = CompletionInstaller()) {
         self.completionExtractor = completionExtractor
         self.completionWriter = completionWriter
+        self.completionInstaller = completionInstaller
     }
     
     /// Execute the completion command
@@ -57,6 +62,12 @@ public class CompletionCommand: Command {
             try executeValidate(options: options)
         case .list:
             try executeList(options: options)
+        case .install:
+            try executeInstall(options: options)
+        case .uninstall:
+            try executeUninstall(options: options)
+        case .status:
+            try executeStatus(options: options)
         }
         
         logger.debug("Completion command executed successfully")
@@ -176,6 +187,96 @@ public class CompletionCommand: Command {
         logger.debug("Completion listing completed")
     }
     
+    /// Execute completion installation
+    /// - Parameter options: Parsed command options
+    /// - Throws: Installation errors
+    private func executeInstall(options: CompletionOptions) throws {
+        print("Installing shell completion files...")
+        logger.info("Starting completion installation", context: [
+            "shells": options.shells.joined(separator: ", ")
+        ])
+        
+        // Determine target shells
+        let targetShells = options.shells.isEmpty ? ["bash", "zsh", "fish"] : options.shells
+        
+        // Install completions
+        let summary = try completionInstaller.install(for: targetShells)
+        
+        displayInstallationSummary(summary: summary)
+        
+        logger.info("Completion installation completed", context: [
+            "successful": summary.successful,
+            "shellsProcessed": summary.shells.count,
+            "errorsCount": summary.errors.count
+        ])
+        
+        if !summary.successful {
+            throw CommandHandlerError.operationNotSupported("Completion installation failed")
+        }
+    }
+    
+    /// Execute completion uninstallation
+    /// - Parameter options: Parsed command options
+    /// - Throws: Uninstallation errors
+    private func executeUninstall(options: CompletionOptions) throws {
+        print("Uninstalling shell completion files...")
+        logger.info("Starting completion uninstallation", context: [
+            "shells": options.shells.joined(separator: ", ")
+        ])
+        
+        // Determine target shells
+        let targetShells = options.shells.isEmpty ? ["bash", "zsh", "fish"] : options.shells
+        
+        // Confirm uninstallation if not verbose mode
+        if !options.verbose {
+            print("This will remove completion files for: \(targetShells.joined(separator: ", "))")
+            print("Continue? (y/N): ", terminator: "")
+            guard let response = readLine(), response.lowercased().hasPrefix("y") else {
+                print("Uninstallation cancelled.")
+                return
+            }
+        }
+        
+        // Uninstall completions
+        let summary = try completionInstaller.uninstall(for: targetShells)
+        
+        displayUninstallationSummary(summary: summary)
+        
+        logger.info("Completion uninstallation completed", context: [
+            "successful": summary.successful,
+            "shellsProcessed": summary.shells.count,
+            "errorsCount": summary.errors.count
+        ])
+        
+        if !summary.successful {
+            throw CommandHandlerError.operationNotSupported("Completion uninstallation failed")
+        }
+    }
+    
+    /// Execute completion status check
+    /// - Parameter options: Parsed command options
+    /// - Throws: Status check errors
+    private func executeStatus(options: CompletionOptions) throws {
+        print("Checking completion installation status...")
+        logger.info("Starting completion status check", context: [
+            "shells": options.shells.joined(separator: ", ")
+        ])
+        
+        // Determine target shells
+        let targetShells = options.shells.isEmpty ? ["bash", "zsh", "fish"] : options.shells
+        
+        // Check status
+        let summary = try completionInstaller.status(for: targetShells)
+        
+        displayStatusSummary(summary: summary)
+        
+        logger.info("Completion status check completed", context: [
+            "overallInstalled": summary.overallInstalled,
+            "needsUpdate": summary.needsUpdate,
+            "shellsChecked": summary.shells.count
+        ])
+    }
+    
     // MARK: - Helper Methods
     
     /// Parse command line arguments into options
@@ -210,7 +311,7 @@ public class CompletionCommand: Command {
                 options.verbose = true
                 i += 1
                 
-            case "generate", "test", "validate", "list":
+            case "generate", "test", "validate", "list", "install", "uninstall", "status":
                 guard let action = CompletionAction(rawValue: arguments[i]) else {
                     throw CommandLineError.invalidArguments("Unknown action: \(arguments[i])")
                 }
@@ -460,31 +561,175 @@ public class CompletionCommand: Command {
         }
     }
     
+    /// Display installation summary
+    /// - Parameter summary: Installation summary
+    private func displayInstallationSummary(summary: CompletionInstallSummary) {
+        print("")
+        print("Completion Installation Summary:")
+        print("===============================")
+        
+        let overallStatus = summary.successful ? "SUCCESS" : "FAILED"
+        print("Overall Status: \(overallStatus)")
+        
+        print("")
+        print("Shell Installation Results:")
+        for shellStatus in summary.shells {
+            let status = shellStatus.installed ? "✓ INSTALLED" : "✗ FAILED"
+            print("  \(status) \(shellStatus.shell)")
+            
+            if let file = shellStatus.completionFile {
+                print("    File: \(file.path)")
+                if file.exists {
+                    print("    Size: \(file.size ?? 0) bytes")
+                }
+            }
+            
+            if let error = shellStatus.error {
+                print("    Error: \(error)")
+            }
+        }
+        
+        if !summary.errors.isEmpty {
+            print("")
+            print("Errors:")
+            for error in summary.errors {
+                print("  - \(error)")
+            }
+        }
+        
+        if summary.successful {
+            print("")
+            print("✅ All completion files installed successfully!")
+            print("Restart your shell or source your shell configuration to activate completions.")
+        }
+    }
+    
+    /// Display uninstallation summary
+    /// - Parameter summary: Uninstallation summary
+    private func displayUninstallationSummary(summary: CompletionUninstallSummary) {
+        print("")
+        print("Completion Uninstallation Summary:")
+        print("=================================")
+        
+        let overallStatus = summary.successful ? "SUCCESS" : "FAILED"
+        print("Overall Status: \(overallStatus)")
+        
+        print("")
+        print("Shell Uninstallation Results:")
+        for shellStatus in summary.shells {
+            let status = !shellStatus.installed ? "✓ REMOVED" : "✗ FAILED"
+            print("  \(status) \(shellStatus.shell)")
+            
+            if let file = shellStatus.completionFile {
+                print("    File: \(file.path)")
+            }
+            
+            if let error = shellStatus.error {
+                print("    Error: \(error)")
+            }
+        }
+        
+        if !summary.errors.isEmpty {
+            print("")
+            print("Errors:")
+            for error in summary.errors {
+                print("  - \(error)")
+            }
+        }
+        
+        if summary.successful {
+            print("")
+            print("✅ All completion files removed successfully!")
+        }
+    }
+    
+    /// Display status summary
+    /// - Parameter summary: Status summary
+    private func displayStatusSummary(summary: CompletionStatusSummary) {
+        print("")
+        print("Completion Status Summary:")
+        print("=========================")
+        
+        let overallStatus = summary.overallInstalled ? "INSTALLED" : "NOT INSTALLED"
+        print("Overall Status: \(overallStatus)")
+        
+        if summary.needsUpdate {
+            print("Update Status: NEEDS UPDATE")
+        }
+        
+        print("")
+        print("Shell Status Details:")
+        for shellStatus in summary.shells {
+            let status = shellStatus.installed ? "✓ INSTALLED" : "✗ NOT INSTALLED"
+            let updateStatus = shellStatus.upToDate ? "" : " (NEEDS UPDATE)"
+            print("  \(status) \(shellStatus.shell)\(updateStatus)")
+            
+            if let file = shellStatus.completionFile {
+                print("    File: \(file.path)")
+                if file.exists {
+                    print("    Size: \(file.size ?? 0) bytes")
+                    if let modDate = file.modificationDate {
+                        let formatter = DateFormatter()
+                        formatter.dateStyle = .short
+                        formatter.timeStyle = .short
+                        print("    Modified: \(formatter.string(from: modDate))")
+                    }
+                }
+            }
+            
+            if let error = shellStatus.error {
+                print("    Issue: \(error)")
+            }
+        }
+        
+        if !summary.errors.isEmpty {
+            print("")
+            print("Issues:")
+            for error in summary.errors {
+                print("  - \(error)")
+            }
+        }
+    }
+    
     /// Print help information
     private func printHelp() {
         print("Usage: usbipd completion [action] [options]")
         print("")
-        print("Generate and test shell completion scripts for development and testing.")
+        print("Manage shell completion scripts for usbipd commands.")
         print("")
         print("Actions:")
-        print("  generate    Generate completion scripts (default)")
-        print("  test        Test completion functionality")
-        print("  validate    Validate existing completion scripts")
-        print("  list        List available commands and options")
+        print("  install     Install completion files to user shell directories")
+        print("  uninstall   Remove completion files from user shell directories")
+        print("  status      Check installation status of completion files")
+        print("  generate    Generate completion scripts to specified directory")
+        print("  test        Test completion functionality (development)")
+        print("  validate    Validate existing completion scripts (development)")
+        print("  list        List available commands and options (development)")
         print("")
         print("Options:")
-        print("  -o, --output DIR    Output directory for completion scripts")
-        print("  -s, --shell SHELL   Target shell (bash, zsh, fish) - can be repeated")
-        print("  --verbose           Show detailed output")
+        print("  -s, --shell SHELL   Target specific shell (bash, zsh, fish) - can be repeated")
+        print("  -o, --output DIR    Output directory for generate action")
+        print("  --verbose           Show detailed output and skip confirmation prompts")
         print("  -h, --help          Show this help message")
         print("")
         print("Examples:")
-        print("  usbipd completion generate")
+        print("  # Install completions for all supported shells")
+        print("  usbipd completion install")
+        print("")
+        print("  # Install completions for specific shells")
+        print("  usbipd completion install -s bash -s zsh")
+        print("")
+        print("  # Check installation status")
+        print("  usbipd completion status")
+        print("")
+        print("  # Remove all completion files")
+        print("  usbipd completion uninstall")
+        print("")
+        print("  # Generate completion scripts for development")
         print("  usbipd completion generate -o ./completions")
-        print("  usbipd completion generate -s bash -s zsh")
-        print("  usbipd completion test")
-        print("  usbipd completion validate -o ./completions")
-        print("  usbipd completion list")
+        print("")
+        print("Note: After installation, restart your shell or source your shell")
+        print("      configuration file to activate completions.")
     }
 }
 
@@ -496,6 +741,9 @@ private enum CompletionAction: String {
     case test
     case validate
     case list
+    case install
+    case uninstall
+    case status
 }
 
 /// Completion command options
