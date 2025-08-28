@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.1.34] - 2025-08-28
+
+### Added
+- Comprehensive shell completion system for bash, zsh, and fish
+- Dynamic completion for device IDs, IP addresses, and ports
+- Intelligent command-aware argument completion
+- Homebrew automatic completion installation and configuration
+
+### Improved
+- Enhanced CLI usability with tab completion support
+- Better development experience with shell integration
+
+
 ## [v0.1.26] - 2025-08-22
 
 ### Added
