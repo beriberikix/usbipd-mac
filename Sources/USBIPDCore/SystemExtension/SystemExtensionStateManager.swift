@@ -78,7 +78,7 @@ public class SystemExtensionStateManager {
     ///   - bundleIdentifier: Bundle identifier of the System Extension
     ///   - bundlePath: Path to the System Extension bundle
     ///   - installationStatus: Installation status
-    public func updateInstallationState(bundleIdentifier: String, bundlePath: String, installationStatus: InstallationStatus) {
+    public func updateInstallationState(bundleIdentifier: String, bundlePath: String, installationStatus: SystemExtensionInstallStatus) {
         stateQueue.async {
             var state = self.cachedState ?? SystemExtensionPersistentState()
             
@@ -424,7 +424,7 @@ public struct SystemExtensionPersistentState: Codable {
     public var bundlePath: String?
     
     /// Current installation status
-    public var installationStatus: InstallationStatus = .notInstalled
+    public var installationStatus: SystemExtensionInstallStatus = .notInstalled
     
     /// Current activation status
     public var activationStatus: ActivationStatus = .inactive
@@ -457,8 +457,8 @@ public struct SystemExtensionPersistentState: Codable {
     public init() {}
 }
 
-/// Installation status
-public enum InstallationStatus: String, Codable {
+/// System Extension Installation status for state management
+public enum SystemExtensionInstallStatus: String, Codable {
     case notInstalled
     case installing
     case installed

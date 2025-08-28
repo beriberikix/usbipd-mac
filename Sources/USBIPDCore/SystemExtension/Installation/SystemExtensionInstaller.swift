@@ -15,7 +15,7 @@ public final class SystemExtensionInstaller: NSObject, @unchecked Sendable {
     public private(set) var installationStatus: SystemExtensionInstallationStatus = .unknown
     
     /// Installation completion handler
-    public typealias InstallationCompletion = (InstallationResult) -> Void
+    public typealias InstallationCompletion = (USBIPDCore.InstallationResult) -> Void
     
     private var currentCompletion: InstallationCompletion?
     private var currentRequest: OSSystemExtensionRequest?

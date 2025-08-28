@@ -345,7 +345,7 @@ public class SystemExtensionUpdateManager {
         }
         
         // TODO: Implement proper installation method call when installer API is available
-        installer.installSystemExtension(bundleIdentifier: "com.example.systemextension", executablePath: "/tmp/executable") { (result: InstallationResult) in
+        installer.installSystemExtension(bundleIdentifier: "com.example.systemextension", executablePath: "/tmp/executable") { (result: USBIPDCore.InstallationResult) in
             if result.success {
                 // Update state with new bundle information
                 self.stateManager.updateInstallationState(

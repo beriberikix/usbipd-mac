@@ -4,7 +4,6 @@
 import XCTest
 import Foundation
 @testable import USBIPDCore
-@testable import USBIPDCLI
 @testable import Common
 
 /// Integration tests for completion installation functionality
@@ -97,7 +96,6 @@ final class CompletionInstallationTests: XCTestCase {
             
             // Create test completion data
             completionData = createTestCompletionData()
-            
         } catch {
             XCTFail("Failed to set up test environment: \(error)")
         }
@@ -551,10 +549,8 @@ extension CompletionInstallationTests {
         XCTAssertEqual(results.count, 3)
         
         // Verify individual performance
-        for result in results {
-            if result.success {
-                XCTAssertLessThan(result.duration, 5.0, "Individual installation should meet performance requirement")
-            }
+        for result in results where result.success {
+            XCTAssertLessThan(result.duration, 5.0, "Individual installation should meet performance requirement")
         }
     }
     

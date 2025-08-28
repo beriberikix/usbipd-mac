@@ -33,7 +33,7 @@ public class CompletionInstaller {
     /// - Returns: Installation result with status and details
     /// - Throws: Installation errors
     @discardableResult
-    public func install(data: CompletionData, for shell: String) throws -> InstallationResult {
+    public func install(data: CompletionData, for shell: String) throws -> CompletionInstallationResult {
         logger.info("Starting completion installation", context: ["shell": shell])
         
         let startTime = Date()
@@ -90,7 +90,7 @@ public class CompletionInstaller {
                 "duration": String(format: "%.2f", duration)
             ])
             
-            return InstallationResult(
+            return CompletionInstallationResult(
                 success: true,
                 shell: shell,
                 targetPath: targetPath,
@@ -98,7 +98,6 @@ public class CompletionInstaller {
                 duration: duration,
                 error: nil
             )
-            
         } catch {
             logger.error("Completion installation failed, performing rollback", context: [
                 "shell": shell,
@@ -115,7 +114,7 @@ public class CompletionInstaller {
             }
             
             let duration = Date().timeIntervalSince(startTime)
-            return InstallationResult(
+            return CompletionInstallationResult(
                 success: false,
                 shell: shell,
                 targetPath: nil,
@@ -180,7 +179,6 @@ public class CompletionInstaller {
                 duration: duration,
                 error: nil
             )
-            
         } catch {
             let duration = Date().timeIntervalSince(startTime)
             logger.error("Completion uninstallation failed", context: [
@@ -244,7 +242,6 @@ public class CompletionInstaller {
                 fileInfo: fileInfo,
                 error: nil
             )
-            
         } catch {
             logger.error("Failed to check installation status", context: [
                 "shell": shell,
@@ -266,9 +263,9 @@ public class CompletionInstaller {
     /// Install completion files for all supported shells
     /// - Parameter data: Completion data to install
     /// - Returns: Array of installation results for each shell
-    public func installAll(data: CompletionData) -> [InstallationResult] {
+    public func installAll(data: CompletionData) -> [CompletionInstallationResult] {
         let supportedShells = ["bash", "zsh", "fish"]
-        var results: [InstallationResult] = []
+        var results: [CompletionInstallationResult] = []
         
         logger.info("Starting installation for all supported shells", context: ["shellCount": supportedShells.count])
         
@@ -277,7 +274,7 @@ public class CompletionInstaller {
                 let result = try install(data: data, for: shell)
                 results.append(result)
             } catch {
-                let result = InstallationResult(
+                let result = CompletionInstallationResult(
                     success: false,
                     shell: shell,
                     targetPath: nil,
@@ -437,7 +434,7 @@ public class CompletionInstaller {
 // MARK: - Result Types
 
 /// Result of a completion installation operation
-public struct InstallationResult {
+public struct CompletionInstallationResult {
     public let success: Bool
     public let shell: String
     public let targetPath: String?

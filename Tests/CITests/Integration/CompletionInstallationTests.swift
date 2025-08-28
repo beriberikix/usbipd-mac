@@ -9,7 +9,6 @@
 import XCTest
 import Foundation
 @testable import USBIPDCore
-@testable import USBIPDCLI  
 @testable import Common
 
 /// Integration tests for completion installation system in CI environment
@@ -440,7 +439,7 @@ final class CompletionInstallationTests: XCTestCase, TestSuite {
         logger.info("✅ Error handling tests completed")
     }
     
-    private func testInvalidShellHandling() throws {
+    func testInvalidShellHandling() throws {
         logger.info("Testing invalid shell handling")
         
         let invalidShells = ["invalid", "unknown", ""]
@@ -461,7 +460,7 @@ final class CompletionInstallationTests: XCTestCase, TestSuite {
         logger.debug("✅ Invalid shell handling verified")
     }
     
-    private func testPermissionErrorHandling() throws {
+    func testPermissionErrorHandling() throws {
         logger.info("Testing permission error handling")
         
         // Create a read-only directory to simulate permission errors
@@ -492,7 +491,7 @@ final class CompletionInstallationTests: XCTestCase, TestSuite {
         logger.debug("✅ Permission error handling verified")
     }
     
-    private func testUninstallationOfNonExistentFiles() throws {
+    func testUninstallationOfNonExistentFiles() throws {
         logger.info("Testing uninstallation of non-existent files")
         
         // Create installer with empty directories
@@ -543,11 +542,9 @@ final class CompletionInstallationTests: XCTestCase, TestSuite {
     private func cleanupCreatedFiles() throws {
         logger.info("Cleaning up created files")
         
-        for filePath in createdFiles {
-            if FileManager.default.fileExists(atPath: filePath) {
-                try? FileManager.default.removeItem(atPath: filePath)
-                logger.debug("Removed file: \(filePath)")
-            }
+        for filePath in createdFiles where FileManager.default.fileExists(atPath: filePath) {
+            try? FileManager.default.removeItem(atPath: filePath)
+            logger.debug("Removed file: \(filePath)")
         }
         
         createdFiles.removeAll()
