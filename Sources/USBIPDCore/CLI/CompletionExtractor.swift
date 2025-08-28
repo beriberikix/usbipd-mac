@@ -144,7 +144,7 @@ public class CompletionExtractor {
                 CompletionOption(
                     short: "f",
                     long: "foreground",
-                    description: "Run in foreground (don't daemonize)",
+                    description: "Run in foreground (do not daemonize)",
                     takesValue: false,
                     valueType: .none
                 ),
