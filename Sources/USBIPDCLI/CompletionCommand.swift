@@ -207,8 +207,6 @@ public class CompletionCommand: Command {
         let results = completionInstaller.installAll(data: completionData)
         let successCount = results.filter { $0.success }.count
         print("Successfully installed completions for \(successCount)/\(results.count) shells")
-        // displayInstallationSummary(summary: summary)
-        print("Installation temporarily disabled - API mismatch needs fixing")
         
         logger.info("Completion installation completed")
     }
@@ -236,8 +234,9 @@ public class CompletionCommand: Command {
         }
         
         // Uninstall completions
-        // TODO: Fix API mismatch - temporarily commented for compilation
-        print("Uninstallation temporarily disabled - API mismatch needs fixing")
+        let results = completionInstaller.uninstallAll()
+        let successCount = results.filter { $0.success }.count
+        print("Successfully uninstalled completions for \(successCount)/\(results.count) shells")
         
         logger.info("Completion uninstallation completed")
         
@@ -258,8 +257,6 @@ public class CompletionCommand: Command {
         for status in statuses {
             print("\(status.shell): \(status.isInstalled ? "Installed" : "Not installed")")
         }
-        // TODO: Fix API mismatch - temporarily commented for compilation
-        print("Status check temporarily disabled - API mismatch needs fixing")
         
         logger.info("Completion status check completed")
     }
