@@ -419,6 +419,11 @@ public class CompletionInstaller {
     ///   - targetPath: Target installation path
     /// - Throws: Installation errors
     private func installCompletionFile(from sourcePath: String, to targetPath: String) throws {
+        // Remove existing file if it exists (backup was already created in the calling method)
+        if FileManager.default.fileExists(atPath: targetPath) {
+            try FileManager.default.removeItem(atPath: targetPath)
+        }
+        
         try FileManager.default.copyItem(atPath: sourcePath, toPath: targetPath)
         
         // Set appropriate permissions
