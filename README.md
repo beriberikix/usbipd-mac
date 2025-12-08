@@ -1,3 +1,6 @@
+> [!WARNING]
+> This project needs approval from Apple to authorize USB driver access and will not work until approved. We have been waiting since August 23rd, 2025 for approval.
+
 # usbipd-mac
 
 A macOS implementation of the USB/IP protocol that allows sharing USB devices over IP networks.
