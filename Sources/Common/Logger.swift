@@ -23,7 +23,6 @@ public enum LogLevel: Int, CaseIterable, Comparable {
         case .critical: return "CRITICAL"
         }
     }
-    
 }
 
 /// Codable conformance for LogLevel.
