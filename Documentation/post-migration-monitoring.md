@@ -116,7 +116,6 @@ This document provides monitoring guidelines and status tracking for the homebre
 ### Rollback Scripts
 ```bash
 # Validate rollback capability
-ROLLBACK_LEVEL=configuration ./Scripts/validate-rollback.sh
 
 # Execute rollback if needed
 ./Scripts/rollback-release.sh --type configuration

@@ -55,7 +55,6 @@ Implementation of Homebrew distribution follows a phased approach that integrate
   - Add checksum validation for formula integrity
   - Commit with message: "feat: add Homebrew formula validation script"
   - Purpose: Ensure formula correctness before publication
-  - _Leverage: Scripts/validate-release-artifacts.sh_
   - _Requirements: 4.1_
 
 - [ ] 6. Create formula update automation script

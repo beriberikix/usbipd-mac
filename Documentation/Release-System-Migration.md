@@ -174,7 +174,6 @@ Continuously improve the automated system:
    gh run list --workflow=release.yml --limit=10
    
    # Analyze cache hit ratios and optimization opportunities
-   ./Scripts/benchmark-release-performance.sh --generate-report
    ```
 
 2. **Optimize Workflows**

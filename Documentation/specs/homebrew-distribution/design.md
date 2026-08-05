@@ -28,7 +28,6 @@ The implementation will add a `Formula/` directory to the existing project struc
 ### Existing Components to Leverage
 - **Release Automation Scripts**: `Scripts/prepare-release.sh` and existing GitHub Actions workflows will be extended to include Homebrew formula updates
 - **Build System**: Existing Swift Package Manager configuration in `Package.swift` provides the foundation for Homebrew formula build process
-- **Artifact Validation**: `Scripts/validate-release-artifacts.sh` will be extended to validate Homebrew formula correctness
 
 ### Integration Points
 - **GitHub Actions Release Workflow**: The existing `.github/workflows/release.yml` will be extended to automatically update the Homebrew formula in the same repository

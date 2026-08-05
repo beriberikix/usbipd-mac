@@ -249,7 +249,6 @@ gh release create v1.2.4 \
   ./artifacts/*
 
 # 3. Verify artifact integrity
-./Scripts/validate-release-artifacts.sh --artifacts-path ./artifacts
 ```
 
 ### Code Signing Failures

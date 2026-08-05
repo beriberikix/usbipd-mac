@@ -200,9 +200,7 @@ Located in `Scripts/` directory:
 - `validate-usb-entitlements.sh`: Measures which entitlement actually gates USB device claiming (macOS only, see `Documentation/development/entitlement-validation.md`)
 
 ### Release and Distribution Scripts
-- `test-homebrew-dispatch.sh`: Test repository dispatch workflow integration
 - `prepare-release.sh`: Comprehensive release preparation and validation
-- `validate-release-artifacts.sh`: Release artifact integrity verification
 - `rollback-release.sh`: Release rollback and cleanup utilities
 
 ### Usage Examples
@@ -216,13 +214,11 @@ swift test --parallel
 swift test --parallel
 
 # Test repository dispatch workflow
-./Scripts/test-homebrew-dispatch.sh
 
 # Prepare and validate release
 ./Scripts/prepare-release.sh --dry-run v1.2.3
 
 # Validate release artifacts
-./Scripts/validate-release-artifacts.sh --expected-version v1.2.3
 ```
 
 ## QEMU Testing Infrastructure
@@ -316,7 +312,6 @@ The release system uses a multi-stage automated pipeline:
 
 1. **Release Preparation** (`Scripts/prepare-release.sh`)
 2. **GitHub Actions Workflows** (`.github/workflows/`)
-3. **Artifact Validation** (`Scripts/validate-release-artifacts.sh`)
 4. **Rollback Utilities** (`Scripts/rollback-release.sh`)
 5. **Monitoring and Alerting** (Automated workflow monitoring)
 
@@ -507,16 +502,12 @@ Validate release artifacts for integrity, signatures, and compatibility:
 
 ```bash
 # Validate all release artifacts
-./Scripts/validate-release-artifacts.sh --artifacts-path ./release-artifacts
 
 # Validate specific version artifacts
-./Scripts/validate-release-artifacts.sh --expected-version v1.2.3
 
 # Skip signature validation (development/testing)
-./Scripts/validate-release-artifacts.sh --skip-signature-check
 
 # Comprehensive validation with verbose output
-./Scripts/validate-release-artifacts.sh --verbose
 ```
 
 #### Release Rollback and Recovery
@@ -598,10 +589,8 @@ Monitor release workflow performance and identify optimization opportunities:
 
 ```bash
 # Benchmark release workflow performance
-./Scripts/benchmark-release-performance.sh
 
 # Generate performance optimization report
-./Scripts/benchmark-release-performance.sh --generate-report
 ```
 
 #### Release Metrics and Monitoring

@@ -23,7 +23,6 @@ Use these commands to quickly assess the current state of the release system:
 
 ```bash
 # Check overall system health
-./Scripts/release-status-dashboard.sh --summary
 
 # Verify Git repository state
 git status
@@ -363,7 +362,6 @@ ls -la Scripts/ | grep -E "(prepare|validate|rollback)"
 
 # Verify script syntax
 bash -n Scripts/prepare-release.sh
-bash -n Scripts/validate-release-artifacts.sh
 
 # Check script dependencies
 which gh
@@ -379,7 +377,6 @@ chmod +x Scripts/*.sh
 
 # Repair specific scripts
 chmod +x Scripts/prepare-release.sh
-chmod +x Scripts/validate-release-artifacts.sh
 chmod +x Scripts/rollback-release.sh
 
 # Commit permission fixes
@@ -402,7 +399,6 @@ brew install gh  # GitHub CLI
 ```bash
 # Test script help output
 ./Scripts/prepare-release.sh --help
-./Scripts/validate-release-artifacts.sh --help
 
 # Test with dry-run
 ./Scripts/prepare-release.sh --dry-run v1.2.3
@@ -568,7 +564,6 @@ git commit -m "fix: improve test environment detection"
 swift test --parallel --verbose 2>&1 | grep "Test Case.*passed" | sort -k4 -n
 
 # Identify slow tests
-./Scripts/benchmark-release-performance.sh --test-analysis
 
 # Check timeout configurations
 grep -r "timeout" .github/workflows/
@@ -748,7 +743,6 @@ du -sh .build/
 top -pid $(pgrep swift)
 
 # Analyze build performance
-./Scripts/benchmark-release-performance.sh --build-analysis
 ```
 
 **Solutions:**
@@ -881,7 +875,6 @@ NEW_VERSION="v1.2.4"
 
 ```bash
 # Check current workflow status
-./Scripts/release-status-dashboard.sh --summary
 
 # Monitor specific workflow
 gh run watch [run-id]
@@ -895,13 +888,10 @@ gh run watch [run-id]
 
 ```bash
 # Benchmark current performance
-./Scripts/benchmark-release-performance.sh
 
 # Compare with historical data
-./Scripts/benchmark-release-performance.sh --compare
 
 # Generate performance report
-./Scripts/benchmark-release-performance.sh --report > performance-report.txt
 ```
 
 ### Health Checks
@@ -914,7 +904,6 @@ gh run watch [run-id]
 
 # Validate individual components
 ./Scripts/prepare-release.sh --health-check
-./Scripts/validate-release-artifacts.sh --health-check
 
 # Check documentation integrity
 find Documentation/ -name "*.md" -exec markdown-link-check {} \;
@@ -940,7 +929,6 @@ markdownlint Documentation/
 # Run security scanning tools
 
 # Performance benchmark
-./Scripts/benchmark-release-performance.sh --baseline
 ```
 
 #### Monthly Review Tasks
@@ -953,7 +941,6 @@ markdownlint Documentation/
 # Add new issues and solutions discovered
 
 # Review workflow performance metrics
-./Scripts/benchmark-release-performance.sh --monthly-report
 
 # Validate backup and recovery procedures
 # Test rollback capabilities
@@ -998,8 +985,6 @@ markdownlint Documentation/
 
 2. **Diagnostic Tools**:
    ```bash
-   ./Scripts/release-status-dashboard.sh --help
-   ./Scripts/benchmark-release-performance.sh --diagnostics
    ./Scripts/release-health-check.sh --verbose
    ```
 

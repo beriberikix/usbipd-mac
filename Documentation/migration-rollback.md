@@ -211,7 +211,6 @@ Create a script to validate formula integrity after rollback:
 
 ```bash
 #!/bin/bash
-# Scripts/validate-rollback.sh
 
 echo "🔍 Validating rollback procedures..."
 
@@ -267,7 +266,6 @@ echo "✅ All rollback validations passed"
 
 ```bash
 #!/bin/bash
-# Scripts/test-rollback-e2e.sh
 
 echo "🧪 Running end-to-end rollback validation..."
 
@@ -327,12 +325,8 @@ Before applying rollback in production:
 
 ```bash
 # Run validation suite
-chmod +x Scripts/validate-rollback.sh
-ROLLBACK_LEVEL=full ./Scripts/validate-rollback.sh
 
 # Run end-to-end testing
-chmod +x Scripts/test-rollback-e2e.sh
-ROLLBACK_LEVEL=full WEBHOOK_TOKEN=your_token ./Scripts/test-rollback-e2e.sh
 
 # Test formula installation
 brew tap beriberikix/usbipd-mac
