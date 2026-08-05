@@ -16,6 +16,11 @@ set -euo pipefail
 readonly SCRIPT_NAME="QEMU Test Orchestrator"
 readonly SCRIPT_VERSION="1.0.0"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# macOS has no GNU `timeout`; this provides it. Without it every timeout-guarded
+# check in this file fails as "command not found" and reports a test failure.
+# shellcheck source=Scripts/qemu/portable-timeout.sh
+source "$(dirname "${BASH_SOURCE[0]}")/portable-timeout.sh"
 readonly PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Dependencies
@@ -32,6 +37,11 @@ readonly RUN_DIR="$PROJECT_ROOT/tmp/qemu-run"
 readonly LOG_DIR="$PROJECT_ROOT/tmp/qemu-logs"
 readonly TEST_SESSION_ID="$(date +%Y%m%d_%H%M%S)_$$"
 readonly SESSION_LOG="$LOG_DIR/orchestrator_${TEST_SESSION_ID}.log"
+
+# The log helpers below tee into SESSION_LOG from their very first call, which happens
+# well before setup_environment() runs its own mkdir. Without this the script opened
+# with a "No such file or directory" from tee and lost every message up to setup.
+mkdir -p "$LOG_DIR"
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -227,9 +237,18 @@ run_basic_connectivity_test() {
     
     log_info "Test server started successfully (PID: $server_pid)"
     
-    # Basic connectivity test using netcat
+    # Basic connectivity test using netcat.
+    #
+    # This used to be `timeout 10 bash -c "echo | nc 127.0.0.1 PORT"`. That hangs: nc
+    # connects, writes, then waits for the peer to close, and a USB/IP server holds the
+    # connection open. With GNU timeout it would be killed after ten seconds and report
+    # the server unreachable; on macOS, which has no `timeout` at all, it failed
+    # instantly as "command not found". Either way a listening, reachable server was
+    # reported as a connectivity failure.
+    #
+    # -z asks only whether the port accepts a connection, which is what this test means.
     local connection_timeout=10
-    if timeout "$connection_timeout" bash -c "echo | nc 127.0.0.1 $test_server_port" >/dev/null 2>&1; then
+    if nc -z -w "$connection_timeout" 127.0.0.1 "$test_server_port" >/dev/null 2>&1; then
         log_success "Basic connectivity test passed"
         local test_result=0
     else
@@ -283,7 +302,11 @@ run_protocol_validation_test() {
     local validation_result=0
     if [[ -x "$VALIDATION_SCRIPT" ]]; then
         export TEST_SERVER_PORT="$test_server_port"
-        export TEST_SESSION_ID="$TEST_SESSION_ID"
+        # TEST_SESSION_ID is readonly, so re-assigning it here failed and, under
+        # `set -e`, aborted the rest of this branch — the protocol scenario reported
+        # success having run no validation at all. Exporting without assignment is
+        # legal for a readonly variable.
+        export TEST_SESSION_ID
         
         log_info "Running comprehensive protocol validation..."
         

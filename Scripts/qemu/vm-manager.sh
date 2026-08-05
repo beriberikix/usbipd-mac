@@ -9,6 +9,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# macOS has no GNU `timeout`; this provides it. Without it every timeout-guarded
+# check in this file fails as "command not found" and reports a test failure.
+# shellcheck source=Scripts/qemu/portable-timeout.sh
+source "$SCRIPT_DIR/portable-timeout.sh"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Enhanced error handling and cleanup
