@@ -275,7 +275,9 @@ jobs:
           echo "Verifying completion script content..."
           
           # Expected commands that should be in completion scripts
-          EXPECTED_COMMANDS=("help" "list" "bind" "unbind" "attach" "detach" "daemon" "install-system-extension" "diagnose" "completion")
+          # attach/detach were removed: usbipd is the USB/IP server, and both only ever
+          # threw operationNotSupported while appearing in help and completions.
+          EXPECTED_COMMANDS=("help" "list" "bind" "unbind" "daemon" "install-system-extension" "diagnose" "completion")
           
           for cmd in "${EXPECTED_COMMANDS[@]}"; do
             echo "Checking for command: $cmd"

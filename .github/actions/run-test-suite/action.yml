@@ -333,17 +333,32 @@ runs:
 
         # Count what actually ran, from the test output. Never estimate: an
         # invented number is what let a suite that executed nothing look healthy.
-        # Prefer XCTest's own summary line. Counting "Test Case ... passed|failed"
-        # lines under-reports badly with --parallel, which emits a line for failures
-        # but not for passes: a run of 422 tests with 35 failures was reported as
-        # "35 executed". Take the largest "Executed N tests" figure, which is the
-        # per-target totals followed by the overall total.
+        # swift test reports differently depending on --parallel, and neither format
+        # is a superset of the other:
+        #
+        #   serial:   "Executed 418 tests, with 0 failures ..."   plus a
+        #             "Test Case '-[...]' passed" line per test
+        #   parallel: neither of those. Progress only: "[418/418] Testing Suite/name"
+        #
+        # Counting "Test Case" lines under --parallel reported a 422-test run with 35
+        # failures as "35 executed" (only failures get a line). Reading only the
+        # "Executed N" summary reported 0 under --parallel, which tripped the
+        # no-tests-ran guard below on every CI run while the suite was green locally.
+        #
+        # Try each shape, most authoritative first.
         TESTS_RUN=$(grep -oE "Executed [0-9]+ test" "$TEST_LOG" \
                     | grep -oE "[0-9]+" | sort -n | tail -1 || true)
         TESTS_RUN=${TESTS_RUN:-0}
 
         if [ "$TESTS_RUN" -eq 0 ]; then
-          # No summary line (very old output format): fall back to counting cases.
+          # Parallel progress lines: take the denominator of "[n/total] Testing ...".
+          TESTS_RUN=$(grep -oE "^\[[0-9]+/[0-9]+\] Testing " "$TEST_LOG" \
+                      | grep -oE "/[0-9]+\]" | grep -oE "[0-9]+" | sort -n | tail -1 || true)
+          TESTS_RUN=${TESTS_RUN:-0}
+        fi
+
+        if [ "$TESTS_RUN" -eq 0 ]; then
+          # Last resort for older output formats.
           TESTS_RUN=$(grep -cE "^Test Case .* (passed|failed)" "$TEST_LOG" 2>/dev/null || true)
           TESTS_RUN=${TESTS_RUN:-0}
         fi
