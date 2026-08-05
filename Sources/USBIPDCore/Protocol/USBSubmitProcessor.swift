@@ -166,7 +166,9 @@ public class USBSubmitProcessor {
     
     /// Add URB to active tracking
     private func addActiveURB(_ urb: USBRequestBlock) async throws {
-        try urbQueue.sync {
+        // Barrier: this mutates shared state on a concurrent queue. Plain .sync
+        // lets writers run simultaneously and corrupts the dictionary.
+        try urbQueue.sync(flags: .barrier) {
             guard activeURBs[urb.seqnum] == nil else {
                 throw USBRequestError.duplicateRequest
             }
@@ -176,14 +178,18 @@ public class USBSubmitProcessor {
     
     /// Remove URB from active tracking
     private func removeActiveURB(_ seqnum: UInt32) async {
-        _ = urbQueue.sync {
+        // Barrier: this mutates shared state on a concurrent queue. Plain .sync
+        // lets writers run simultaneously and corrupts the dictionary.
+        _ = urbQueue.sync(flags: .barrier) {
             activeURBs.removeValue(forKey: seqnum)
         }
     }
     
     /// Update URB status
     private func updateURBStatus(_ seqnum: UInt32, status: URBStatus) async {
-        urbQueue.sync {
+        // Barrier: this mutates shared state on a concurrent queue. Plain .sync
+        // lets writers run simultaneously and corrupts the dictionary.
+        urbQueue.sync(flags: .barrier) {
             if var entry = activeURBs[seqnum] {
                 entry.status = status
                 activeURBs[seqnum] = entry
@@ -379,7 +385,9 @@ public class USBSubmitProcessor {
     
     /// Cancel URB by sequence number (for UNLINK support)
     public func cancelURB(_ seqnum: UInt32) async -> Bool {
-        return urbQueue.sync {
+        // Barrier: this mutates shared state on a concurrent queue. Plain .sync
+        // lets writers run simultaneously and corrupts the dictionary.
+        return urbQueue.sync(flags: .barrier) {
             guard var entry = activeURBs[seqnum] else {
                 return false
             }

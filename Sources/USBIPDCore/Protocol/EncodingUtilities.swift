@@ -297,8 +297,8 @@ public struct USBIPMessageDecoder {
         logger.debug("Decoding USB SUBMIT request", context: ["dataSize": data.count])
         
         // Validate minimum data length (header + command fields + setup)
-        guard data.count >= 56 else {
-            logger.error("Invalid data length for USB SUBMIT request", context: ["dataSize": data.count, "requiredSize": 56])
+        guard data.count >= USBIPProtocol.commandMessagePrefixSize else {
+            logger.error("Invalid data length for USB SUBMIT request", context: ["dataSize": data.count, "requiredSize": USBIPProtocol.commandMessagePrefixSize])
             throw USBIPProtocolError.invalidDataLength
         }
         
@@ -317,8 +317,8 @@ public struct USBIPMessageDecoder {
         logger.debug("Decoding USB SUBMIT response", context: ["dataSize": data.count])
         
         // Validate minimum data length (header + response fields + reserved)
-        guard data.count >= 52 else {
-            logger.error("Invalid data length for USB SUBMIT response", context: ["dataSize": data.count, "requiredSize": 52])
+        guard data.count >= USBIPProtocol.commandMessagePrefixSize else {
+            logger.error("Invalid data length for USB SUBMIT response", context: ["dataSize": data.count, "requiredSize": USBIPProtocol.commandMessagePrefixSize])
             throw USBIPProtocolError.invalidDataLength
         }
         
@@ -336,14 +336,14 @@ public struct USBIPMessageDecoder {
         logger.debug("Decoding USB UNLINK request", context: ["dataSize": data.count])
         
         // Validate minimum data length (header + command fields + reserved)
-        guard data.count >= 52 else {
-            logger.error("Invalid data length for USB UNLINK request", context: ["dataSize": data.count, "requiredSize": 52])
+        guard data.count >= USBIPProtocol.commandMessagePrefixSize else {
+            logger.error("Invalid data length for USB UNLINK request", context: ["dataSize": data.count, "requiredSize": USBIPProtocol.commandMessagePrefixSize])
             throw USBIPProtocolError.invalidDataLength
         }
         
         // Validate exact length for UNLINK request
-        guard data.count == 52 else {
-            logger.error("Invalid message format for USB UNLINK request", context: ["dataSize": data.count, "expectedSize": 52])
+        guard data.count == USBIPProtocol.commandMessagePrefixSize else {
+            logger.error("Invalid message format for USB UNLINK request", context: ["dataSize": data.count, "expectedSize": USBIPProtocol.commandMessagePrefixSize])
             throw USBIPProtocolError.invalidMessageFormat
         }
         
@@ -363,14 +363,14 @@ public struct USBIPMessageDecoder {
         logger.debug("Decoding USB UNLINK response", context: ["dataSize": data.count])
         
         // Validate minimum data length (header + response fields + reserved)
-        guard data.count >= 52 else {
-            logger.error("Invalid data length for USB UNLINK response", context: ["dataSize": data.count, "requiredSize": 52])
+        guard data.count >= USBIPProtocol.commandMessagePrefixSize else {
+            logger.error("Invalid data length for USB UNLINK response", context: ["dataSize": data.count, "requiredSize": USBIPProtocol.commandMessagePrefixSize])
             throw USBIPProtocolError.invalidDataLength
         }
         
         // Validate exact length for UNLINK response
-        guard data.count == 52 else {
-            logger.error("Invalid message format for USB UNLINK response", context: ["dataSize": data.count, "expectedSize": 52])
+        guard data.count == USBIPProtocol.commandMessagePrefixSize else {
+            logger.error("Invalid message format for USB UNLINK response", context: ["dataSize": data.count, "expectedSize": USBIPProtocol.commandMessagePrefixSize])
             throw USBIPProtocolError.invalidMessageFormat
         }
         

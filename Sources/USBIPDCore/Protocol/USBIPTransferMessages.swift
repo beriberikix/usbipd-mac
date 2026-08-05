@@ -12,9 +12,8 @@
 import Foundation
 import Common
 
-/// Size of the fixed prefix on every CMD_/RET_ message: 20-byte basic header plus
-/// a 28-byte command block.
-private let usbipCommandPrefixSize = 48
+/// Size of the fixed prefix on every CMD_/RET_ message.
+private let usbipCommandPrefixSize = USBIPProtocol.commandMessagePrefixSize
 
 /// Offset at which the command-specific block begins.
 private let usbipCommandBlockOffset = USBIPBasicHeader.encodedSize

@@ -7,6 +7,15 @@ import Foundation
 public enum USBIPProtocol {
     /// USB/IP protocol version
     public static let version: UInt16 = 0x0111 // Version 1.1.1
+
+    /// Fixed prefix on every CMD_/RET_ message: a 20-byte usbip_header_basic plus a
+    /// 28-byte command block. The block is 28 because `union u` in `struct
+    /// usbip_header` is sized by its largest member, usbip_header_cmd_submit
+    /// (5 x 4-byte fields + setup[8]); the unlink variants are padded out to match.
+    ///
+    /// Kept in one place because these sizes were previously duplicated as literals
+    /// across encode, decode and validation, and drifted apart.
+    public static let commandMessagePrefixSize = 48
     
     /// USB/IP message identifiers used for dispatch within this codebase.
     ///

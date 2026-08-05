@@ -129,14 +129,18 @@ public class USBUnlinkProcessor {
     
     /// Add unlink request to pending tracking
     private func addPendingUnlinkRequest(_ request: USBIPUnlinkRequest) async {
-        unlinkQueue.sync {
+        // Barrier: this mutates shared state on a concurrent queue. Plain .sync
+        // lets writers run simultaneously and corrupts the dictionary.
+        unlinkQueue.sync(flags: .barrier) {
             pendingUnlinks[request.seqnum] = request
         }
     }
     
     /// Remove unlink request from pending tracking
     private func removePendingUnlinkRequest(_ seqnum: UInt32) async {
-        _ = unlinkQueue.sync {
+        // Barrier: this mutates shared state on a concurrent queue. Plain .sync
+        // lets writers run simultaneously and corrupts the dictionary.
+        _ = unlinkQueue.sync(flags: .barrier) {
             pendingUnlinks.removeValue(forKey: seqnum)
         }
     }
@@ -264,7 +268,9 @@ public class USBUnlinkProcessor {
     
     /// Cancel all pending unlink requests (for cleanup)
     public func cancelAllPendingUnlinks() async -> [USBIPUnlinkRequest] {
-        return unlinkQueue.sync {
+        // Barrier: this mutates shared state on a concurrent queue. Plain .sync
+        // lets writers run simultaneously and corrupts the dictionary.
+        return unlinkQueue.sync(flags: .barrier) {
             let pending = Array(pendingUnlinks.values)
             pendingUnlinks.removeAll()
             return pending
