@@ -246,10 +246,22 @@ jobs:
           # Code sign binaries if certificates available
           if [ -n "$DEVELOPER_ID_CERTIFICATE" ]; then
             echo "🔒 Code signing release artifacts..."
-            # usbipd is the binary that submits the system extension for installation,
-            # so it carries com.apple.developer.system-extension.install. Hardened
-            # runtime is required for notarization.
-            codesign --sign "Developer ID Application" --entitlements "$ARTIFACTS_DIR/usbipd.entitlements" --options runtime --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
+            # usbipd carries com.apple.developer.system-extension.install, which is a
+            # RESTRICTED entitlement: AMFI kills a binary that claims it without a
+            # provisioning profile authorising it. Measured, not assumed — a binary
+            # signed with just that key and no profile exits 137 on launch.
+            #
+            # So the entitlements are only applied when a profile is present. Without
+            # one, sign exactly as before: hardened runtime for notarization, no
+            # entitlements, and a daemon that actually starts.
+            if [ -n "$DRIVERKIT_PROVISIONING_PROFILE" ]; then
+              echo "   signing usbipd with entitlements (provisioning profile present)"
+              codesign --sign "Developer ID Application" --entitlements "$ARTIFACTS_DIR/usbipd.entitlements" --options runtime --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
+            else
+              echo "   signing usbipd without entitlements (no provisioning profile)"
+              codesign --sign "Developer ID Application" --options runtime --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
+              echo "::warning::usbipd signed without entitlements. It cannot install the System Extension, but it will launch. Set DRIVERKIT_PROVISIONING_PROFILE to enable them."
+            fi
 
             # Sign system extension bundle
             if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
