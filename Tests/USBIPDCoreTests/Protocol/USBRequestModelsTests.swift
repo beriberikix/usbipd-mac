@@ -408,14 +408,17 @@ final class USBRequestModelsTests: XCTestCase {
         XCTAssertEqual(description, "USB device disconnected or not present")
     }
     
-    func testErrorDescriptionRequestFailed() {
-        let description = USBErrorMapping.errorDescription(for: USBStatus.requestFailed.rawValue)
-        XCTAssertEqual(description, "USB request failed")
-    }
-    
-    func testErrorDescriptionProtocolError() {
-        let description = USBErrorMapping.errorDescription(for: USBStatus.protocolError.rawValue)
-        XCTAssertEqual(description, "USB protocol error")
+    /// requestFailed, protocolError and busError are all EPROTO (-71) — USB/IP maps
+    /// them onto one code, so errorDescription cannot tell them apart. Asserting three
+    /// different strings only passed while the enum carried invented codes (-72
+    /// EMULTIHOP, -73 EDOTDOT) that no USB stack emits.
+    func testErrorDescriptionSharesEPROTOAcrossAliases() {
+        let expected = "USB request failed (protocol or bus error)"
+        XCTAssertEqual(USBErrorMapping.errorDescription(for: USBStatus.requestFailed.rawValue), expected)
+        XCTAssertEqual(USBErrorMapping.errorDescription(for: USBStatus.protocolError.rawValue), expected)
+        XCTAssertEqual(USBErrorMapping.errorDescription(for: USBStatus.busError.rawValue), expected)
+        XCTAssertEqual(USBStatus.protocolError.rawValue, -71)
+        XCTAssertEqual(USBStatus.busError.rawValue, -71)
     }
     
     func testErrorDescriptionMemoryError() {
@@ -426,11 +429,6 @@ final class USBRequestModelsTests: XCTestCase {
     func testErrorDescriptionInvalidRequest() {
         let description = USBErrorMapping.errorDescription(for: USBStatus.invalidRequest.rawValue)
         XCTAssertEqual(description, "Invalid USB request")
-    }
-    
-    func testErrorDescriptionBusError() {
-        let description = USBErrorMapping.errorDescription(for: USBStatus.busError.rawValue)
-        XCTAssertEqual(description, "USB bus error")
     }
     
     func testErrorDescriptionBufferError() {

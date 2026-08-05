@@ -139,25 +139,39 @@ public struct USBTransferResult {
 }
 
 /// USB status codes following USB specification and Linux USB/IP implementation
+/// USB completion status as carried in USBIP_RET_SUBMIT, using negative Linux errno
+/// values — the same convention the kernel's USB stack uses.
+///
+/// USB/IP maps several distinct conditions onto one errno: "device gone" and "no
+/// device" are both ENODEV, and protocol, bus and generic request failures are all
+/// EPROTO. A raw-value enum cannot hold duplicate raw values, and a previous revision
+/// worked around that by inventing unique-but-wrong codes — noDevice was -20
+/// (ENOTDIR), protocolError -72 (EMULTIHOP), busError -73 (EDOTDOT). Those are not
+/// USB errors at all, and any client reading them would have misinterpreted the
+/// transfer outcome.
+///
+/// The cases below carry the correct errno; the shared spellings are aliases.
 public enum USBStatus: Int32 {
     // Success
     case success = 0
-    
+
     // USB errors
-    case stall = -32        // Endpoint stalled
-    case timeout = -110     // Transfer timed out
-    case cancelled = -125   // Transfer cancelled
-    case shortPacket = -121 // Short packet detected
-    case deviceGone = -19   // Device disconnected
-    case noDevice = -20     // No device present
-    case requestFailed = -71 // Generic request failure
-    
-    // Protocol errors
-    case protocolError = -72
-    case memoryError = -12
-    case invalidRequest = -22
-    case busError = -73
-    case bufferError = -90
+    case stall = -32        // EPIPE — endpoint stalled
+    case timeout = -110     // ETIMEDOUT
+    case cancelled = -125   // ECANCELED
+    case shortPacket = -121 // EREMOTEIO
+    case deviceGone = -19   // ENODEV
+    case requestFailed = -71 // EPROTO
+    case memoryError = -12  // ENOMEM
+    case invalidRequest = -22 // EINVAL
+    case bufferError = -90  // EMSGSIZE
+
+    /// ENODEV. Same code as `deviceGone`; kept as a name for the "never present" case.
+    public static let noDevice = USBStatus.deviceGone
+    /// EPROTO. Same code as `requestFailed`.
+    public static let protocolError = USBStatus.requestFailed
+    /// EPROTO. Same code as `requestFailed`.
+    public static let busError = USBStatus.requestFailed
 }
 
 /// USB error handling utilities for IOKit to USB status mapping
@@ -228,18 +242,15 @@ public struct USBErrorMapping {
             return "USB transfer was cancelled"
         case .shortPacket:
             return "Short packet received"
-        case .deviceGone, .noDevice:
+        case .deviceGone:
             return "USB device disconnected or not present"
         case .requestFailed:
-            return "USB request failed"
-        case .protocolError:
-            return "USB protocol error"
+            // EPROTO also covers protocolError and busError, which share this code.
+            return "USB request failed (protocol or bus error)"
         case .memoryError:
             return "Memory allocation error"
         case .invalidRequest:
             return "Invalid USB request"
-        case .busError:
-            return "USB bus error"
         case .bufferError:
             return "USB buffer error"
         default:
