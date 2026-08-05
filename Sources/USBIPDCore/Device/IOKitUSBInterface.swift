@@ -27,6 +27,29 @@ private let kIOUSBInterfaceInterfaceID300 = CFUUIDGetConstantUUIDWithBytes(nil,
     0xbc, 0xea, 0xad, 0xdc, 0x88, 0x4d, 0x4f, 0x27,
     0x83, 0x40, 0x36, 0xd6, 0x9f, 0xab, 0x90, 0xf6)
 
+/// IOKit's IOUSBLib interfaces are COM-style. QueryInterface hands back a pointer TO
+/// a pointer to the interface struct, and every method takes that handle as its own
+/// first argument — the C idiom is `(*handle)->Method(handle)`.
+///
+/// Binding the QueryInterface result one level too shallow (as the struct rather than
+/// as a pointer to it) reads every function pointer from the wrong offset, so the first
+/// call jumps to a garbage address. The symptom is SIGBUS / EXC_ARM_DA_ALIGN with a
+/// destroyed stack, on first contact with real hardware.
+typealias USBDeviceHandle = UnsafeMutablePointer<UnsafeMutablePointer<IOUSBDeviceInterface300>?>
+typealias USBInterfaceHandle = UnsafeMutablePointer<UnsafeMutablePointer<IOUSBInterfaceInterface300>?>
+
+extension UnsafeMutablePointer where Pointee == UnsafeMutablePointer<IOUSBDeviceInterface300>? {
+    /// The vtable behind the handle. Non-nil for any handle this file constructs:
+    /// handles are only ever built from a QueryInterface that returned S_OK with a
+    /// non-nil result, and are discarded on release.
+    var vtable: IOUSBDeviceInterface300 { return pointee!.pointee }
+}
+
+extension UnsafeMutablePointer where Pointee == UnsafeMutablePointer<IOUSBInterfaceInterface300>? {
+    /// See the device-handle counterpart above.
+    var vtable: IOUSBInterfaceInterface300 { return pointee!.pointee }
+}
+
 /// IOKit wrapper for USB interface communication
 public final class IOKitUSBInterface: @unchecked Sendable {
     
@@ -37,10 +60,10 @@ public final class IOKitUSBInterface: @unchecked Sendable {
     private let logger: Logger
     
     /// IOKit USB device interface reference  
-    private var deviceInterface: UnsafeMutablePointer<IOUSBDeviceInterface300>?
+    private var deviceInterface: USBDeviceHandle?
     
     /// IOKit USB interface references keyed by endpoint
-    private var interfaceRefs: [UInt8: UnsafeMutablePointer<IOUSBInterfaceInterface300>] = [:]
+    private var interfaceRefs: [UInt8: USBInterfaceHandle] = [:]
     
     /// Track interface open state
     private var isOpen: Bool = false
@@ -99,7 +122,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             }
             
             // Open the USB device
-            let openResult = deviceInterface.pointee.USBDeviceOpen(deviceInterface)
+            let openResult = deviceInterface.vtable.USBDeviceOpen(deviceInterface)
             guard openResult == kIOReturnSuccess else {
                 self.logger.error("Failed to open USB device: \(openResult)")
                 throw IOKitError.operationFailed("USBDeviceOpen", openResult)
@@ -123,23 +146,23 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         return try executeIOKitOperation(operation: "close interface") {
             // Close all interface references
             for (endpoint, interface) in self.interfaceRefs {
-                let result = interface.pointee.USBInterfaceClose(interface)
+                let result = interface.vtable.USBInterfaceClose(interface)
                 if result != kIOReturnSuccess {
                     self.logger.warning("Failed to close interface endpoint \(endpoint): \(result)")
                 }
                 // Release the interface
-                _ = interface.pointee.Release(interface)
+                _ = interface.vtable.Release(interface)
             }
             self.interfaceRefs.removeAll()
             
             // Close device interface
             if let deviceInterface = self.deviceInterface {
-                let result = deviceInterface.pointee.USBDeviceClose(deviceInterface)
+                let result = deviceInterface.vtable.USBDeviceClose(deviceInterface)
                 if result != kIOReturnSuccess {
                     self.logger.warning("Failed to close device interface: \(result)")
                 }
                 // Release the device interface
-                _ = deviceInterface.pointee.Release(deviceInterface)
+                _ = deviceInterface.vtable.Release(deviceInterface)
                 self.deviceInterface = nil
             }
             
@@ -318,7 +341,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         return serviceRef
     }
     
-    private func createDevicePluginInterface() throws -> UnsafeMutablePointer<IOUSBDeviceInterface300>? {
+    private func createDevicePluginInterface() throws -> USBDeviceHandle? {
         guard deviceRef != 0 else {
             throw IOKitError.invalidReference("Invalid device reference")
         }
@@ -358,7 +381,8 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             throw IOKitError.interfaceCreationFailed("QueryInterface for device", IOReturn(queryResult ?? -2147483640))
         }
         
-        let usbDeviceInterface = deviceInterfacePtr.assumingMemoryBound(to: IOUSBDeviceInterface300.self)
+        let usbDeviceInterface = deviceInterfacePtr.assumingMemoryBound(
+            to: UnsafeMutablePointer<IOUSBDeviceInterface300>?.self)
         logger.debug("Successfully created device plugin interface")
         
         return usbDeviceInterface
@@ -377,7 +401,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         interfaceRequest.bAlternateSetting = UInt16(kIOUSBFindInterfaceDontCare)
         
         var interfaceIterator: io_iterator_t = 0
-        let iteratorResult = deviceInterface.pointee.CreateInterfaceIterator(deviceInterface, &interfaceRequest, &interfaceIterator)
+        let iteratorResult = deviceInterface.vtable.CreateInterfaceIterator(deviceInterface, &interfaceRequest, &interfaceIterator)
         
         guard iteratorResult == kIOReturnSuccess else {
             logger.error("Failed to create interface iterator: \(iteratorResult)")
@@ -445,13 +469,14 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             throw IOKitError.interfaceCreationFailed("QueryInterface for interface", IOReturn(queryResult ?? -2147483640))
         }
         
-        let interface = interfacePtr.assumingMemoryBound(to: IOUSBInterfaceInterface300.self)
+        let interface = interfacePtr.assumingMemoryBound(
+            to: UnsafeMutablePointer<IOUSBInterfaceInterface300>?.self)
         
         // Open the interface
-        let openResult = interface.pointee.USBInterfaceOpen(interface)
+        let openResult = interface.vtable.USBInterfaceOpen(interface)
         guard openResult == kIOReturnSuccess else {
             logger.error("Failed to open USB interface: \(openResult)")
-            _ = interface.pointee.Release(interface)
+            _ = interface.vtable.Release(interface)
             throw IOKitError.operationFailed("USBInterfaceOpen", openResult)
         }
         
@@ -539,7 +564,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         
         if let deviceInterface = self.deviceInterface {
             // Perform the actual IOKit device request
-            result = deviceInterface.pointee.DeviceRequest(deviceInterface, &request)
+            result = deviceInterface.vtable.DeviceRequest(deviceInterface, &request)
             
             if result == kIOReturnSuccess {
                 logger.debug("Control transfer completed successfully: \(request.wLenDone) bytes transferred")
@@ -610,7 +635,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(bufferLength))
             defer { buffer.deallocate() }
             
-            result = interface.pointee.ReadPipe(interface, pipeRef, buffer, &actualLength)
+            result = interface.vtable.ReadPipe(interface, pipeRef, buffer, &actualLength)
             
             if result == kIOReturnSuccess && actualLength > 0 {
                 transferData = Data(bytes: buffer, count: Int(actualLength))
@@ -628,7 +653,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
                 actualLength = UInt32(data.count)
                 result = data.withUnsafeBytes { bytes in
                     let buffer = UnsafeMutableRawPointer(mutating: bytes.baseAddress!)
-                    return interface.pointee.WritePipe(interface, pipeRef, buffer, actualLength)
+                    return interface.vtable.WritePipe(interface, pipeRef, buffer, actualLength)
                 }
                 
                 if result == kIOReturnSuccess {
@@ -695,7 +720,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             defer { buffer.deallocate() }
             
             // Use timeout-based read for interrupt transfers to handle periodic polling
-            result = interface.pointee.ReadPipeTO(interface, pipeRef, buffer, &actualLength, timeout, timeout)
+            result = interface.vtable.ReadPipeTO(interface, pipeRef, buffer, &actualLength, timeout, timeout)
             
             if result == kIOReturnSuccess && actualLength > 0 {
                 transferData = Data(bytes: buffer, count: Int(actualLength))
@@ -715,7 +740,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
                 actualLength = UInt32(data.count)
                 result = data.withUnsafeBytes { bytes in
                     let buffer = UnsafeMutableRawPointer(mutating: bytes.baseAddress!)
-                    return interface.pointee.WritePipeTO(interface, pipeRef, buffer, actualLength, timeout, timeout)
+                    return interface.vtable.WritePipeTO(interface, pipeRef, buffer, actualLength, timeout, timeout)
                 }
                 
                 if result == kIOReturnSuccess {
@@ -804,7 +829,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             // If startFrame is 0, get current frame and schedule for near future
             if actualStartFrame == 0 {
                 var currentFrame: UInt64 = 0
-                let frameResult = interface.pointee.GetBusFrameNumber(interface, &currentFrame, nil)
+                let frameResult = interface.vtable.GetBusFrameNumber(interface, &currentFrame, nil)
                 if frameResult == kIOReturnSuccess {
                     actualStartFrame = currentFrame + 10  // Schedule 10 frames in future
                 } else {
@@ -813,7 +838,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             }
             
             // Perform isochronous read
-            result = interface.pointee.ReadIsochPipeAsync(
+            result = interface.vtable.ReadIsochPipeAsync(
                 interface,
                 pipeRef,
                 buffer,
@@ -867,7 +892,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
                 // If startFrame is 0, get current frame and schedule for near future
                 if actualStartFrame == 0 {
                     var currentFrame: UInt64 = 0
-                    let frameResult = interface.pointee.GetBusFrameNumber(interface, &currentFrame, nil)
+                    let frameResult = interface.vtable.GetBusFrameNumber(interface, &currentFrame, nil)
                     if frameResult == kIOReturnSuccess {
                         actualStartFrame = currentFrame + 10  // Schedule 10 frames in future
                     } else {
@@ -878,7 +903,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
                 actualLength = UInt32(data.count)
                 result = data.withUnsafeBytes { bytes in
                     let buffer = UnsafeMutableRawPointer(mutating: bytes.baseAddress!)
-                    return interface.pointee.WriteIsochPipeAsync(
+                    return interface.vtable.WriteIsochPipeAsync(
                         interface,
                         pipeRef,
                         buffer,
@@ -972,11 +997,11 @@ public final class IOKitUSBInterface: @unchecked Sendable {
     }
     
     /// Internal method to cancel transfers on a specific interface reference
-    private func cancelTransfersOnInterface(_ interface: UnsafeMutablePointer<IOUSBInterfaceInterface300>, endpoint: UInt8) throws {
+    private func cancelTransfersOnInterface(_ interface: USBInterfaceHandle, endpoint: UInt8) throws {
         let pipeRef = endpoint & 0x7F  // Remove direction bit
         
         // Abort transfers on the specific pipe
-        let result = interface.pointee.AbortPipe(interface, pipeRef)
+        let result = interface.vtable.AbortPipe(interface, pipeRef)
         
         if result != kIOReturnSuccess {
             logger.warning("AbortPipe failed for endpoint 0x\(String(endpoint, radix: 16)): \(result)")
@@ -986,7 +1011,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         }
         
         // Clear any stall condition that might have been caused by the abort
-        let clearResult = interface.pointee.ClearPipeStall(interface, pipeRef)
+        let clearResult = interface.vtable.ClearPipeStall(interface, pipeRef)
         if clearResult != kIOReturnSuccess {
             logger.warning("ClearPipeStall failed for endpoint 0x\(String(endpoint, radix: 16)): \(clearResult)")
         }
