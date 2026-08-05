@@ -25,15 +25,18 @@ The project is structured as a multi-target Swift package:
 
 ### Test Structure
 
-The project uses an environment-based testing strategy with three distinct test environments:
+`Package.swift` declares two test targets, and they are the whole suite:
 
-- **DevelopmentTests**: Fast unit tests with comprehensive mocking (<1 minute execution)
-- **CITests**: Automated tests without hardware dependencies (CI-compatible, <3 minutes)
-- **ProductionTests**: Comprehensive validation with QEMU and hardware integration (<10 minutes)
+- **Tests/USBIPDCoreTests/** — core protocol, device, and network tests
+- **Tests/USBIPDCLITests/** — CLI behaviour
 
-Shared infrastructure:
-- **Tests/SharedUtilities/**: Common test fixtures, assertion helpers, and environment configuration
-- **Tests/TestMocks/**: Environment-specific mock implementations
+Both also compile **Tests/SharedUtilities/** via their `sources:` list.
+
+Three further targets are declared but commented out as "temporarily disabled":
+`IntegrationTests`, `SystemExtensionTests`, `QEMUIntegrationTests`. Alongside them
+`Tests/TestMocks/`, `Tests/ProductionTests/` and `Tests/PerformanceTests/` are compiled
+by nothing. None of it has built in about a year — do not cite coverage from it without
+reviving the target first. See `Documentation/development/testing-strategy.md`.
 
 ## Development Commands
 
@@ -531,36 +534,11 @@ Handle failed releases and cleanup incomplete artifacts:
 
 ### Release Testing and Validation
 
-#### End-to-End Release Testing
-The project includes comprehensive end-to-end release testing (`Tests/Integration/ReleaseEndToEndTests.swift`):
-
-- **Phase 1**: Source code readiness validation
-- **Phase 2**: Build system validation  
-- **Phase 3**: Artifact generation testing
-- **Phase 4**: Code signing validation
-- **Phase 5**: Artifact integrity verification
-- **Phase 6**: Distribution simulation
-- **Phase 7**: QEMU integration testing
-- **Phase 8**: Rollback capability testing
-
-```bash
-# Run end-to-end release tests
-swift test --filter ReleaseEndToEndTests
-
-# Run with specific environment
-TEST_ENVIRONMENT=production swift test --filter ReleaseEndToEndTests
-```
-
-#### Release Workflow Testing
-Validate GitHub Actions workflows locally using act framework (`Tests/ReleaseWorkflowTests/`):
-
-```bash
-# Test release workflows (requires act installation)
-swift test --filter ReleaseWorkflowTests
-
-# Generate workflow validation report
-./Scripts/generate-workflow-test-report.sh
-```
+Release behaviour is validated by running the workflows themselves, not by asserting on
+them from XCTest. `Tests/Integration/`, `Tests/ReleaseWorkflowTests/`,
+`Tests/ReleaseValidation/` and `Tests/Distribution/` previously held ~8,300 lines of
+Swift that inspected YAML, shell scripts and `brew` output through the `act` framework.
+They were compiled by no target, had never run, and were removed in 2026-08.
 
 ### Release Security and Code Signing
 

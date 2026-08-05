@@ -39,7 +39,6 @@ The release automation consists of three main GitHub Actions workflows:
   - Environment checks and prerequisite validation
   - Safe release preparation before automation
 
-- **Release Validation Scripts** (`Tests/ReleaseWorkflowTests/`)
   - Comprehensive testing for GitHub Actions workflows
   - Validation of all trigger conditions and scenarios
 
@@ -358,7 +357,6 @@ swift test --parallel
 
 #### Workflow Validation Tests
 Comprehensive testing of GitHub Actions workflows:
-- **Location**: `Tests/ReleaseWorkflowTests/`
 - **Framework**: Uses `act` for local GitHub Actions testing
 - **Coverage**: All trigger conditions, error scenarios, artifact generation
 

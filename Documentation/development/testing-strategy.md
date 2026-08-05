@@ -40,12 +40,16 @@ The scripts and the CI step that called them were removed in August 2026.
 Several directories under `Tests/` are referenced by no target and therefore never
 build. They are retained pending triage, not deleted, but nothing in them is exercised:
 
-- `Tests/CITests.swift` (a loose file at the `Tests/` root) and `Tests/CITests/`
 - `Tests/IntegrationTests/`, `Tests/SystemExtensionTests/`, `Tests/QEMUIntegrationTests/`
   — declared in `Package.swift` but commented out as "temporarily disabled for CI stability"
-- `Tests/Integration/`, `Tests/ProductionTests/`, `Tests/PerformanceTests/`,
-  `Tests/Distribution/`, `Tests/ReleaseValidation/`, `Tests/ReleaseWorkflowTests/`,
-  `Tests/TestMocks/` — referenced by nothing at all
+- `Tests/TestMocks/`, `Tests/ProductionTests/`, `Tests/PerformanceTests/` — referenced by
+  nothing at all; `TestMocks` is needed by the disabled targets above
+
+Removed in 2026-08: `Tests/CITests.swift` (21 of its 24 tests already existed in
+`USBIPDCoreTests`), and `Tests/Integration/`, `Tests/ReleaseWorkflowTests/`,
+`Tests/ReleaseValidation/`, `Tests/Distribution/` — ~8,300 lines that asserted on YAML,
+shell scripts and `brew` output from XCTest via the `act` framework. Release behaviour is
+better validated by running the workflows than by inspecting them from Swift.
 
 Do not cite coverage from these. If you revive one, add it as a real `testTarget` and
 confirm it compiles against current APIs first.
