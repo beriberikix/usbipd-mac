@@ -427,6 +427,8 @@ Reusable workflow components that eliminate duplication:
 
 The project uses a repository dispatch pattern to automatically update the Homebrew tap repository when new releases are published.
 
+The formula in the tap is `Formula/usbip.rb` (class `Usbip`, installed with `brew install usbip`) — not `usbipd-mac.rb`. Several documents under `Documentation/` still use the wrong filename; the tap's own scripts are the authority.
+
 #### Repository Dispatch Workflow
 
 The main repository (`usbipd-mac`) triggers updates to the tap repository (`homebrew-usbipd-mac`) using GitHub's repository dispatch events:
@@ -490,13 +492,13 @@ Common issues and solutions:
    - Check network connectivity and GitHub release availability
 
 3. **Formula Syntax Errors**:
-   - Review Ruby syntax using `ruby -c Formula/usbipd-mac.rb`
+   - Review Ruby syntax using `ruby -c Formula/usbip.rb`
    - Check for proper escaping of special characters
    - Validate version format and URL structure
 
 4. **Rollback Scenarios**:
    - Repository automatically rolls back to previous formula on failure
-   - Manual rollback: `git checkout HEAD~1 -- Formula/usbipd-mac.rb`
+   - Manual rollback: `git checkout HEAD~1 -- Formula/usbip.rb`
    - Issue creation provides detailed failure context for investigation
 
 #### Testing and Validation Scripts
