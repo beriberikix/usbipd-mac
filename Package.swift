@@ -43,6 +43,7 @@ let package = Package(
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
+            exclude: ["SystemExtension/README.md"],
             linkerSettings: [
                 .linkedFramework("Security")
             ]),
