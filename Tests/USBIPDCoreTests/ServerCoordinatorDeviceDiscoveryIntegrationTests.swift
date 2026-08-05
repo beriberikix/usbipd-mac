@@ -59,6 +59,31 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
     
     // MARK: - Device Discovery Integration Tests
     
+    // MARK: - Async callback helpers
+    //
+    // IOKitDeviceDiscovery delivers device events with DispatchQueue.main.async, so
+    // anything asserted immediately after a simulate...() call races that dispatch
+    // and loses. Thread.sleep does not help — it blocks the main thread, so the main
+    // queue cannot drain and the block never runs at all. These pump the run loop
+    // instead, which lets the queue deliver.
+
+    /// Spin the run loop until `condition` holds or `timeout` elapses.
+    private func waitUntil(timeout: TimeInterval = 2.0, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        return condition()
+    }
+
+    /// Give the main queue a chance to drain for roughly `interval`.
+    private func pumpMainQueue(for interval: TimeInterval) {
+        let deadline = Date().addingTimeInterval(interval)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+    }
+
     func testServerCoordinatorIntegrationWithIOKitDeviceDiscovery() throws {
         // Given: Server coordinator with IOKit device discovery
         var deviceConnectedCallbackTriggered = false
@@ -94,7 +119,7 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         mockIOKitInterface.simulateDeviceConnection(testDevice)
         
         // Then: Device connection callback should be triggered
-        XCTAssertTrue(deviceConnectedCallbackTriggered, "Device connection callback should be triggered")
+        XCTAssertTrue(waitUntil { deviceConnectedCallbackTriggered }, "Device connection callback should be triggered")
         XCTAssertNotNil(connectedDevice, "Connected device should be captured")
         XCTAssertEqual(connectedDevice?.busID, testDevice.busID, "Connected device bus ID should match")
         XCTAssertEqual(connectedDevice?.deviceID, testDevice.deviceID, "Connected device device ID should match")
@@ -105,7 +130,7 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         mockIOKitInterface.simulateDeviceDisconnection(testDevice)
         
         // Then: Device disconnection callback should be triggered
-        XCTAssertTrue(deviceDisconnectedCallbackTriggered, "Device disconnection callback should be triggered")
+        XCTAssertTrue(waitUntil { deviceDisconnectedCallbackTriggered }, "Device disconnection callback should be triggered")
         XCTAssertNotNil(disconnectedDevice, "Disconnected device should be captured")
         XCTAssertEqual(disconnectedDevice?.busID, testDevice.busID, "Disconnected device bus ID should match")
         XCTAssertEqual(disconnectedDevice?.deviceID, testDevice.deviceID, "Disconnected device device ID should match")
@@ -145,15 +170,15 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         try serverCoordinator.start()
         
         // Give the notification system time to set up
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         // Simulate connection of all devices
         mockIOKitInterface.simulateDeviceConnection(testDevice1)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         mockIOKitInterface.simulateDeviceConnection(testDevice2)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         mockIOKitInterface.simulateDeviceConnection(testDevice3)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         // Then: All device connections should be captured
         XCTAssertEqual(connectedDevices.count, 3, "Should capture all device connections")
@@ -168,9 +193,9 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         
         // Simulate disconnection of some devices
         mockIOKitInterface.simulateDeviceDisconnection(testDevice1)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         mockIOKitInterface.simulateDeviceDisconnection(testDevice3)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         // Then: Disconnections should be captured
         XCTAssertEqual(disconnectedDevices.count, 2, "Should capture device disconnections")
@@ -201,7 +226,7 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         }
         
         mockIOKitInterface.simulateDeviceConnection(testDevice)
-        XCTAssertTrue(deviceEventReceived, "Device notification system should be active")
+        XCTAssertTrue(waitUntil { deviceEventReceived }, "Device notification system should be active")
         
         // When: Stopping server coordinator
         XCTAssertNoThrow(try serverCoordinator.stop(), "Server should stop successfully")
@@ -339,12 +364,12 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         lifecycleEvents.append("server_started")
         
         // Give the notification system time to set up
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         mockIOKitInterface.simulateDeviceConnection(testDevice)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         mockIOKitInterface.simulateDeviceDisconnection(testDevice)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         try serverCoordinator.stop()
         lifecycleEvents.append("server_stopped")
@@ -375,11 +400,11 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         try serverCoordinator.start()
         
         // Give the notification system time to set up
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         // Simulate device connection
         mockIOKitInterface.simulateDeviceConnection(testDevice)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         // When: Simulating client connection and device list request
         let mockClient = MockClientConnection()
@@ -390,7 +415,7 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         
         // Simulate client sending device list request
         mockClient.simulateDataReceived(deviceListRequest)
-        Thread.sleep(forTimeInterval: 0.1)
+        pumpMainQueue(for: 0.1)
         
         // Then: Request processor should use device discovery to respond
         XCTAssertTrue(mockClient.sendCalled, "Should send response to client")

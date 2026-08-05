@@ -284,19 +284,23 @@ private func deviceAddedCallback(
     }
     
     let discovery = Unmanaged<IOKitDeviceDiscovery>.fromOpaque(refCon).takeUnretainedValue()
-    
-    // Process all devices in the iterator
-    var service = IOIteratorNext(iterator)
+
+    // Drain through discovery.ioKit rather than the global IOIteratorNext. This is a
+    // free C function, so it is easy to reach for the real API here — but that
+    // bypasses the injected IOKitInterface and silently defeats every test using a
+    // mock: the real IOIteratorNext returns 0 for a mock iterator value, the loop
+    // body never executes, and no device callback is ever delivered.
+    var service = discovery.ioKit.iteratorNext(iterator)
     while service != 0 {
         let currentService = service
-        
+
         // Handle the device addition on the discovery's queue
         discovery.queue.async {
             discovery.handleDeviceAdded(currentService)
         }
-        
-        IOObjectRelease(service)
-        service = IOIteratorNext(iterator)
+
+        _ = discovery.ioKit.objectRelease(service)
+        service = discovery.ioKit.iteratorNext(iterator)
     }
 }
 
@@ -314,7 +318,7 @@ private func deviceRemovedCallback(
     let discovery = Unmanaged<IOKitDeviceDiscovery>.fromOpaque(refCon).takeUnretainedValue()
     
     // Process all devices in the iterator
-    var service = IOIteratorNext(iterator)
+    var service = discovery.ioKit.iteratorNext(iterator)
     while service != 0 {
         let currentService = service
         
@@ -323,7 +327,7 @@ private func deviceRemovedCallback(
             discovery.handleDeviceRemoved(currentService)
         }
         
-        IOObjectRelease(service)
-        service = IOIteratorNext(iterator)
+        _ = discovery.ioKit.objectRelease(service)
+        service = discovery.ioKit.iteratorNext(iterator)
     }
 }
