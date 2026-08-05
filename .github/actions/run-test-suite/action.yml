@@ -98,29 +98,15 @@ runs:
             ;;
         esac
         
-        # Check for required scripts
-        SCRIPT_NAME=""
-        case "${{ inputs.test-environment }}" in
-          development)
-            SCRIPT_NAME="Scripts/run-development-tests.sh"
-            ;;
-          ci)
-            SCRIPT_NAME="Scripts/run-ci-tests.sh"
-            ;;
-          production)
-            SCRIPT_NAME="Scripts/run-production-tests.sh"
-            ;;
-        esac
-        
-        if [ ! -f "$SCRIPT_NAME" ]; then
-          echo "::error title=Script Missing::Test script not found: $SCRIPT_NAME"
+        # Confirm the package actually declares test targets. Without this the run
+        # can succeed while executing nothing, which is exactly how the previous
+        # tier-script arrangement stayed green for a year.
+        if ! grep -q "testTarget" Package.swift; then
+          echo "::error title=No Test Targets::Package.swift declares no testTarget. Nothing would be executed."
           exit 1
         fi
-        
-        # Make script executable
-        chmod +x "$SCRIPT_NAME"
-        echo "✅ Test script validated: $SCRIPT_NAME"
-        
+        echo "✅ Package.swift declares test targets"
+
         # Check Swift installation
         if ! command -v swift >/dev/null 2>&1; then
           echo "::error title=Swift Missing::Swift is not installed or not in PATH"
@@ -294,77 +280,26 @@ runs:
         CAPABILITIES=""
         TESTS_RUN=0
         
-        # Determine script and arguments
-        case "${{ inputs.test-environment }}" in
-          development)
-            SCRIPT="./Scripts/run-development-tests.sh"
-            SCRIPT_ARGS=""
-            
-            # Add development-specific arguments
-            if [ "${{ inputs.timeout-seconds }}" != "180" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --timeout ${{ inputs.timeout-seconds }}"
-            fi
-            
-            # Add extra arguments
-            if [ -n "${{ inputs.extra-args }}" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS ${{ inputs.extra-args }}"
-            fi
-            ;;
-            
-          ci)
-            SCRIPT="./Scripts/run-ci-tests.sh"
-            SCRIPT_ARGS=""
-            
-            # Add CI-specific arguments
-            if [ "${{ inputs.timeout-seconds }}" != "180" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --timeout ${{ inputs.timeout-seconds }}"
-            fi
-            
-            if [ "$ENABLE_QEMU_TESTS" != "true" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --no-qemu"
-            fi
-            
-            # Add extra arguments
-            if [ -n "${{ inputs.extra-args }}" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS ${{ inputs.extra-args }}"
-            fi
-            ;;
-            
-          production)
-            SCRIPT="./Scripts/run-production-tests.sh"
-            SCRIPT_ARGS=""
-            
-            # Add production-specific arguments
-            if [ "${{ inputs.timeout-seconds }}" != "600" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --timeout ${{ inputs.timeout-seconds }}"
-            fi
-            
-            if [ "$ENABLE_HARDWARE_TESTS" != "true" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --no-hardware"
-            fi
-            
-            if [ "$ENABLE_QEMU_TESTS" != "true" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --no-qemu"
-            fi
-            
-            if [ "$ENABLE_SYSTEM_EXTENSION_TESTS" != "true" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --no-system-extension"
-            fi
-            
-            if [ "${{ inputs.parallel-execution }}" = "true" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS --parallel"
-            fi
-            
-            # Add extra arguments
-            if [ -n "${{ inputs.extra-args }}" ]; then
-              SCRIPT_ARGS="$SCRIPT_ARGS ${{ inputs.extra-args }}"
-            fi
-            ;;
-        esac
-        
-        echo "🚀 Executing: $SCRIPT $SCRIPT_ARGS"
-        
-        # Execute test script with timeout
+        # Run the tests directly.
+        #
+        # This previously shelled out to Scripts/run-{development,ci,production}-tests.sh,
+        # each of which ran `swift test --filter <Tier>` against tier names that are not
+        # build targets in Package.swift. The filters matched nothing, swift test exited
+        # 0, and the job went green having executed no tests. The reported count was
+        # hardcoded ("~50" for ci), so the summary looked plausible for a year.
+        #
+        # Everything below runs the real targets and counts what actually ran.
+        SWIFT_CONFIG="${{ inputs.swift-configuration }}"
+        TEST_ARGS="--configuration $SWIFT_CONFIG"
+
+        if [ "${{ inputs.parallel-execution }}" = "true" ]; then
+          TEST_ARGS="$TEST_ARGS --parallel"
+        fi
+
+        if [ -n "${{ inputs.extra-args }}" ]; then
+          TEST_ARGS="$TEST_ARGS ${{ inputs.extra-args }}"
+        fi
+
         if command -v timeout >/dev/null 2>&1; then
           TIMEOUT_CMD="timeout ${{ inputs.timeout-seconds }}s"
         elif command -v gtimeout >/dev/null 2>&1; then
@@ -373,83 +308,67 @@ runs:
           echo "⚠️ No timeout command available, running without timeout"
           TIMEOUT_CMD=""
         fi
-        
-        # Run the test script
-        if [ -n "$TIMEOUT_CMD" ]; then
-          if $TIMEOUT_CMD $SCRIPT $SCRIPT_ARGS; then
-            echo "✅ Test suite execution completed successfully"
-            RESULT="success"
-          else
-            EXIT_CODE=$?
-            if [ $EXIT_CODE -eq 124 ]; then
-              echo "::error title=Test Timeout::Test suite timed out after ${{ inputs.timeout-seconds }}s"
-              RESULT="timeout"
-            else
-              echo "::error title=Test Failure::Test suite failed with exit code $EXIT_CODE"
-              RESULT="failed"
-            fi
-          fi
+
+        TEST_LOG="$(mktemp)"
+        echo "🚀 Executing: swift test $TEST_ARGS"
+
+        set +e
+        # shellcheck disable=SC2086
+        $TIMEOUT_CMD swift test $TEST_ARGS 2>&1 | tee "$TEST_LOG"
+        EXIT_CODE=${PIPESTATUS[0]}
+        set -e
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          RESULT="success"
+        elif [ "$EXIT_CODE" -eq 124 ]; then
+          echo "::error title=Test Timeout::Test suite timed out after ${{ inputs.timeout-seconds }}s"
+          RESULT="timeout"
         else
-          if $SCRIPT $SCRIPT_ARGS; then
-            echo "✅ Test suite execution completed successfully"
-            RESULT="success"
-          else
-            EXIT_CODE=$?
-            echo "::error title=Test Failure::Test suite failed with exit code $EXIT_CODE"
-            RESULT="failed"
-          fi
+          echo "::error title=Test Failure::Test suite failed with exit code $EXIT_CODE"
+          RESULT="failed"
         fi
-        
+
         TEST_END=$(date +%s)
         TEST_TIME=$((TEST_END - TEST_START))
-        
-        # Detect capabilities based on environment
+
+        # Count what actually ran, from the test output. Never estimate: an
+        # invented number is what let a suite that executed nothing look healthy.
+        TESTS_RUN=$(grep -cE "^Test Case .* (passed|failed)" "$TEST_LOG" 2>/dev/null || true)
+        TESTS_RUN=${TESTS_RUN:-0}
+
+        if [ "$TESTS_RUN" -eq 0 ]; then
+          # Fall back to swift-testing's summary line before concluding nothing ran.
+          TESTS_RUN=$(grep -oE "Executed [0-9]+ test" "$TEST_LOG" | grep -oE "[0-9]+" | head -1 || true)
+          TESTS_RUN=${TESTS_RUN:-0}
+        fi
+
+        # A suite that runs zero tests is a failure, not a pass. This is the specific
+        # guard that would have caught the filter bug the day it was introduced.
+        if [ "$TESTS_RUN" -eq 0 ] && [ "$RESULT" = "success" ]; then
+          echo "::error title=No Tests Executed::swift test exited 0 but ran no tests. Check Package.swift test targets and any --filter arguments."
+          RESULT="no-tests"
+        fi
+
+        rm -f "$TEST_LOG"
+
+        # Capabilities reflect what this environment can exercise, for the summary only.
         case "${{ inputs.test-environment }}" in
           development)
             CAPABILITIES="mocking swift_tests"
-            if [ "$ENABLE_QEMU_TESTS" = "true" ]; then
-              CAPABILITIES="$CAPABILITIES qemu_mock"
-            fi
             ;;
           ci)
             CAPABILITIES="mocking swift_tests automated_ci"
-            if [ "$ENABLE_QEMU_TESTS" = "true" ]; then
-              CAPABILITIES="$CAPABILITIES qemu_mock"
-            fi
             ;;
           production)
             CAPABILITIES="swift_tests"
             if [ "$ENABLE_HARDWARE_TESTS" = "true" ]; then
               CAPABILITIES="$CAPABILITIES hardware_integration"
             fi
-            if [ "$ENABLE_QEMU_TESTS" = "true" ]; then
-              CAPABILITIES="$CAPABILITIES qemu_integration"
-            fi
             if [ "$ENABLE_SYSTEM_EXTENSION_TESTS" = "true" ]; then
               CAPABILITIES="$CAPABILITIES system_extension"
             fi
             ;;
         esac
-        
-        # Try to extract test count from logs (approximate)
-        if [ -f ".build/debug/test-results.txt" ]; then
-          TESTS_RUN=$(grep -c "Test Case.*passed\|Test Case.*failed" ".build/debug/test-results.txt" 2>/dev/null || echo "unknown")
-        elif command -v swift >/dev/null 2>&1; then
-          # Estimate based on test environment
-          case "${{ inputs.test-environment }}" in
-            development)
-              TESTS_RUN="~20"
-              ;;
-            ci)
-              TESTS_RUN="~50"
-              ;;
-            production)
-              TESTS_RUN="~100"
-              ;;
-          esac
-        else
-          TESTS_RUN="unknown"
-        fi
         
         # Set outputs
         echo "result=$RESULT" >> $GITHUB_OUTPUT
