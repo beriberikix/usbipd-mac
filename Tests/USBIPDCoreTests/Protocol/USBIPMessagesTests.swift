@@ -30,8 +30,8 @@ final class USBIPMessagesTests: XCTestCase {
         let encodedData = try request.encode()
         
         // Verify the encoded data has the correct minimum length
-        // Header (8) + command fields (40) + reserved (4) + setup (8) + buffer (64) = 124 bytes
-        XCTAssertEqual(encodedData.count, 124)
+        // usbip_header_basic (20) + command block (28) + buffer (64) = 112 bytes
+        XCTAssertEqual(encodedData.count, 112)
         
         // Verify the data can be decoded back correctly
         let decodedRequest = try USBIPSubmitRequest.decode(from: encodedData)
@@ -46,7 +46,7 @@ final class USBIPMessagesTests: XCTestCase {
         XCTAssertEqual(decodedRequest.interval, request.interval)
         XCTAssertEqual(decodedRequest.setup, request.setup)
         XCTAssertEqual(decodedRequest.transferBuffer, request.transferBuffer)
-        XCTAssertEqual(decodedRequest.header.command, .submitRequest)
+        XCTAssertEqual(decodedRequest.command, .submitRequest)
     }
     
     func testUSBIPSubmitRequestControlTransfer() throws {
@@ -64,8 +64,8 @@ final class USBIPMessagesTests: XCTestCase {
         
         let encodedData = try request.encode()
         
-        // Header (8) + command fields (40) + reserved (4) + setup (8) = 60 bytes (no transfer buffer for control IN)
-        XCTAssertEqual(encodedData.count, 60)
+        // usbip_header_basic (20) + command block (28) = 48 bytes (no transfer buffer for control IN)
+        XCTAssertEqual(encodedData.count, 48)
         
         let decodedRequest = try USBIPSubmitRequest.decode(from: encodedData)
         XCTAssertEqual(decodedRequest.ep, 0x00)
@@ -91,8 +91,8 @@ final class USBIPMessagesTests: XCTestCase {
         
         let encodedData = try request.encode()
         
-        // Header (8) + command fields (40) + reserved (4) + setup (8) + buffer (512) = 572 bytes
-        XCTAssertEqual(encodedData.count, 572)
+        // usbip_header_basic (20) + command block (28) + buffer (512) = 560 bytes
+        XCTAssertEqual(encodedData.count, 560)
         
         let decodedRequest = try USBIPSubmitRequest.decode(from: encodedData)
         XCTAssertEqual(decodedRequest.ep, 0x02)
@@ -211,8 +211,8 @@ final class USBIPMessagesTests: XCTestCase {
         
         let encodedData = try response.encode()
         
-        // Header (8) + response fields (36) + reserved (8) + buffer (256) = 308 bytes
-        XCTAssertEqual(encodedData.count, 308)
+        // usbip_header_basic (20) + command block (28) + buffer (256) = 304 bytes
+        XCTAssertEqual(encodedData.count, 304)
         
         let decodedResponse = try USBIPSubmitResponse.decode(from: encodedData)
         XCTAssertEqual(decodedResponse.seqnum, response.seqnum)
@@ -225,7 +225,7 @@ final class USBIPMessagesTests: XCTestCase {
         XCTAssertEqual(decodedResponse.numberOfPackets, response.numberOfPackets)
         XCTAssertEqual(decodedResponse.errorCount, response.errorCount)
         XCTAssertEqual(decodedResponse.transferBuffer, response.transferBuffer)
-        XCTAssertEqual(decodedResponse.header.command, .submitReply)
+        XCTAssertEqual(decodedResponse.command, .submitReply)
     }
     
     func testUSBIPSubmitResponseWithError() throws {
@@ -241,8 +241,8 @@ final class USBIPMessagesTests: XCTestCase {
         
         let encodedData = try response.encode()
         
-        // Header (8) + response fields (36) + reserved (8) = 52 bytes (no buffer for error)
-        XCTAssertEqual(encodedData.count, 52)
+        // usbip_header_basic (20) + command block (28) = 48 bytes (no buffer for error)
+        XCTAssertEqual(encodedData.count, 48)
         
         let decodedResponse = try USBIPSubmitResponse.decode(from: encodedData)
         XCTAssertEqual(decodedResponse.seqnum, 123)
@@ -309,8 +309,8 @@ final class USBIPMessagesTests: XCTestCase {
         
         let encodedData = try request.encode()
         
-        // Header (8) + command fields (20) + reserved (24) = 52 bytes
-        XCTAssertEqual(encodedData.count, 52)
+        // usbip_header_basic (20) + command block (28) = 48 bytes
+        XCTAssertEqual(encodedData.count, 48)
         
         let decodedRequest = try USBIPUnlinkRequest.decode(from: encodedData)
         XCTAssertEqual(decodedRequest.seqnum, request.seqnum)
@@ -318,7 +318,7 @@ final class USBIPMessagesTests: XCTestCase {
         XCTAssertEqual(decodedRequest.direction, request.direction)
         XCTAssertEqual(decodedRequest.ep, request.ep)
         XCTAssertEqual(decodedRequest.unlinkSeqnum, request.unlinkSeqnum)
-        XCTAssertEqual(decodedRequest.header.command, .unlinkRequest)
+        XCTAssertEqual(decodedRequest.command, .unlinkRequest)
     }
     
     func testUSBIPUnlinkRequestValidation() throws {
@@ -346,7 +346,6 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkResponseEncodingDecoding() throws {
         let response = USBIPUnlinkResponse(
             seqnum: 999,
-            unlinkSeqnum: 888,
             devid: 123,
             direction: 1, // IN
             ep: 0x81,
@@ -355,8 +354,8 @@ final class USBIPMessagesTests: XCTestCase {
         
         let encodedData = try response.encode()
         
-        // Header (8) + response fields (20) + reserved (24) = 52 bytes
-        XCTAssertEqual(encodedData.count, 52)
+        // usbip_header_basic (20) + command block (28) = 48 bytes
+        XCTAssertEqual(encodedData.count, 48)
         
         let decodedResponse = try USBIPUnlinkResponse.decode(from: encodedData)
         XCTAssertEqual(decodedResponse.seqnum, response.seqnum)
@@ -364,13 +363,12 @@ final class USBIPMessagesTests: XCTestCase {
         XCTAssertEqual(decodedResponse.direction, response.direction)
         XCTAssertEqual(decodedResponse.ep, response.ep)
         XCTAssertEqual(decodedResponse.status, response.status)
-        XCTAssertEqual(decodedResponse.header.command, .unlinkReply)
+        XCTAssertEqual(decodedResponse.command, .unlinkReply)
     }
     
     func testUSBIPUnlinkResponseWithError() throws {
         let response = USBIPUnlinkResponse(
             seqnum: 1001,
-            unlinkSeqnum: 888,
             devid: 789,
             direction: 0, // OUT
             ep: 0x02,
@@ -543,7 +541,6 @@ final class USBIPMessagesTests: XCTestCase {
     func testUSBIPUnlinkResponseNegativeStatus() throws {
         let response = USBIPUnlinkResponse(
             seqnum: 123,
-            unlinkSeqnum: 100,
             devid: 456,
             direction: 0,
             ep: 0x02,
@@ -625,7 +622,6 @@ final class USBIPMessagesTests: XCTestCase {
         for statusValue in testValues {
             let response = USBIPUnlinkResponse(
                 seqnum: 789,
-                unlinkSeqnum: 500,
                 devid: 101,
                 direction: 1,
                 ep: 0x81,
@@ -680,7 +676,7 @@ final class USBIPMessagesTests: XCTestCase {
         let encodedData = try response.encode()
         
         // Artificially truncate the encoded data
-        let truncatedData = encodedData.subdata(in: 0..<(52 + 500)) // Only first 500 bytes of buffer
+        let truncatedData = encodedData.subdata(in: 0..<(48 + 500)) // Only first 500 bytes of buffer
         
         let decodedResponse = try USBIPSubmitResponse.decode(from: truncatedData)
         
@@ -694,22 +690,32 @@ final class USBIPMessagesTests: XCTestCase {
         let submitRequest = USBIPSubmitRequest(seqnum: 1, devid: 1, direction: 0, ep: 1, transferFlags: 0, transferBufferLength: 0)
         let submitResponse = USBIPSubmitResponse(seqnum: 1, devid: 1, direction: 0, ep: 1, status: 0, actualLength: 0)
         let unlinkRequest = USBIPUnlinkRequest(seqnum: 2, unlinkSeqnum: 1, devid: 1, direction: 0, ep: 1)
-        let unlinkResponse = USBIPUnlinkResponse(seqnum: 2, unlinkSeqnum: 1, devid: 1, direction: 0, ep: 1, status: 0)
-        
-        // Verify all headers have correct version and commands
-        XCTAssertEqual(submitRequest.header.version, USBIPProtocol.version)
-        XCTAssertEqual(submitRequest.header.command, .submitRequest)
-        
-        XCTAssertEqual(submitResponse.header.version, USBIPProtocol.version)
-        XCTAssertEqual(submitResponse.header.command, .submitReply)
-        
-        XCTAssertEqual(unlinkRequest.header.version, USBIPProtocol.version)
-        XCTAssertEqual(unlinkRequest.header.command, .unlinkRequest)
-        
-        XCTAssertEqual(unlinkResponse.header.version, USBIPProtocol.version)
-        XCTAssertEqual(unlinkResponse.header.command, .unlinkReply)
+        let unlinkResponse = USBIPUnlinkResponse(seqnum: 2, devid: 1, direction: 0, ep: 1, status: 0)
+
+        // These messages are framed with usbip_header_basic, which has no version
+        // field — version is negotiated once during the OP_ handshake. Asserting a
+        // version here is what the previous revision did, and it only type-checked
+        // because SUBMIT/UNLINK were wrongly built on the 8-byte op_common header.
+        XCTAssertEqual(submitRequest.command, .submitRequest)
+        XCTAssertEqual(submitResponse.command, .submitReply)
+        XCTAssertEqual(unlinkRequest.command, .unlinkRequest)
+        XCTAssertEqual(unlinkResponse.command, .unlinkReply)
+
+        // The wire command occupies the first four bytes and must match the values
+        // in linux/drivers/usb/usbip/usbip_common.h.
+        XCTAssertEqual(submitRequest.basicHeader.command.rawValue, 0x0000_0001)
+        XCTAssertEqual(unlinkRequest.basicHeader.command.rawValue, 0x0000_0002)
+        XCTAssertEqual(submitResponse.basicHeader.command.rawValue, 0x0000_0003)
+        XCTAssertEqual(unlinkResponse.basicHeader.command.rawValue, 0x0000_0004)
+
+        // Every CMD_/RET_ message has a 48-byte fixed prefix: 20-byte basic header
+        // plus a 28-byte command block.
+        XCTAssertEqual(try submitRequest.encode().count, 48)
+        XCTAssertEqual(try submitResponse.encode().count, 48)
+        XCTAssertEqual(try unlinkRequest.encode().count, 48)
+        XCTAssertEqual(try unlinkResponse.encode().count, 48)
     }
-    
+
     func testRoundTripEncodingDecoding() throws {
         // Test multiple round trips to ensure data integrity
         let originalRequest = USBIPSubmitRequest(

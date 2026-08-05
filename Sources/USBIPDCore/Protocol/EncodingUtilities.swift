@@ -163,7 +163,6 @@ public struct USBIPMessageEncoder {
     /// Encode a USB UNLINK response
     public static func encodeUSBUnlinkResponse(
         seqnum: UInt32,
-        unlinkSeqnum: UInt32,
         devid: UInt32,
         direction: UInt32,
         ep: UInt32,
@@ -171,7 +170,6 @@ public struct USBIPMessageEncoder {
     ) throws -> Data {
         let response = USBIPUnlinkResponse(
             seqnum: seqnum,
-            unlinkSeqnum: unlinkSeqnum,
             devid: devid,
             direction: direction,
             ep: ep,

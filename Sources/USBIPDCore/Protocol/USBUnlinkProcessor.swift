@@ -76,7 +76,6 @@ public class USBUnlinkProcessor {
             
             return try USBIPMessageEncoder.encodeUSBUnlinkResponse(
                 seqnum: response.seqnum,
-                unlinkSeqnum: response.unlinkSeqnum,
                 devid: response.devid,
                 direction: response.direction,
                 ep: response.ep,
@@ -97,7 +96,6 @@ public class USBUnlinkProcessor {
             
             return try USBIPMessageEncoder.encodeUSBUnlinkResponse(
                 seqnum: errorResponse.seqnum,
-                unlinkSeqnum: errorResponse.unlinkSeqnum,
                 devid: errorResponse.devid,
                 direction: errorResponse.direction,
                 ep: errorResponse.ep,
@@ -217,7 +215,6 @@ public class USBUnlinkProcessor {
         
         return USBIPUnlinkResponse(
             seqnum: request.seqnum,
-            unlinkSeqnum: request.unlinkSeqnum,
             devid: request.devid,
             direction: request.direction,
             ep: request.ep,
@@ -248,7 +245,6 @@ public class USBUnlinkProcessor {
         
         return USBIPUnlinkResponse(
             seqnum: request.seqnum,
-            unlinkSeqnum: request.unlinkSeqnum,
             devid: request.devid,
             direction: request.direction,
             ep: request.ep,
@@ -399,7 +395,6 @@ public extension USBUnlinkProcessor {
     private func createGenericErrorResponse() throws -> Data {
         let response = USBIPUnlinkResponse(
             seqnum: 0,
-            unlinkSeqnum: 0,
             devid: 0,
             direction: 0,
             ep: 0,
@@ -408,7 +403,6 @@ public extension USBUnlinkProcessor {
         
         return try USBIPMessageEncoder.encodeUSBUnlinkResponse(
             seqnum: response.seqnum,
-            unlinkSeqnum: response.unlinkSeqnum,
             devid: response.devid,
             direction: response.direction,
             ep: response.ep,

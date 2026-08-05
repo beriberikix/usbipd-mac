@@ -1,12 +1,26 @@
-// USBIPTransferMessages.swift  
+// USBIPTransferMessages.swift
 // USB/IP SUBMIT and UNLINK transfer messages
+//
+// Wire layouts follow linux/drivers/usb/usbip/usbip_common.h. Every message here
+// is framed with `usbip_header_basic` (20 bytes) followed by a command-specific
+// block of exactly 28 bytes, giving a 48-byte fixed prefix, optionally followed by
+// a transfer buffer.
+//
+// These messages do NOT carry the 8-byte op_common header used by the device-list
+// and import handshake. See USBIPProtocol.Command for why that distinction matters.
 
 import Foundation
 import Common
 
+/// Size of the fixed prefix on every CMD_/RET_ message: 20-byte basic header plus
+/// a 28-byte command block.
+private let usbipCommandPrefixSize = 48
+
+/// Offset at which the command-specific block begins.
+private let usbipCommandBlockOffset = USBIPBasicHeader.encodedSize
+
 /// USB/IP SUBMIT request message (USBIP_CMD_SUBMIT)
 public struct USBIPSubmitRequest: USBIPMessageCodable {
-    public let header: USBIPHeader
     public let seqnum: UInt32              // Unique request sequence number
     public let devid: UInt32               // Device ID
     public let direction: UInt32           // Transfer direction (0=OUT, 1=IN)
@@ -18,9 +32,15 @@ public struct USBIPSubmitRequest: USBIPMessageCodable {
     public let interval: UInt32            // Polling interval for interrupt transfers
     public let setup: Data                 // 8 bytes setup packet for control transfers
     public let transferBuffer: Data?       // Variable length data for OUT transfers
-    
+
+    public var command: USBIPProtocol.Command { return .submitRequest }
+
+    public var basicHeader: USBIPBasicHeader {
+        return USBIPBasicHeader(command: .submit, seqnum: seqnum, devid: devid,
+                                direction: direction, ep: ep)
+    }
+
     public init(
-        header: USBIPHeader = USBIPHeader(command: .submitRequest),
         seqnum: UInt32,
         devid: UInt32,
         direction: UInt32,
@@ -33,7 +53,6 @@ public struct USBIPSubmitRequest: USBIPMessageCodable {
         setup: Data = Data(count: 8),
         transferBuffer: Data? = nil
     ) {
-        self.header = header
         self.seqnum = seqnum
         self.devid = devid
         self.direction = direction
@@ -46,22 +65,18 @@ public struct USBIPSubmitRequest: USBIPMessageCodable {
         self.setup = setup
         self.transferBuffer = transferBuffer
     }
-    
+
     public func encode() throws -> Data {
-        var data = try header.encode()
-        
-        // USB/IP SUBMIT command fields (40 bytes after header)
-        data.append(EndiannessConverter.writeUInt32ToData(seqnum))
-        data.append(EndiannessConverter.writeUInt32ToData(devid))
-        data.append(EndiannessConverter.writeUInt32ToData(direction))
-        data.append(EndiannessConverter.writeUInt32ToData(ep))
+        var data = basicHeader.encode()
+
+        // usbip_header_cmd_submit — 28 bytes
         data.append(EndiannessConverter.writeUInt32ToData(transferFlags))
         data.append(EndiannessConverter.writeUInt32ToData(transferBufferLength))
         data.append(EndiannessConverter.writeUInt32ToData(startFrame))
         data.append(EndiannessConverter.writeUInt32ToData(numberOfPackets))
         data.append(EndiannessConverter.writeUInt32ToData(interval))
-        
-        // Setup packet: always 8 bytes, padded with zeros if necessary
+
+        // setup: always exactly 8 bytes, zero-padded or truncated
         if setup.count >= 8 {
             data.append(setup.prefix(8))
         } else {
@@ -69,58 +84,47 @@ public struct USBIPSubmitRequest: USBIPMessageCodable {
             setupData.append(Data(count: 8 - setup.count))
             data.append(setupData)
         }
-        
-        // Transfer buffer for OUT transfers
+
+        // Transfer buffer, present only on OUT transfers
         if let transferBuffer = transferBuffer {
             data.append(transferBuffer)
         }
-        
+
         return data
     }
-    
+
     public static func decode(from data: Data) throws -> USBIPSubmitRequest {
-        guard data.count >= 48 else { // 8 (header) + 40 (SUBMIT fields)
+        guard data.count >= usbipCommandPrefixSize else {
             throw USBIPProtocolError.invalidDataLength
         }
-        
-        let header = try USBIPHeader.decode(from: data.subdata(in: 0..<8))
-        
-        guard header.command == .submitRequest else {
+
+        let header = try USBIPBasicHeader.decode(from: data)
+        guard header.command == .submit else {
             throw USBIPProtocolError.invalidMessageFormat
         }
-        
-        // Parse SUBMIT fields
-        let seqnum = try EndiannessConverter.readUInt32FromData(data, at: 8)
-        let devid = try EndiannessConverter.readUInt32FromData(data, at: 12)
-        let direction = try EndiannessConverter.readUInt32FromData(data, at: 16)
-        let ep = try EndiannessConverter.readUInt32FromData(data, at: 20)
-        let transferFlags = try EndiannessConverter.readUInt32FromData(data, at: 24)
-        let transferBufferLength = try EndiannessConverter.readUInt32FromData(data, at: 28)
-        let startFrame = try EndiannessConverter.readUInt32FromData(data, at: 32)
-        let numberOfPackets = try EndiannessConverter.readUInt32FromData(data, at: 36)
-        let interval = try EndiannessConverter.readUInt32FromData(data, at: 40)
-        
-        // Setup packet: 8 bytes
-        let setup = data.subdata(in: 44..<52)
-        
-        // Transfer buffer for OUT transfers
+
+        let base = usbipCommandBlockOffset
+        let transferBufferLength = try EndiannessConverter.readUInt32FromData(data, at: base + 4)
+
+        // setup occupies the last 8 bytes of the command block
+        let setup = data.subdata(in: (base + 20)..<usbipCommandPrefixSize)
+
         var transferBuffer: Data?
-        if data.count > 48 && transferBufferLength > 0 {
-            let remainingData = data.subdata(in: 48..<data.count)
-            transferBuffer = remainingData.prefix(Int(transferBufferLength))
+        if data.count > usbipCommandPrefixSize && transferBufferLength > 0 {
+            let remaining = data.subdata(in: usbipCommandPrefixSize..<data.count)
+            transferBuffer = remaining.prefix(Int(transferBufferLength))
         }
-        
+
         return USBIPSubmitRequest(
-            header: header,
-            seqnum: seqnum,
-            devid: devid,
-            direction: direction,
-            ep: ep,
-            transferFlags: transferFlags,
+            seqnum: header.seqnum,
+            devid: header.devid,
+            direction: header.direction,
+            ep: header.ep,
+            transferFlags: try EndiannessConverter.readUInt32FromData(data, at: base),
             transferBufferLength: transferBufferLength,
-            startFrame: startFrame,
-            numberOfPackets: numberOfPackets,
-            interval: interval,
+            startFrame: try EndiannessConverter.readUInt32FromData(data, at: base + 8),
+            numberOfPackets: try EndiannessConverter.readUInt32FromData(data, at: base + 12),
+            interval: try EndiannessConverter.readUInt32FromData(data, at: base + 16),
             setup: setup,
             transferBuffer: transferBuffer
         )
@@ -129,7 +133,6 @@ public struct USBIPSubmitRequest: USBIPMessageCodable {
 
 /// USB/IP SUBMIT response message (USBIP_RET_SUBMIT)
 public struct USBIPSubmitResponse: USBIPMessageCodable {
-    public let header: USBIPHeader
     public let seqnum: UInt32              // Sequence number from request
     public let devid: UInt32               // Device ID
     public let direction: UInt32           // Transfer direction
@@ -140,9 +143,15 @@ public struct USBIPSubmitResponse: USBIPMessageCodable {
     public let numberOfPackets: UInt32     // Number of packets for isochronous transfers
     public let errorCount: UInt32          // Error count for isochronous transfers
     public let transferBuffer: Data?       // Variable length data for IN transfers
-    
+
+    public var command: USBIPProtocol.Command { return .submitReply }
+
+    public var basicHeader: USBIPBasicHeader {
+        return USBIPBasicHeader(command: .retSubmit, seqnum: seqnum, devid: devid,
+                                direction: direction, ep: ep)
+    }
+
     public init(
-        header: USBIPHeader = USBIPHeader(command: .submitReply),
         seqnum: UInt32,
         devid: UInt32,
         direction: UInt32,
@@ -154,7 +163,6 @@ public struct USBIPSubmitResponse: USBIPMessageCodable {
         errorCount: UInt32 = 0,
         transferBuffer: Data? = nil
     ) {
-        self.header = header
         self.seqnum = seqnum
         self.devid = devid
         self.direction = direction
@@ -166,74 +174,55 @@ public struct USBIPSubmitResponse: USBIPMessageCodable {
         self.errorCount = errorCount
         self.transferBuffer = transferBuffer
     }
-    
+
     public func encode() throws -> Data {
-        var data = try header.encode()
-        
-        // USB/IP SUBMIT reply fields (40 bytes after header)
-        data.append(EndiannessConverter.writeUInt32ToData(seqnum))
-        data.append(EndiannessConverter.writeUInt32ToData(devid))
-        data.append(EndiannessConverter.writeUInt32ToData(direction))
-        data.append(EndiannessConverter.writeUInt32ToData(ep))
+        var data = basicHeader.encode()
+
+        // usbip_header_ret_submit — 28 bytes
         data.append(EndiannessConverter.writeInt32ToData(status))
         data.append(EndiannessConverter.writeUInt32ToData(actualLength))
         data.append(EndiannessConverter.writeUInt32ToData(startFrame))
         data.append(EndiannessConverter.writeUInt32ToData(numberOfPackets))
         data.append(EndiannessConverter.writeUInt32ToData(errorCount))
-        
-        // Reserved: 8 bytes to align with setup packet space from request
-        data.append(Data(count: 8))
-        
-        // Transfer buffer for IN transfers
+        data.append(Data(count: 8)) // padding, where the request carries setup
+
+        // Transfer buffer, present only on IN transfers
         if let transferBuffer = transferBuffer {
             data.append(transferBuffer)
         }
-        
+
         return data
     }
-    
+
     public static func decode(from data: Data) throws -> USBIPSubmitResponse {
-        guard data.count >= 48 else { // 8 (header) + 40 (SUBMIT reply fields)
+        guard data.count >= usbipCommandPrefixSize else {
             throw USBIPProtocolError.invalidDataLength
         }
-        
-        let header = try USBIPHeader.decode(from: data.subdata(in: 0..<8))
-        
-        guard header.command == .submitReply else {
+
+        let header = try USBIPBasicHeader.decode(from: data)
+        guard header.command == .retSubmit else {
             throw USBIPProtocolError.invalidMessageFormat
         }
-        
-        // Parse SUBMIT reply fields
-        let seqnum = try EndiannessConverter.readUInt32FromData(data, at: 8)
-        let devid = try EndiannessConverter.readUInt32FromData(data, at: 12)
-        let direction = try EndiannessConverter.readUInt32FromData(data, at: 16)
-        let ep = try EndiannessConverter.readUInt32FromData(data, at: 20)
-        let status = try EndiannessConverter.readInt32FromData(data, at: 24)
-        let actualLength = try EndiannessConverter.readUInt32FromData(data, at: 28)
-        let startFrame = try EndiannessConverter.readUInt32FromData(data, at: 32)
-        let numberOfPackets = try EndiannessConverter.readUInt32FromData(data, at: 36)
-        let errorCount = try EndiannessConverter.readUInt32FromData(data, at: 40)
-        
-        // Skip 8 bytes reserved space (44-52)
-        
-        // Transfer buffer for IN transfers
+
+        let base = usbipCommandBlockOffset
+        let actualLength = try EndiannessConverter.readUInt32FromData(data, at: base + 4)
+
         var transferBuffer: Data?
-        if data.count > 48 && actualLength > 0 {
-            let remainingData = data.subdata(in: 48..<data.count)
-            transferBuffer = remainingData.prefix(Int(actualLength))
+        if data.count > usbipCommandPrefixSize && actualLength > 0 {
+            let remaining = data.subdata(in: usbipCommandPrefixSize..<data.count)
+            transferBuffer = remaining.prefix(Int(actualLength))
         }
-        
+
         return USBIPSubmitResponse(
-            header: header,
-            seqnum: seqnum,
-            devid: devid,
-            direction: direction,
-            ep: ep,
-            status: status,
+            seqnum: header.seqnum,
+            devid: header.devid,
+            direction: header.direction,
+            ep: header.ep,
+            status: try EndiannessConverter.readInt32FromData(data, at: base),
             actualLength: actualLength,
-            startFrame: startFrame,
-            numberOfPackets: numberOfPackets,
-            errorCount: errorCount,
+            startFrame: try EndiannessConverter.readUInt32FromData(data, at: base + 8),
+            numberOfPackets: try EndiannessConverter.readUInt32FromData(data, at: base + 12),
+            errorCount: try EndiannessConverter.readUInt32FromData(data, at: base + 16),
             transferBuffer: transferBuffer
         )
     }
@@ -241,143 +230,122 @@ public struct USBIPSubmitResponse: USBIPMessageCodable {
 
 /// USB/IP UNLINK request message (USBIP_CMD_UNLINK)
 public struct USBIPUnlinkRequest: USBIPMessageCodable {
-    public let header: USBIPHeader
-    public let seqnum: UInt32              // New sequence number for this unlink request
-    public let unlinkSeqnum: UInt32        // Sequence number of the request to unlink
+    public let seqnum: UInt32              // Sequence number of this unlink request
+    public let unlinkSeqnum: UInt32        // Sequence number of the request being unlinked
     public let devid: UInt32               // Device ID
     public let direction: UInt32           // Transfer direction
     public let ep: UInt32                  // Endpoint address
-    
+
+    public var command: USBIPProtocol.Command { return .unlinkRequest }
+
+    public var basicHeader: USBIPBasicHeader {
+        return USBIPBasicHeader(command: .unlink, seqnum: seqnum, devid: devid,
+                                direction: direction, ep: ep)
+    }
+
     public init(
-        header: USBIPHeader = USBIPHeader(command: .unlinkRequest),
         seqnum: UInt32,
         unlinkSeqnum: UInt32,
         devid: UInt32,
         direction: UInt32,
         ep: UInt32
     ) {
-        self.header = header
         self.seqnum = seqnum
         self.unlinkSeqnum = unlinkSeqnum
         self.devid = devid
         self.direction = direction
         self.ep = ep
     }
-    
+
     public func encode() throws -> Data {
-        var data = try header.encode()
-        
-        // USB/IP UNLINK command fields (24 bytes after header)
-        data.append(EndiannessConverter.writeUInt32ToData(seqnum))
+        var data = basicHeader.encode()
+
+        // usbip_header_cmd_unlink — 28 bytes: the target seqnum then 24 bytes padding
         data.append(EndiannessConverter.writeUInt32ToData(unlinkSeqnum))
-        data.append(EndiannessConverter.writeUInt32ToData(devid))
-        data.append(EndiannessConverter.writeUInt32ToData(direction))
-        data.append(EndiannessConverter.writeUInt32ToData(ep))
-        
-        // Reserved: 4 bytes to align structure
-        data.append(Data(count: 4))
-        
+        data.append(Data(count: 24))
+
         return data
     }
-    
+
     public static func decode(from data: Data) throws -> USBIPUnlinkRequest {
-        guard data.count >= 32 else { // 8 (header) + 24 (UNLINK fields)
+        guard data.count >= usbipCommandPrefixSize else {
             throw USBIPProtocolError.invalidDataLength
         }
-        
-        let header = try USBIPHeader.decode(from: data.subdata(in: 0..<8))
-        
-        guard header.command == .unlinkRequest else {
+
+        let header = try USBIPBasicHeader.decode(from: data)
+        guard header.command == .unlink else {
             throw USBIPProtocolError.invalidMessageFormat
         }
-        
-        // Parse UNLINK fields
-        let seqnum = try EndiannessConverter.readUInt32FromData(data, at: 8)
-        let unlinkSeqnum = try EndiannessConverter.readUInt32FromData(data, at: 12)
-        let devid = try EndiannessConverter.readUInt32FromData(data, at: 16)
-        let direction = try EndiannessConverter.readUInt32FromData(data, at: 20)
-        let ep = try EndiannessConverter.readUInt32FromData(data, at: 24)
-        
+
         return USBIPUnlinkRequest(
-            header: header,
-            seqnum: seqnum,
-            unlinkSeqnum: unlinkSeqnum,
-            devid: devid,
-            direction: direction,
-            ep: ep
+            seqnum: header.seqnum,
+            unlinkSeqnum: try EndiannessConverter.readUInt32FromData(data, at: usbipCommandBlockOffset),
+            devid: header.devid,
+            direction: header.direction,
+            ep: header.ep
         )
     }
 }
 
 /// USB/IP UNLINK response message (USBIP_RET_UNLINK)
+///
+/// The reply carries only a status. The sequence number of the unlinked request is
+/// not retransmitted — it is correlated via the basic header's seqnum, which echoes
+/// the seqnum of the CMD_UNLINK that prompted this reply.
 public struct USBIPUnlinkResponse: USBIPMessageCodable {
-    public let header: USBIPHeader
-    public let seqnum: UInt32              // Sequence number from unlink request
-    public let unlinkSeqnum: UInt32        // Sequence number of the unlinked request
+    public let seqnum: UInt32              // Sequence number from the unlink request
     public let devid: UInt32               // Device ID
     public let direction: UInt32           // Transfer direction
     public let ep: UInt32                  // Endpoint address
     public let status: Int32               // Unlink status
-    
+
+    public var command: USBIPProtocol.Command { return .unlinkReply }
+
+    public var basicHeader: USBIPBasicHeader {
+        return USBIPBasicHeader(command: .retUnlink, seqnum: seqnum, devid: devid,
+                                direction: direction, ep: ep)
+    }
+
     public init(
-        header: USBIPHeader = USBIPHeader(command: .unlinkReply),
         seqnum: UInt32,
-        unlinkSeqnum: UInt32,
         devid: UInt32,
         direction: UInt32,
         ep: UInt32,
         status: Int32
     ) {
-        self.header = header
         self.seqnum = seqnum
-        self.unlinkSeqnum = unlinkSeqnum
         self.devid = devid
         self.direction = direction
         self.ep = ep
         self.status = status
     }
-    
+
     public func encode() throws -> Data {
-        var data = try header.encode()
-        
-        // USB/IP UNLINK reply fields (28 bytes after header)
-        data.append(EndiannessConverter.writeUInt32ToData(seqnum))
-        data.append(EndiannessConverter.writeUInt32ToData(unlinkSeqnum))
-        data.append(EndiannessConverter.writeUInt32ToData(devid))
-        data.append(EndiannessConverter.writeUInt32ToData(direction))
-        data.append(EndiannessConverter.writeUInt32ToData(ep))
+        var data = basicHeader.encode()
+
+        // usbip_header_ret_unlink — 28 bytes: status then 24 bytes padding
         data.append(EndiannessConverter.writeInt32ToData(status))
-        
+        data.append(Data(count: 24))
+
         return data
     }
-    
+
     public static func decode(from data: Data) throws -> USBIPUnlinkResponse {
-        guard data.count >= 32 else { // 8 (header) + 24 (UNLINK reply fields)
+        guard data.count >= usbipCommandPrefixSize else {
             throw USBIPProtocolError.invalidDataLength
         }
-        
-        let header = try USBIPHeader.decode(from: data.subdata(in: 0..<8))
-        
-        guard header.command == .unlinkReply else {
+
+        let header = try USBIPBasicHeader.decode(from: data)
+        guard header.command == .retUnlink else {
             throw USBIPProtocolError.invalidMessageFormat
         }
-        
-        // Parse UNLINK reply fields
-        let seqnum = try EndiannessConverter.readUInt32FromData(data, at: 8)
-        let unlinkSeqnum = try EndiannessConverter.readUInt32FromData(data, at: 12)
-        let devid = try EndiannessConverter.readUInt32FromData(data, at: 16)
-        let direction = try EndiannessConverter.readUInt32FromData(data, at: 20)
-        let ep = try EndiannessConverter.readUInt32FromData(data, at: 24)
-        let status = try EndiannessConverter.readInt32FromData(data, at: 28)
-        
+
         return USBIPUnlinkResponse(
-            header: header,
-            seqnum: seqnum,
-            unlinkSeqnum: unlinkSeqnum,
-            devid: devid,
-            direction: direction,
-            ep: ep,
-            status: status
+            seqnum: header.seqnum,
+            devid: header.devid,
+            direction: header.direction,
+            ep: header.ep,
+            status: try EndiannessConverter.readInt32FromData(data, at: usbipCommandBlockOffset)
         )
     }
 }
