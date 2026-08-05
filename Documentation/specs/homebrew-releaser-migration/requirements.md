@@ -83,7 +83,7 @@ This feature supports the product objectives of reliable automated release proce
 
 1. WHEN homebrew-releaser updates the formula THEN the system SHALL maintain the existing tap repository URL structure (github.com/beriberikix/homebrew-usbipd-mac)
 2. WHEN users run `brew tap beriberikix/usbipd-mac` THEN the system SHALL continue to work exactly as before the migration
-3. WHEN homebrew-releaser commits formula updates THEN the system SHALL preserve the existing Formula/usbipd-mac.rb file location
+3. WHEN homebrew-releaser commits formula updates THEN the system SHALL preserve the existing Formula/usbip.rb file location
 4. WHEN the migration is complete THEN the system SHALL ensure Homebrew can discover and install the formula without any user-visible changes
 
 ## Non-Functional Requirements

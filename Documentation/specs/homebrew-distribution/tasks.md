@@ -1,5 +1,12 @@
 # Implementation Plan
 
+> [!NOTE]
+> **Superseded.** This plan targets the single-repository design in
+> `design.md`, where the formula lived at `Formula/usbipd-mac.rb` inside `usbipd-mac`.
+> The project instead ships the formula from the tap repository
+> `beriberikix/homebrew-usbipd-mac` as `Formula/usbip.rb`. The file paths in the tasks
+> below are kept as a record of the plan as written; they are not current instructions.
+
 ## Task Overview
 Implementation of Homebrew distribution follows a phased approach that integrates the Homebrew formula directly into the main repository and extends existing GitHub Actions workflows. The implementation leverages the current Swift Package Manager build system and release automation infrastructure while adding formula validation and automated updates. The workflow follows standard Git practices with feature branch development, incremental commits, and pull request integration.
 

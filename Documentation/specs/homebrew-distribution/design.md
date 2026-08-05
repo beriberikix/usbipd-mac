@@ -1,5 +1,16 @@
 # Design Document
 
+> [!NOTE]
+> **Superseded.** This document describes a single-repository design in which the
+> formula lived at `Formula/usbipd-mac.rb` inside `usbipd-mac` itself. That is not how
+> the project shipped. The formula lives in the separate tap repository
+> `beriberikix/homebrew-usbipd-mac` as `Formula/usbip.rb` (class `Usbip`, installed with
+> `brew install usbip`), updated by repository dispatch.
+>
+> The `usbipd-mac.rb` paths below are left as written because they record the design as
+> decided, not a typo. Do not follow them as instructions — see
+> `Documentation/deployment-checklist.md` for the current procedures.
+
 ## Overview
 
 This design implements Homebrew distribution for usbipd-mac through a single-repository tap approach that provides controlled distribution while maintaining accessibility. The solution integrates the Homebrew formula directly into the main project repository and uses existing GitHub Actions release automation to automatically update the formula when new versions are tagged, ensuring users receive timely access to updates without additional repository maintenance overhead.

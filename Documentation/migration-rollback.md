@@ -252,7 +252,7 @@ echo "4. Validating current formula..."
 if [ -d "/tmp/homebrew-test" ]; then rm -rf /tmp/homebrew-test; fi
 git clone https://github.com/beriberikix/homebrew-usbipd-mac.git /tmp/homebrew-test
 cd /tmp/homebrew-test
-ruby -c Formula/usbipd-mac.rb
+ruby -c Formula/usbip.rb
 if [ $? -eq 0 ]; then
     echo "✅ Formula syntax valid"
 else

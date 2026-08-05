@@ -136,7 +136,7 @@ gh api repos/beriberikix/usbipd-mac/hooks/[HOOK_ID]/deliveries
 gh run list --repo beriberikix/homebrew-usbipd-mac
 
 # Verify formula was updated
-curl -s https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/main/Formula/usbipd-mac.rb | grep -E "(version|sha256)"
+curl -s https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/main/Formula/usbip.rb | grep -E "(version|sha256)"
 ```
 
 **Validation Checkpoint 2.2:**
@@ -230,7 +230,7 @@ gh api repos/beriberikix/usbipd-mac/issues --data '{
    ./Scripts/manual-update.sh --version v[LATEST] --force
    
    # Commit and push
-   git add Formula/usbipd-mac.rb
+   git add Formula/usbip.rb
    git commit -m "emergency: manual formula update for v[LATEST]"
    git push origin main
    ```
@@ -257,7 +257,7 @@ gh api repos/beriberikix/usbipd-mac/issues --data '{
 2. **Emergency Formula Fix**:
    ```bash
    # Quick syntax fix if needed
-   ruby -c Formula/usbipd-mac.rb
+   ruby -c Formula/usbip.rb
    # Fix issues and commit immediately
    ```
 
@@ -273,12 +273,12 @@ gh api repos/beriberikix/usbipd-mac/issues --data '{
    # Restore Formula directory from backup or recreate
    mkdir Formula
    # Copy working formula from tap repository
-   curl -o Formula/usbipd-mac.rb \
-     https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/main/Formula/usbipd-mac.rb
+   curl -o Formula/usbip.rb \
+     https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/main/Formula/usbip.rb
    
    # Update placeholders with current version
-   sed -i 's/VERSION_PLACEHOLDER/v[CURRENT]/g' Formula/usbipd-mac.rb
-   sed -i 's/SHA256_PLACEHOLDER/[CURRENT_SHA]/g' Formula/usbipd-mac.rb
+   sed -i 's/VERSION_PLACEHOLDER/v[CURRENT]/g' Formula/usbip.rb
+   sed -i 's/SHA256_PLACEHOLDER/[CURRENT_SHA]/g' Formula/usbip.rb
    
    git add Formula/
    git commit -m "emergency: restore embedded Formula directory"
@@ -335,10 +335,10 @@ gh api repos/beriberikix/usbipd-mac/hooks/[HOOK_ID]/deliveries | jq '.[0]'
 **Diagnosis**:
 ```bash
 # Check formula syntax
-ruby -c Formula/usbipd-mac.rb
+ruby -c Formula/usbip.rb
 
 # Validate with Homebrew
-brew audit --strict Formula/usbipd-mac.rb
+brew audit --strict Formula/usbip.rb
 ```
 
 **Solutions**:

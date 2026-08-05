@@ -297,7 +297,7 @@ brew unpin usbipd-mac
 
 4. If specific version not available, install from commit:
    ```bash
-   brew install https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/[COMMIT_HASH]/Formula/usbipd-mac.rb
+   brew install https://raw.githubusercontent.com/beriberikix/homebrew-usbipd-mac/[COMMIT_HASH]/Formula/usbip.rb
    ```
 
 ### Upgrade Issues
@@ -493,13 +493,13 @@ Homebrew structure: ✗ Missing required component: Install method
    # Clone tap repository to inspect
    git clone https://github.com/beriberikix/homebrew-usbipd-mac.git
    cd homebrew-usbipd-mac
-   ruby -c Formula/usbipd-mac.rb
+   ruby -c Formula/usbip.rb
    ```
 
 2. Validate formula structure manually:
    ```bash
    # Check for required components
-   grep -E "(class.*Formula|desc|homepage|url|version|sha256|def install)" Formula/usbipd-mac.rb
+   grep -E "(class.*Formula|desc|homepage|url|version|sha256|def install)" Formula/usbip.rb
    ```
 
 3. If template is corrupted, restore from backup:
@@ -513,7 +513,7 @@ Homebrew structure: ✗ Missing required component: Install method
 4. Test formula installation locally:
    ```bash
    # Test updated formula
-   brew install --build-from-source ./Formula/usbipd-mac.rb
+   brew install --build-from-source ./Formula/usbip.rb
    ```
 
 ### Homebrew-Releaser Configuration Problems
@@ -557,11 +557,11 @@ If homebrew-releaser fails and you need to update the formula immediately:
    cd homebrew-usbipd-mac
    
    # Update formula manually (check current formula for exact format)
-   # Update version and SHA256 in Formula/usbipd-mac.rb
+   # Update version and SHA256 in Formula/usbip.rb
    
    # Validate and commit
-   ruby -c Formula/usbipd-mac.rb
-   git add Formula/usbipd-mac.rb
+   ruby -c Formula/usbip.rb
+   git add Formula/usbip.rb
    git commit -m "feat: emergency formula update to v0.0.9"
    git push origin main
    ```
