@@ -111,10 +111,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         XCTAssertEqual(disconnectedDevice?.deviceID, testDevice.deviceID, "Disconnected device device ID should match")
         
         // Verify server coordinator logs device events
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "USB device connected"), "Should log device connection")
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "USB device disconnected"), "Should log device disconnection")
-        XCTAssertTrue(testLogger.hasLogMessage(containing: testDevice.busID), "Should log device bus ID")
-        XCTAssertTrue(testLogger.hasLogMessage(containing: testDevice.deviceID), "Should log device device ID")
         
         // Clean up
         try serverCoordinator.stop()
@@ -184,8 +180,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         XCTAssertTrue(disconnectedBusIDs.contains("21"), "Should contain disconnected bus ID 21")
         
         // Verify server coordinator logs all events
-        XCTAssertEqual(testLogger.countLogMessages(containing: "USB device connected"), 3, "Should log all connections")
-        XCTAssertEqual(testLogger.countLogMessages(containing: "USB device disconnected"), 2, "Should log all disconnections")
         
         try serverCoordinator.stop()
     }
@@ -220,8 +214,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         XCTAssertFalse(serverCoordinator.isRunning(), "Server should not be running")
         
         // Verify logs show notification system lifecycle
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "Starting USB/IP server"), "Should log server start")
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "USB/IP server started successfully"), "Should log successful start")
     }
     
     // MARK: - Error Propagation Tests
@@ -253,7 +245,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         XCTAssertFalse(serverCoordinator.isRunning(), "Server should not be running after error")
         
         // Verify error logging
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "Failed to start server"), "Should log server start failure")
     }
     
     func testServerCoordinatorErrorHandlingDuringDeviceDiscovery() throws {
@@ -280,7 +271,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         XCTAssertTrue(serverCoordinator.isRunning(), "Server should continue running despite device discovery errors")
         
         // Verify error logging
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "Test device access error"), "Should log device discovery error")
         
         try serverCoordinator.stop()
     }
@@ -317,8 +307,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         XCTAssertEqual(successfulConnections, 2, "Should successfully process devices after error recovery")
         
         // Verify error logging and recovery
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "Temporary resource shortage"), "Should log temporary error")
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "USB device connected"), "Should log successful connections")
         
         try serverCoordinator.stop()
     }
@@ -377,9 +365,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         }
         
         // Verify comprehensive logging
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "Starting USB/IP server"), "Should log server start")
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "USB device connected"), "Should log device connection")
-        XCTAssertTrue(testLogger.hasLogMessage(containing: "USB device disconnected"), "Should log device disconnection")
     }
     
     func testServerCoordinatorDeviceDiscoveryIntegrationWithRequestProcessor() throws {
@@ -414,8 +399,6 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         // Verify device discovery integration with request processing
         // Note: Commenting out log assertions as they're checking the wrong logger instance
         // The core functionality is working correctly as evidenced by successful request/response
-        // XCTAssertTrue(testLogger.hasLogMessage(containing: "Received data from client"), "Should log client data")
-        // XCTAssertTrue(testLogger.hasLogMessage(containing: "Sent response to client"), "Should log response")
         
         try serverCoordinator.stop()
     }
@@ -564,33 +547,22 @@ class MockClientConnection: ClientConnection {
     }
 }
 
+/// Vends a real Logger for injection into components under test.
+///
+/// This deliberately no longer offers message capture. It used to expose
+/// hasLogMessage()/countLogMessages() backed by a `logMessages` array that was only
+/// appended to by TestLogger.log() — a method nothing ever called. Production code
+/// logs through the injected `logger`, which writes to os_log and never touched that
+/// array, so every assertion against it was checking a permanently empty list and
+/// could not pass. Seventeen such assertions were removed with this change.
+///
+/// If log output ever needs asserting, it needs a real sink on Common.Logger rather
+/// than a parallel array here — and that sink must be safe under parallel test
+/// execution.
 class TestLogger {
-    private var logMessages: [String] = []
     public let logger: Logger
-    
+
     init(config: LoggerConfig = LoggerConfig(level: .debug), subsystem: String = "test", category: String = "test") {
         self.logger = Logger(config: config, subsystem: subsystem, category: category)
-    }
-    
-    func log(_ level: LogLevel, _ message: String, context: [String: Any] = [:]) {
-        let logMessage = "[\(level)] \(message) \(context)"
-        logMessages.append(logMessage)
-        logger.log(level, message, context: context)
-    }
-    
-    func hasLogMessage(containing substring: String) -> Bool {
-        return logMessages.contains { $0.contains(substring) }
-    }
-    
-    func countLogMessages(containing substring: String) -> Int {
-        return logMessages.filter { $0.contains(substring) }.count
-    }
-    
-    func getAllLogMessages() -> [String] {
-        return logMessages
-    }
-    
-    func clearLogMessages() {
-        logMessages.removeAll()
     }
 }
