@@ -389,13 +389,9 @@ public class DefaultIOKitInterfaceFactory: IOKitInterfaceFactory {
     }
 }
 
-/// Mock factory for testing
-public class MockIOKitInterfaceFactory: IOKitInterfaceFactory {
-    public init() {}
-    
-    public func createIOKitUSBInterface(device: USBDevice, interfaceNumber: UInt8) throws -> IOKitUSBInterface {
-        // In tests, this would return a mock interface
-        // For now, create a real interface (tests will need proper mocking)
-        return try IOKitUSBInterface(device: device, interfaceNumber: interfaceNumber)
-    }
-}
+// MockIOKitInterfaceFactory was removed. Despite the name it returned a real
+// IOKitUSBInterface — "in tests, this would return a mock interface / for now, create a
+// real interface" — so any test reaching for it would have opened live hardware while
+// believing it was mocked. Nothing referenced it. A real mock belongs here if the
+// transfer path ever needs one, but an empty shell with a misleading name is worse
+// than nothing.

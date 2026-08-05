@@ -72,8 +72,10 @@ public class CommandLineParser {
             BindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, systemExtensionManager: systemExtensionManager),
             UnbindCommand(deviceDiscovery: deviceDiscovery, serverConfig: serverConfig, systemExtensionManager: systemExtensionManager),
             StatusCommand(deviceClaimManager: nil, outputFormatter: outputFormatter),
-            AttachCommand(),
-            DetachCommand(),
+            // attach/detach are deliberately not registered. usbipd is a USB/IP
+            // *server*; attaching a remote device is the client's job, and both
+            // commands only ever threw operationNotSupported. Listing them in --help
+            // and in shell completions advertised capability that does not exist.
             DaemonCommand(server: server, serverConfig: serverConfig),
             InstallSystemExtensionCommand(),
             DiagnoseCommand(),

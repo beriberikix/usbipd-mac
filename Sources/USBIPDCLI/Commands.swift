@@ -269,9 +269,12 @@ public class BindCommand: Command {
                     throw CommandHandlerError.deviceBindingFailed(errorMsg)
                 }
             } else {
-                logger.warning("System Extension Manager not available, using configuration-only binding")
-                print("⚠ System Extension Manager not available - device will be bound in configuration only")
-                print("Note: Device claiming through System Extension is not active")
+                logger.warning("System Extension Manager not available; device allow-listed without an exclusive claim")
+                print("⚠ System Extension is not active - this device was added to the allow-list only.")
+                print("  No exclusive claim was taken. Devices macOS has already bound to a kernel")
+                print("  driver (USB-serial, HID, mass storage) will NOT be servable in this state.")
+                print("  Devices with no kernel driver bound - debug probes, DFU/bootloader modes -")
+                print("  work from userspace and need no claim.")
             }
             
             // Step 3: Add device to allowed devices in config
@@ -284,12 +287,17 @@ public class BindCommand: Command {
             
             logger.info("Successfully bound device", context: ["busid": busid])
             print("✓ Device \(busid) added to server configuration")
-            print("Successfully bound device \(busid): \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
-            
+
+            // Report what actually happened. This previously printed "Successfully
+            // bound" for both outcomes, so a run that took no exclusive claim at all
+            // was indistinguishable from one that did.
+            let identity = "\(busid): \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))"
             if systemExtensionManager != nil {
-                print("Device is now ready for USB/IP sharing with exclusive System Extension control")
+                print("Successfully bound device \(identity)")
+                print("Device is claimed and ready for USB/IP sharing with exclusive System Extension control")
             } else {
-                print("Device is configured for USB/IP sharing (System Extension Manager not available)")
+                print("Allow-listed device \(identity)")
+                print("Not claimed: the System Extension is not active. See the warning above.")
             }
         } catch let deviceError as DeviceDiscoveryError {
             logger.error("Device discovery error during bind", context: ["error": deviceError.localizedDescription])
@@ -505,77 +513,11 @@ public class UnbindCommand: Command {
     }
 }
 
-/// Attach command implementation
-public class AttachCommand: Command {
-    public let name = "attach"
-    public let description = "Attach a remote USB device"
-    
-    public func execute(with arguments: [String]) throws {
-        if arguments.count < 2 {
-            throw CommandLineError.missingArguments("Remote host and busid required")
-        }
-        
-        if arguments.contains("-h") || arguments.contains("--help") {
-            printHelp()
-            return
-        }
-        
-        // We don't need to use these values since we're not implementing this functionality yet
-        _ = arguments[0] // host
-        _ = arguments[1] // busid
-        
-        // For MVP, this is a placeholder as we don't implement client functionality yet
-        throw CommandHandlerError.operationNotSupported("The attach command is not supported in this version. This server implementation does not include client functionality.")
-    }
-    
-    private func printHelp() {
-        print("Usage: usbipd attach <host> <busid>")
-        print("")
-        print("Arguments:")
-        print("  host            The remote host running USB/IP server")
-        print("  busid           The bus ID of the USB device to attach (e.g., 1-1)")
-        print("")
-        print("Options:")
-        print("  -h, --help      Show this help message")
-    }
-}
+// AttachCommand and DetachCommand were removed. They are client-side operations —
+// usbipd implements the server half of USB/IP — and both bodies did nothing but throw
+// CommandHandlerError.operationNotSupported while still appearing in --help and in
+// generated shell completions.
 
-/// Detach command implementation
-public class DetachCommand: Command {
-    public let name = "detach"
-    public let description = "Detach a remote USB device"
-    
-    public func execute(with arguments: [String]) throws {
-        if arguments.isEmpty {
-            throw CommandLineError.missingArguments("Port number required")
-        }
-        
-        if arguments.contains("-h") || arguments.contains("--help") {
-            printHelp()
-            return
-        }
-        
-        // Validate port is a number, but we don't need to use it
-        guard Int(arguments[0]) != nil else {
-            throw CommandLineError.invalidArguments("Port must be a number")
-        }
-        
-        // For MVP, this is a placeholder as we don't implement client functionality yet
-        throw CommandHandlerError.operationNotSupported("The detach command is not supported in this version. This server implementation does not include client functionality.")
-    }
-    
-    private func printHelp() {
-        print("Usage: usbipd detach <port>")
-        print("")
-        print("Arguments:")
-        print("  port            The port number of the attached device")
-        print("")
-        print("Options:")
-        print("  -h, --help      Show this help message")
-    }
-}
-
-/// Daemon command implementation
 public class DaemonCommand: Command {
     public let name = "daemon"
     public let description = "Start USB/IP daemon"

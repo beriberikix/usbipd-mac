@@ -175,7 +175,7 @@ extension CompletionIntegrationTests {
     func testCompletionScriptsIncludeExpectedCommands() throws {
         try completionCommand.execute(with: ["generate", "--output", tempDirectory.path])
         
-        let expectedCommands = ["help", "list", "bind", "unbind", "attach", "detach", "daemon", "install-system-extension", "diagnose", "completion"]
+        let expectedCommands = ["help", "list", "bind", "unbind", "daemon", "install-system-extension", "diagnose", "completion"]
         
         // Check bash completion
         let bashFile = tempDirectory.appendingPathComponent("usbipd")

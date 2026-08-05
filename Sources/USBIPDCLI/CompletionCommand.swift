@@ -359,8 +359,6 @@ public class CompletionCommand: Command {
             MockCommand(name: "list", description: "List available USB devices"),
             MockCommand(name: "bind", description: "Bind a USB device to USB/IP"),
             MockCommand(name: "unbind", description: "Unbind a USB device from USB/IP"),
-            MockCommand(name: "attach", description: "Attach a remote USB device"),
-            MockCommand(name: "detach", description: "Detach a remote USB device"),
             MockCommand(name: "daemon", description: "Start USB/IP daemon"),
             MockCommand(name: "install-system-extension", description: "Install and register the System Extension"),
             MockCommand(name: "diagnose", description: "Run comprehensive installation and system diagnostics"),

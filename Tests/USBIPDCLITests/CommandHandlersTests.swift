@@ -165,43 +165,11 @@ class CommandHandlersTests: XCTestCase {
     }
     
     // MARK: - Attach and Detach Command Tests
-    
-    func testAttachCommand() {
-        let attachCommand = AttachCommand()
-        
-        // Test that attach command throws not supported error
-        XCTAssertThrowsError(try attachCommand.execute(with: ["localhost", "1-2"])) { error in
-            XCTAssertTrue(error is CommandHandlerError, "Should throw CommandHandlerError")
-            if let handlerError = error as? CommandHandlerError {
-                switch handlerError {
-                case .operationNotSupported:
-                    // Expected error
-                    break
-                default:
-                    XCTFail("Wrong error type: \(handlerError)")
-                }
-            }
-        }
-    }
-    
-    func testDetachCommand() {
-        let detachCommand = DetachCommand()
-        
-        // Test that detach command throws not supported error
-        XCTAssertThrowsError(try detachCommand.execute(with: ["1"])) { error in
-            XCTAssertTrue(error is CommandHandlerError, "Should throw CommandHandlerError")
-            if let handlerError = error as? CommandHandlerError {
-                switch handlerError {
-                case .operationNotSupported:
-                    // Expected error
-                    break
-                default:
-                    XCTFail("Wrong error type: \(handlerError)")
-                }
-            }
-        }
-    }
-    
+    //
+    // Removed along with the commands. Both tests only asserted that the commands
+    // threw operationNotSupported, which is coverage of a stub rather than of
+    // behaviour. usbipd is the USB/IP server; attach and detach are client-side.
+
     // MARK: - Help Command Tests
     
     func testHelpCommand() throws {

@@ -42,8 +42,9 @@ final class CommandLineParserTests: XCTestCase {
         XCTAssertTrue(commandNames.contains("list"))
         XCTAssertTrue(commandNames.contains("bind"))
         XCTAssertTrue(commandNames.contains("unbind"))
-        XCTAssertTrue(commandNames.contains("attach"))
-        XCTAssertTrue(commandNames.contains("detach"))
+        // attach/detach are intentionally absent: they are client-side operations.
+        XCTAssertFalse(commandNames.contains("attach"))
+        XCTAssertFalse(commandNames.contains("detach"))
         XCTAssertTrue(commandNames.contains("daemon"))
     }
     
