@@ -47,6 +47,16 @@ SEIZE=false
 INCLUDE_APPLE=false
 INCLUDE_HUBS=false
 LIST_ONLY=false
+SELF_TEST=false
+
+# Variants that must build, sign, launch and emit parseable results for the harness
+# itself to be considered working. The others are informational: a sandboxed variant
+# that refuses to launch, or a DriverKit variant killed by AMFI, is a finding rather
+# than a harness failure.
+REQUIRED_VARIANTS=(
+    "baseline"
+    "usb-only"
+)
 
 log_info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_ok()      { echo -e "${GREEN}[ OK ]${NC} $*"; }
@@ -65,6 +75,12 @@ Options:
   --include-apple   Include Apple-vendor (0x05ac) devices, skipped by default
   --include-hubs    Include USB hubs, skipped by default
   --list-only       Enumerate devices and driver ownership without opening anything
+  --self-test       Verify the harness itself works — that the probe compiles, signs,
+                    launches under each entitlement set and emits parseable results —
+                    and exit non-zero if not. Does NOT require any USB device to be
+                    attached, so it is safe to run in CI. It validates the instrument,
+                    not the hardware: a green self-test says nothing about whether any
+                    device can be claimed.
   -h, --help        Show this help
 
 Output:
@@ -85,6 +101,7 @@ while [[ $# -gt 0 ]]; do
         --include-apple) INCLUDE_APPLE=true; shift ;;
         --include-hubs) INCLUDE_HUBS=true; shift ;;
         --list-only) LIST_ONLY=true; shift ;;
+        --self-test) SELF_TEST=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) log_error "Unknown option: $1"; usage; exit 2 ;;
     esac
@@ -191,6 +208,8 @@ probe_args() {
 }
 
 SUCCESSFUL_RUNS=()
+FAILED_VARIANTS=()
+AUDIT_FINDINGS=0
 
 run_variant() {
     local variant="$1"
@@ -201,6 +220,7 @@ run_variant() {
 
     if [[ ! -f "$entitlements" ]]; then
         log_error "Missing entitlements file: $entitlements"
+        FAILED_VARIANTS+=("${variant}:missing-entitlements-file")
         return 1
     fi
 
@@ -210,6 +230,7 @@ run_variant() {
         > "${BUILD_DIR}/${variant}.codesign.log" 2>&1; then
         log_warn "${variant}: codesign refused this entitlement set"
         sed 's/^/         /' "${BUILD_DIR}/${variant}.codesign.log" || true
+        FAILED_VARIANTS+=("${variant}:codesign-refused")
         return 1
     fi
 
@@ -236,6 +257,11 @@ run_variant() {
         fi
         head -20 "$log" | sed 's/^/         /' || true
         rm -f "$json"
+        if [[ $status -eq 137 ]] || [[ $status -eq 9 ]]; then
+            FAILED_VARIANTS+=("${variant}:killed-at-launch")
+        else
+            FAILED_VARIANTS+=("${variant}:exit-${status}")
+        fi
         return 1
     fi
 
@@ -296,7 +322,7 @@ audit_project_entitlements() {
         "com.apple.security.iokit-user-client-class"
     )
 
-    local findings=0
+    AUDIT_FINDINGS=0
     for file in "${files[@]}"; do
         [[ -f "$file" ]] || continue
         echo "  ${file#"${PROJECT_ROOT}"/}"
@@ -305,21 +331,21 @@ audit_project_entitlements() {
         keys="$(entitlement_keys "$file")"
         if [[ -z "$keys" ]]; then
             log_warn "    could not read any keys — is this a valid plist?"
-            findings=$((findings + 1))
+            AUDIT_FINDINGS=$((AUDIT_FINDINGS + 1))
             continue
         fi
 
         for key in "${bad_keys[@]}"; do
             if echo "$keys" | grep -qx "$key"; then
                 log_warn "    '${key}' is not a real entitlement key and is silently ignored"
-                findings=$((findings + 1))
+                AUDIT_FINDINGS=$((AUDIT_FINDINGS + 1))
             fi
         done
 
         if echo "$keys" | grep -qx "com.apple.developer.endpoint-security.client"; then
             log_warn "    requests com.apple.developer.endpoint-security.client, which is unrelated"
             log_warn "    to USB and is itself a separately-approved managed capability"
-            findings=$((findings + 1))
+            AUDIT_FINDINGS=$((AUDIT_FINDINGS + 1))
         fi
 
         if echo "$keys" | grep -qx "com.apple.security.device.usb" && \
@@ -331,14 +357,14 @@ audit_project_entitlements() {
         if echo "$keys" | grep -qx "com.apple.security.get-task-allow"; then
             log_warn "    ships com.apple.security.get-task-allow, a debug entitlement that"
             log_warn "    must not appear in a release signature and fails notarization"
-            findings=$((findings + 1))
+            AUDIT_FINDINGS=$((AUDIT_FINDINGS + 1))
         fi
     done
 
-    if [[ $findings -eq 0 ]]; then
+    if [[ $AUDIT_FINDINGS -eq 0 ]]; then
         log_ok "No malformed or over-broad entitlement keys found"
     else
-        log_warn "${findings} entitlement issue(s) found — see Documentation/development/entitlement-validation.md"
+        log_warn "${AUDIT_FINDINGS} entitlement issue(s) found — see Documentation/development/entitlement-validation.md"
     fi
 }
 
@@ -372,11 +398,84 @@ main() {
 
     cat "$report"
 
+    if [[ "$SELF_TEST" == true ]]; then
+        run_self_test_assertions "$report" || return 1
+    fi
+
     log_section "Done"
     log_ok "Report: ${report}"
     log_info "Per-variant JSON and logs: ${BUILD_DIR}"
     log_info "Attach report.md to a new Feedback Assistant report — FB22897007 is closed"
     log_info "and no longer monitored."
+}
+
+# ---------------------------------------------------------------------------
+# Self-test: does the instrument work?
+#
+# Deliberately makes no claim about hardware. CI runners have no USB devices
+# attached, so an empty device list is a pass. What this gates is that the probe
+# compiles, signs, launches and produces parseable output — the failure modes that
+# would otherwise only surface on a maintainer's Mac.
+# ---------------------------------------------------------------------------
+
+run_self_test_assertions() {
+    local report="$1"
+    log_section "Self-test"
+
+    local failures=0
+
+    for variant in "${REQUIRED_VARIANTS[@]}"; do
+        local json="${BUILD_DIR}/${variant}.json"
+        if [[ ! -s "$json" ]]; then
+            log_error "required variant '${variant}' produced no results"
+            failures=$((failures + 1))
+            continue
+        fi
+        # The comparison step already parsed every JSON file with a strict decoder,
+        # so reaching here with a report means these files are well-formed.
+        log_ok "required variant '${variant}' ran and produced parseable results"
+    done
+
+    if [[ ! -s "$report" ]]; then
+        log_error "comparison produced no report"
+        failures=$((failures + 1))
+    else
+        log_ok "comparison report generated"
+    fi
+
+    # The audit only warns during a normal run — a maintainer measuring hardware
+    # should not be blocked by it. Under --self-test it is a hard gate, so a
+    # regression to the misspelled or over-broad entitlement keys fails CI.
+    if [[ $AUDIT_FINDINGS -gt 0 ]]; then
+        log_error "entitlement audit reported ${AUDIT_FINDINGS} issue(s); see the audit section above"
+        failures=$((failures + 1))
+    else
+        log_ok "shipped entitlement files are clean"
+    fi
+
+    # Informational: these outcomes are findings about macOS, not harness defects.
+    log_section "Self-test observations"
+    if [[ ${#FAILED_VARIANTS[@]} -eq 0 ]]; then
+        log_info "Every variant launched, including driverkit. If the DriverKit"
+        log_info "entitlements were honoured from an ad-hoc signature that would be"
+        log_info "surprising — check ${BUILD_DIR}/driverkit.effective-entitlements.xml"
+    else
+        for entry in "${FAILED_VARIANTS[@]}"; do
+            log_info "  ${entry}"
+        done
+        log_info "'driverkit:killed-at-launch' is the expected result: AMFI rejecting a"
+        log_info "restricted entitlement with no matching provisioning profile."
+    fi
+
+    log_info "A green self-test validates the instrument only. It says nothing about"
+    log_info "whether any USB device can be claimed — that needs real hardware."
+
+    if [[ $failures -gt 0 ]]; then
+        log_error "Self-test failed with ${failures} error(s)"
+        return 1
+    fi
+    log_ok "Self-test passed"
+    return 0
 }
 
 main "$@"

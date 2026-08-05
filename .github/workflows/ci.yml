@@ -314,6 +314,42 @@ jobs:
           rm -rf "$COMPLETION_DIR" || true
           echo "✅ Cleanup completed"
 
+  entitlement-harness-validation:
+    name: Entitlement Harness Validation
+    runs-on: macos-latest
+    needs: build-validation
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔬 Self-test the USB entitlement harness
+        run: |
+          echo "::group::Entitlement harness self-test"
+          # Validates the instrument, not the hardware. CI runners have no USB
+          # devices attached, so this cannot measure whether a device can be
+          # claimed — that needs a maintainer's Mac with real hardware. What it
+          # does catch, on every push rather than once someone gets around to it:
+          # the probe failing to compile, codesign rejecting an entitlement set,
+          # a variant dying at launch, or malformed results.
+          #
+          # It also guards the shipped entitlement files against regressing to
+          # the misspelled and over-broad keys that were removed.
+          ./Scripts/validate-usb-entitlements.sh --self-test
+          echo "::endgroup::"
+
+      - name: 📤 Upload Harness Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: entitlement-harness-results
+          path: |
+            .build/entitlement-validation/*.json
+            .build/entitlement-validation/*.log
+            .build/entitlement-validation/*.xml
+            .build/entitlement-validation/report.md
+          retention-days: 14
+          if-no-files-found: warn
+
   homebrew-metadata-validation:
     name: Homebrew Metadata Validation
     runs-on: macos-latest
@@ -508,7 +544,7 @@ jobs:
     name: CI Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [code-quality, build-validation, test-suite, completion-validation, homebrew-metadata-validation]
+    needs: [code-quality, build-validation, test-suite, completion-validation, homebrew-metadata-validation, entitlement-harness-validation]
     steps:
       - name: 📊 Check Overall CI Status
         run: |
@@ -518,11 +554,13 @@ jobs:
           echo "Test Suite: ${{ needs.test-suite.result }}"
           echo "Completion Validation: ${{ needs.completion-validation.result }}"
           echo "Homebrew Metadata Validation: ${{ needs.homebrew-metadata-validation.result }}"
+          echo "Entitlement Harness Validation: ${{ needs.entitlement-harness-validation.result }}"
           
           if [[ "${{ needs.code-quality.result }}" == "success" && 
                 "${{ needs.build-validation.result }}" == "success" && 
                 ("${{ needs.test-suite.result }}" == "success" || "${{ needs.test-suite.result }}" == "skipped") &&
-                ("${{ needs.completion-validation.result }}" == "success" || "${{ needs.completion-validation.result }}" == "skipped") ]]; then
+                ("${{ needs.completion-validation.result }}" == "success" || "${{ needs.completion-validation.result }}" == "skipped") &&
+                ("${{ needs.entitlement-harness-validation.result }}" == "success" || "${{ needs.entitlement-harness-validation.result }}" == "skipped") ]]; then
             echo "✅ CI passed successfully"
           else
             echo "❌ CI failed"
