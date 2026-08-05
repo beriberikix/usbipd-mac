@@ -56,24 +56,46 @@ This is the request that has been pending since August 2025. It is a materially 
 bar than the App Sandbox entitlement Apple pointed at, and it is the thing worth
 re-filing about.
 
-## Two findings in the shipped entitlement files
+## What was wrong in the shipped entitlement files
 
-The validation script audits the project's own entitlement files and flags two problems
-that exist independently of any Apple decision:
+`Sources/SystemExtension/SystemExtension.entitlements` is the file that actually ships —
+`.github/workflows/release.yml` signs the system extension bundle with it. Four of its
+eight keys were wrong, and all four have now been corrected:
 
-1. **`Sources/SystemExtension/SystemExtension.entitlements` misspells the USB transport
-   key.** It requests `com.apple.developer.driverkit.usb.transport`. The real key is
-   `com.apple.developer.driverkit.transport.usb`. A key that is not a real entitlement
-   is silently ignored — it does not error, it simply never grants anything, and it
-   would not match a provisioning profile.
+| Key | Problem |
+| --- | --- |
+| `com.apple.developer.driverkit.usb.transport` | Transposition of `...driverkit.transport.usb`. Not a real key, so it was silently ignored and could never match a provisioning profile. |
+| `com.apple.developer.system-extension.request` | Not a real key. `...system-extension.install` is the only one, and it belongs on the binary that calls `OSSystemExtensionRequest`. |
+| `com.apple.security.iokit-user-client-class` | Not a real key. The real form is `com.apple.security.temporary-exception.iokit-user-client-class`, an App Sandbox exception with no effect on a non-sandboxed extension. |
+| `com.apple.developer.endpoint-security.client` | Real, but unrelated to USB and separately reviewed. Bundling it broadened the pending request well past what this project needs. |
 
-2. **The same file requests `com.apple.developer.endpoint-security.client`.** That is a
-   separately-reviewed managed capability for security-monitoring products, unrelated to
-   USB. Bundling it into a DriverKit request broadens the ask considerably and is a
-   plausible contributor to a request sitting unanswered.
+This matters beyond tidiness. If the entitlement request filed in August 2025 was built
+from this key list, it asked Apple for a USB transport entitlement that does not exist,
+plus Endpoint Security. **Check what the pending request actually says in the Developer
+portal before re-filing.**
 
-Neither is a substitute for the missing approval, but both should be fixed before
-re-filing, so the request describes exactly what the project needs and nothing more.
+`usbipd.entitlements` was separately dead — nothing referenced it — and carried
+`com.apple.security.get-task-allow`, a debug entitlement that lets any process attach a
+debugger and that fails notarization. It is now the entitlements file for the `usbipd`
+binary, carrying `com.apple.developer.system-extension.install`, which that binary needs
+because it is the one submitting the extension for installation.
+
+`Scripts/validate-usb-entitlements.sh` audits both files on every run and will catch a
+regression. It parses the plists rather than grepping them, so the comments recording
+what was removed do not read as the keys still being present.
+
+## Managed capabilities need a provisioning profile, not just entitlements
+
+A managed capability is only honoured when the same keys appear in an **Apple-issued
+provisioning profile embedded in the bundle** as `Contents/embedded.provisionprofile`.
+`codesign` will embed DriverKit entitlement keys into a signature without complaint and
+without that profile, producing a build that looks correctly signed and silently fails to
+claim devices at runtime.
+
+The release workflow now embeds a profile from the `DRIVERKIT_PROVISIONING_PROFILE`
+secret (base64-encoded `.provisionprofile`), warns loudly when that secret is absent, and
+reads the entitlements back out of the finished signatures rather than trusting what was
+passed in. The secret cannot be populated until Apple approves the request.
 
 ## The experiment
 
@@ -175,6 +197,15 @@ three paths above is viable.
    - attach `report.md` as the evidence that the App Sandbox entitlement changes nothing;
    - restate the original ask (a first-party USB/IP server) as the alternative that would
      make the entitlement request moot.
-3. Fix the two entitlement-file findings above before re-filing.
-4. Update the README warning to name the correct entitlement and, if the results support
+3. **Check the pending Developer portal request** against the corrected key list above.
+   If it names the misspelled key or bundles Endpoint Security, withdraw it and
+   re-submit for exactly `com.apple.developer.driverkit`,
+   `com.apple.developer.driverkit.transport.usb`, and
+   `com.apple.developer.driverkit.allow-any-userclient-access`.
+4. Consider spending a DTS ticket. A closed Feedback is a dead channel; DTS puts a human
+   on the record confirming DriverKit is the required path, which strengthens the
+   re-filed request.
+5. Once approved: create the provisioning profile, base64-encode it, and set it as the
+   `DRIVERKIT_PROVISIONING_PROFILE` repository secret.
+6. Update the README warning to name the correct entitlement and, if the results support
    it, to scope the warning to device classes that are actually blocked.

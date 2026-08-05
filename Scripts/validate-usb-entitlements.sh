@@ -248,6 +248,37 @@ run_variant() {
 # Static audit of the entitlements the project actually ships
 # ---------------------------------------------------------------------------
 
+# Emits one entitlement key per line. Must parse the plist rather than grep the file:
+# these entitlement files carry XML comments naming the keys that were removed, and a
+# text search reports those as still present.
+entitlement_keys() {
+    local file="$1"
+    if command -v plutil >/dev/null 2>&1; then
+        plutil -convert json -o - "$file" 2>/dev/null \
+            | tr ',' '\n' \
+            | sed -n 's/.*"\([a-zA-Z0-9._-]*\)"[[:space:]]*:.*/\1/p'
+    else
+        # Fallback for non-macOS syntax checking: strip comment regions, then read <key>.
+        awk '
+            BEGIN { inc = 0 }
+            {
+                line = $0; res = ""
+                while (length(line) > 0) {
+                    if (inc) {
+                        p = index(line, "-->")
+                        if (p == 0) { line = "" } else { line = substr(line, p + 3); inc = 0 }
+                    } else {
+                        p = index(line, "<!--")
+                        if (p == 0) { res = res line; line = "" }
+                        else { res = res substr(line, 1, p - 1); line = substr(line, p + 4); inc = 1 }
+                    }
+                }
+                print res
+            }
+        ' "$file" | sed -n 's:.*<key>\(.*\)</key>.*:\1:p'
+    fi
+}
+
 audit_project_entitlements() {
     log_section "Auditing shipped entitlement files"
 
@@ -256,11 +287,13 @@ audit_project_entitlements() {
         "${PROJECT_ROOT}/Sources/SystemExtension/SystemExtension.entitlements"
     )
 
-    # Entitlement keys that look plausible but are not real, and so are silently
-    # ignored by codesign and by the provisioning system.
+    # Keys that look plausible but are not real entitlements. codesign embeds them
+    # without complaint and nothing ever honours them.
     local -a bad_keys=(
         "com.apple.developer.driverkit.usb.transport"
         "com.apple.developer.driverkit.transport-usb"
+        "com.apple.developer.system-extension.request"
+        "com.apple.security.iokit-user-client-class"
     )
 
     local findings=0
@@ -268,24 +301,37 @@ audit_project_entitlements() {
         [[ -f "$file" ]] || continue
         echo "  ${file#"${PROJECT_ROOT}"/}"
 
+        local keys
+        keys="$(entitlement_keys "$file")"
+        if [[ -z "$keys" ]]; then
+            log_warn "    could not read any keys — is this a valid plist?"
+            findings=$((findings + 1))
+            continue
+        fi
+
         for key in "${bad_keys[@]}"; do
-            if grep -q "$key" "$file"; then
-                log_warn "    misspelled key '${key}' — the real key is"
-                log_warn "    'com.apple.developer.driverkit.transport.usb'; as written it is ignored"
+            if echo "$keys" | grep -qx "$key"; then
+                log_warn "    '${key}' is not a real entitlement key and is silently ignored"
                 findings=$((findings + 1))
             fi
         done
 
-        if grep -q "com.apple.developer.endpoint-security.client" "$file"; then
+        if echo "$keys" | grep -qx "com.apple.developer.endpoint-security.client"; then
             log_warn "    requests com.apple.developer.endpoint-security.client, which is unrelated"
             log_warn "    to USB and is itself a separately-approved managed capability"
             findings=$((findings + 1))
         fi
 
-        if grep -q "com.apple.security.device.usb" "$file" && \
-           ! grep -q "com.apple.security.app-sandbox" "$file"; then
+        if echo "$keys" | grep -qx "com.apple.security.device.usb" && \
+           ! echo "$keys" | grep -qx "com.apple.security.app-sandbox"; then
             log_info "    has com.apple.security.device.usb without com.apple.security.app-sandbox;"
             log_info "    outside the sandbox this key has nothing to relax (this run measures that)"
+        fi
+
+        if echo "$keys" | grep -qx "com.apple.security.get-task-allow"; then
+            log_warn "    ships com.apple.security.get-task-allow, a debug entitlement that"
+            log_warn "    must not appear in a release signature and fails notarization"
+            findings=$((findings + 1))
         fi
     done
 

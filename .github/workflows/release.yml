@@ -27,6 +27,10 @@ env:
   DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
   NOTARIZATION_USERNAME: ${{ secrets.NOTARIZATION_USERNAME }}
   NOTARIZATION_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
+  # Base64-encoded .provisionprofile carrying the DriverKit managed capabilities.
+  # Without it the DriverKit entitlements are signed in but inert — see
+  # Documentation/development/entitlement-validation.md
+  DRIVERKIT_PROVISIONING_PROFILE: ${{ secrets.DRIVERKIT_PROVISIONING_PROFILE }}
 
 jobs:
   release-validation:
@@ -208,10 +212,31 @@ jobs:
           EOF
           fi
           
-          # Copy entitlements file for code signing
-          echo "📋 Copying System Extension entitlements..."
+          # Copy entitlements files for code signing
+          echo "📋 Copying entitlements..."
           cp Sources/SystemExtension/SystemExtension.entitlements "$ARTIFACTS_DIR/"
-          
+          cp usbipd.entitlements "$ARTIFACTS_DIR/"
+
+          # Embed the provisioning profile into the system extension bundle.
+          #
+          # The DriverKit entitlements in SystemExtension.entitlements are managed
+          # capabilities: codesign will happily embed the keys, but the kernel only
+          # honours them when the same keys appear in an Apple-issued provisioning
+          # profile shipped inside the bundle. Without this the entitlements are inert,
+          # which is indistinguishable at signing time from them working.
+          if [ -n "$DRIVERKIT_PROVISIONING_PROFILE" ]; then
+            echo "📋 Embedding provisioning profile..."
+            if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
+              echo "$DRIVERKIT_PROVISIONING_PROFILE" | base64 --decode \
+                > "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension/Contents/embedded.provisionprofile"
+              echo "✅ Provisioning profile embedded"
+            else
+              echo "::warning::DRIVERKIT_PROVISIONING_PROFILE set but no system extension bundle to embed it in"
+            fi
+          else
+            echo "::warning::No DRIVERKIT_PROVISIONING_PROFILE secret configured. The DriverKit entitlements will be signed into the bundle but will not take effect, so device claiming will fail at runtime. See Documentation/development/entitlement-validation.md"
+          fi
+
           # Package QEMU test server if available
           if [ -f .build/release/QEMUTestServer ]; then
             QEMU_SERVER_PATH="$ARTIFACTS_DIR/QEMUTestServer-$VERSION-macos"
@@ -221,8 +246,11 @@ jobs:
           # Code sign binaries if certificates available
           if [ -n "$DEVELOPER_ID_CERTIFICATE" ]; then
             echo "🔒 Code signing release artifacts..."
-            codesign --sign "Developer ID Application" --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
-            
+            # usbipd is the binary that submits the system extension for installation,
+            # so it carries com.apple.developer.system-extension.install. Hardened
+            # runtime is required for notarization.
+            codesign --sign "Developer ID Application" --entitlements "$ARTIFACTS_DIR/usbipd.entitlements" --options runtime --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
+
             # Sign system extension bundle
             if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
               echo "🔒 Code signing system extension bundle..."
@@ -233,7 +261,20 @@ jobs:
               codesign --sign "Developer ID Application" --timestamp "$QEMU_SERVER_PATH" || echo "::warning::Code signing failed for QEMUTestServer"
             fi
             echo "✅ Code signing completed"
-            
+
+            # Read the entitlements back out of the signatures rather than trusting
+            # what we passed in. A managed capability that was silently dropped looks
+            # identical to a successful signing run without this check.
+            echo "🔍 Verifying embedded entitlements..."
+            codesign -d --entitlements - --xml "$USBIPD_PATH" 2>/dev/null || echo "::warning::Could not read back usbipd entitlements"
+            if [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
+              SYSEXT_ENTITLEMENTS=$(codesign -d --entitlements - --xml "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" 2>/dev/null || echo "")
+              echo "$SYSEXT_ENTITLEMENTS"
+              if ! echo "$SYSEXT_ENTITLEMENTS" | grep -q "com.apple.developer.driverkit.transport.usb"; then
+                echo "::warning::com.apple.developer.driverkit.transport.usb is not present in the signed system extension. Device claiming will not work."
+              fi
+            fi
+
             # Notarize system extension bundle if notarization credentials available
             if [ -n "$NOTARIZATION_USERNAME" ] && [ -n "$NOTARIZATION_PASSWORD" ] && [ -d "$ARTIFACTS_DIR/USBIPDSystemExtension.systemextension" ]; then
               echo "🔒 Notarizing system extension bundle..."

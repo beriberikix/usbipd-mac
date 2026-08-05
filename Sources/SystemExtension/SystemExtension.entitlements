@@ -1,27 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the USBIPDSystemExtension bundle. Signed into the bundle by
+  .github/workflows/release.yml.
+
+  The DriverKit keys below are *managed capabilities*: they only take effect when the
+  same keys appear in an Apple-issued provisioning profile embedded in the bundle as
+  Contents/embedded.provisionprofile. Requesting them here without that profile does
+  nothing. See Documentation/development/entitlement-validation.md.
+
+  Removed 2026-08-05, all silently ignored or out of scope:
+    com.apple.developer.driverkit.usb.transport
+      Not a real key — a transposition of driverkit.transport.usb, which is below.
+    com.apple.developer.system-extension.request
+      Not a real key. system-extension.install is the only one, and it belongs on the
+      binary that calls OSSystemExtensionRequest (usbipd), not on the extension.
+    com.apple.security.iokit-user-client-class
+      Not a real key. The real form is
+      com.apple.security.temporary-exception.iokit-user-client-class, which is an App
+      Sandbox exception and has no effect on a non-sandboxed system extension.
+    com.apple.developer.endpoint-security.client
+      Real, but unrelated to USB and separately reviewed by Apple. Including it
+      broadened the pending entitlement request well past what this project needs.
+-->
 <plist version="1.0">
 <dict>
+	<!-- Managed capabilities: pending Apple approval since 2025-08-23. -->
 	<key>com.apple.developer.driverkit</key>
+	<true/>
+	<key>com.apple.developer.driverkit.transport.usb</key>
 	<true/>
 	<key>com.apple.developer.driverkit.allow-any-userclient-access</key>
 	<true/>
-	<key>com.apple.developer.driverkit.usb.transport</key>
-	<true/>
+
+	<!--
+	  Redundant here — this entitlement governs the installing binary, and usbipd
+	  carries it in usbipd.entitlements. Retained because
+	  Tests/IntegrationTests/BuildOutputVerificationTests.swift asserts it on the
+	  bundle; drop both together if that assertion is revisited.
+	-->
 	<key>com.apple.developer.system-extension.install</key>
 	<true/>
+
+	<!--
+	  Apple's guidance on FB22897007. This is an App Sandbox entitlement and is
+	  expected to be a no-op outside the sandbox; retained until
+	  Scripts/validate-usb-entitlements.sh measures whether that is true here.
+	-->
 	<key>com.apple.security.device.usb</key>
-	<true/>
-	<key>com.apple.security.iokit-user-client-class</key>
-	<array>
-		<string>IOUSBDeviceUserClientV2</string>
-		<string>IOUSBInterfaceUserClientV2</string>
-		<string>AppleUSBHostDeviceUserClient</string>
-		<string>AppleUSBHostInterfaceUserClient</string>
-	</array>
-	<key>com.apple.developer.system-extension.request</key>
-	<true/>
-	<key>com.apple.developer.endpoint-security.client</key>
 	<true/>
 </dict>
 </plist>
