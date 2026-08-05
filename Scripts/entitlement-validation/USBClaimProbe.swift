@@ -223,7 +223,15 @@ private let structuralClasses: Set<String> = [
     "IOUSBHostLegacyClient",
     "AppleUSBHostLegacyClient",
     "IOUSBHostLegacyDevice",
-    "IOUSBHostLegacyInterface"
+    "IOUSBHostLegacyInterface",
+    // The composite driver that creates the interface nodes. Structural: its
+    // presence says nothing about whether a function driver claimed anything.
+    "AppleUSBHostCompositeDevice",
+    // A userspace client connection (WebUSB, libusb, another daemon) — NOT a
+    // kernel driver. Reporting it as one made a device that is fully usable
+    // from userspace look like it was owned by the kernel.
+    "AppleUSBHostDeviceUserClient",
+    "IOUSBHostDeviceUserClient"
 ]
 
 private func childServices(of entry: io_registry_entry_t) -> [io_registry_entry_t] {
@@ -312,10 +320,11 @@ private struct OpenAttempt {
 }
 
 private func probeInterfaces(
-    deviceInterface: UnsafeMutablePointer<IOUSBDeviceInterface300>,
+    deviceHandle: UnsafeMutablePointer<UnsafeMutablePointer<IOUSBDeviceInterface300>?>,
     attempt: inout OpenAttempt,
     options: Options
 ) {
+    guard let deviceInterface = deviceHandle.pointee else { return }
     var request = IOUSBFindInterfaceRequest()
     request.bInterfaceClass = UInt16(kIOUSBFindInterfaceDontCare)
     request.bInterfaceSubClass = UInt16(kIOUSBFindInterfaceDontCare)
@@ -323,7 +332,7 @@ private func probeInterfaces(
     request.bAlternateSetting = UInt16(kIOUSBFindInterfaceDontCare)
 
     var iterator: io_iterator_t = 0
-    let iteratorResult = deviceInterface.pointee.CreateInterfaceIterator(deviceInterface, &request, &iterator)
+    let iteratorResult = deviceInterface.pointee.CreateInterfaceIterator(deviceHandle, &request, &iterator)
     attempt.interfaceIteratorResult = describeIOReturn(iteratorResult)
     guard isSuccess(iteratorResult) else { return }
     defer { IOObjectRelease(iterator) }
@@ -361,20 +370,22 @@ private func probeInterfaces(
                 )
                 _ = plugin.pointee?.pointee.Release(plugin)
 
-                if queryResult == S_OK, let raw = raw {
-                    let usbInterface = raw.assumingMemoryBound(to: IOUSBInterfaceInterface300.self)
-                    let openResult = usbInterface.pointee.USBInterfaceOpen(usbInterface)
+                if queryResult == S_OK, let raw = raw,
+                   case let ifaceHandle = raw.assumingMemoryBound(
+                       to: UnsafeMutablePointer<IOUSBInterfaceInterface300>?.self),
+                   let usbInterface = ifaceHandle.pointee {
+                    let openResult = usbInterface.pointee.USBInterfaceOpen(ifaceHandle)
                     openDescription = describeIOReturn(openResult)
                     if isSuccess(openResult) {
-                        _ = usbInterface.pointee.USBInterfaceClose(usbInterface)
+                        _ = usbInterface.pointee.USBInterfaceClose(ifaceHandle)
                     } else if options.seize {
-                        let seizeResult = usbInterface.pointee.USBInterfaceOpenSeize(usbInterface)
+                        let seizeResult = usbInterface.pointee.USBInterfaceOpenSeize(ifaceHandle)
                         seizeDescription = describeIOReturn(seizeResult)
                         if isSuccess(seizeResult) {
-                            _ = usbInterface.pointee.USBInterfaceClose(usbInterface)
+                            _ = usbInterface.pointee.USBInterfaceClose(ifaceHandle)
                         }
                     }
-                    _ = usbInterface.pointee.Release(usbInterface)
+                    _ = usbInterface.pointee.Release(ifaceHandle)
                 } else {
                     pluginDescription += " / QueryInterface failed"
                 }
@@ -423,15 +434,27 @@ private func probeDevice(_ service: io_service_t, options: Options) -> OpenAttem
         attempt.pluginResult += " / QueryInterface failed"
         return attempt
     }
-    let deviceInterface = raw.assumingMemoryBound(to: IOUSBDeviceInterface300.self)
-    defer { _ = deviceInterface.pointee.Release(deviceInterface) }
+    // IOKit's IOUSBLib interfaces are COM-style: QueryInterface hands back a
+    // pointer TO a pointer to the interface struct, and methods are invoked as
+    // (*dev)->Method(dev) — the handle itself is passed as the receiver.
+    //
+    // Binding this one level too shallow (raw as IOUSBDeviceInterface300 rather
+    // than as a pointer to it) reads each function pointer from the wrong offset
+    // and jumps to garbage. The symptom is a SIGBUS with a destroyed stack, which
+    // is what this probe did on its first contact with real hardware.
+    let deviceHandle = raw.assumingMemoryBound(to: UnsafeMutablePointer<IOUSBDeviceInterface300>?.self)
+    guard let deviceInterface = deviceHandle.pointee else {
+        attempt.pluginResult += " / null device interface"
+        return attempt
+    }
+    defer { _ = deviceInterface.pointee.Release(deviceHandle) }
 
-    let openResult = deviceInterface.pointee.USBDeviceOpen(deviceInterface)
+    let openResult = deviceInterface.pointee.USBDeviceOpen(deviceHandle)
     attempt.openResult = describeIOReturn(openResult)
     var deviceIsOpen = isSuccess(openResult)
 
     if !deviceIsOpen && options.seize {
-        let seizeResult = deviceInterface.pointee.USBDeviceOpenSeize(deviceInterface)
+        let seizeResult = deviceInterface.pointee.USBDeviceOpenSeize(deviceHandle)
         attempt.openSeizeResult = describeIOReturn(seizeResult)
         deviceIsOpen = isSuccess(seizeResult)
     }
@@ -439,10 +462,10 @@ private func probeDevice(_ service: io_service_t, options: Options) -> OpenAttem
     // Interface enumeration works whether or not the device itself opened, and the
     // interface-level result is the one that matters for USB/IP: that is the level a
     // kernel driver binds at.
-    probeInterfaces(deviceInterface: deviceInterface, attempt: &attempt, options: options)
+    probeInterfaces(deviceHandle: deviceHandle, attempt: &attempt, options: options)
 
     if deviceIsOpen {
-        _ = deviceInterface.pointee.USBDeviceClose(deviceInterface)
+        _ = deviceInterface.pointee.USBDeviceClose(deviceHandle)
     }
     return attempt
 }
