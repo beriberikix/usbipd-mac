@@ -294,12 +294,27 @@ public class USBSubmitProcessor {
         // This is a simplified implementation - in practice, we would
         // query the device descriptor to determine the actual transfer type
         
-        // Check for isochronous transfers (has numberOfPackets > 0)
+        // Isochronous transfers carry a packet count.
         if request.numberOfPackets > 0 {
             return .isochronous
         }
-        
-        // Default to bulk for data endpoints
+
+        // A non-zero polling interval on a data endpoint means interrupt. Bulk
+        // transfers leave interval at 0, and the isochronous case is already handled
+        // above, so this is unambiguous for the fields CMD_SUBMIT actually carries.
+        //
+        // Without this every interrupt endpoint was driven as bulk, since the branch
+        // below was the only remaining outcome.
+        if request.interval > 0 {
+            return .interrupt
+        }
+
+        // Default to bulk for data endpoints.
+        //
+        // The authoritative source is the endpoint descriptor's bmAttributes, which
+        // this layer does not consult; it infers from the request alone. Endpoints
+        // configured as interrupt but submitted with interval 0 will still be treated
+        // as bulk.
         return .bulk
     }
     

@@ -135,8 +135,10 @@ extension CompletionIntegrationTests {
         
         // Validate bash syntax using basic checks
         let syntaxIssues = validateBashSyntax(bashContent)
-        
         XCTAssertTrue(syntaxIssues.isEmpty, "Syntax issues: \(syntaxIssues)", file: #filePath, line: #line)
+
+        // The authoritative check: does bash actually parse it?
+        assertShellParses("bash", bashFile)
     }
     
     /// Test zsh completion script syntax validation
@@ -149,8 +151,10 @@ extension CompletionIntegrationTests {
         
         // Validate zsh syntax using basic checks
         let syntaxIssues = validateZshSyntax(zshContent)
-        
         XCTAssertTrue(syntaxIssues.isEmpty, "Syntax issues: \(syntaxIssues)", file: #filePath, line: #line)
+
+        // The authoritative check: does zsh actually parse it?
+        assertShellParses("zsh", zshFile)
     }
     
     /// Test fish completion script syntax validation
@@ -366,10 +370,6 @@ extension CompletionIntegrationTests {
             issues.append("Unmatched braces in bash script")
         }
         
-        if content.count(of: "(") != content.count(of: ")") {
-            issues.append("Unmatched parentheses in bash script")
-        }
-        
         // Check for bash-specific requirements
         if !content.contains("complete -F") && !content.contains("complete -W") {
             issues.append("Bash completion should register completion function")
@@ -392,10 +392,6 @@ extension CompletionIntegrationTests {
         // Check for basic syntax issues
         if content.count(of: "{") != content.count(of: "}") {
             issues.append("Unmatched braces in zsh script")
-        }
-        
-        if content.count(of: "(") != content.count(of: ")") {
-            issues.append("Unmatched parentheses in zsh script")
         }
         
         // Check for zsh-specific requirements
@@ -459,5 +455,33 @@ extension CompletionIntegrationTests {
 extension String {
     func count(of character: Character) -> Int {
         return self.reduce(0) { $1 == character ? $0 + 1 : $0 }
+    }
+}
+
+extension CompletionIntegrationTests {
+    /// Ask the shell itself whether the script parses.
+    ///
+    /// This replaces a character-counting check that compared "(" and ")" totals.
+    /// Shell `case` patterns — `bind)`, `list)` — close a paren that was never
+    /// opened, so any correct completion script is "unbalanced" by that measure: the
+    /// generated bash script has 46 "(" and 61 ")" while `bash -n` accepts it. The
+    /// counter was reporting valid scripts as broken.
+    func assertShellParses(_ shell: String, _ path: URL, file: StaticString = #filePath, line: UInt = #line) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [shell, "-n", path.path]
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        process.standardOutput = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            XCTFail("Could not run \(shell) -n: \(error)", file: file, line: line)
+            return
+        }
+        let errText = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertEqual(process.terminationStatus, 0,
+                       "\(shell) rejected the generated script: \(errText)", file: file, line: line)
     }
 }

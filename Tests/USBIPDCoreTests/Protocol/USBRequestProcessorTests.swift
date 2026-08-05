@@ -137,8 +137,10 @@ final class USBRequestProcessorTests: XCTestCase {
         XCTAssertEqual(response.direction, 1)
         XCTAssertEqual(response.ep, 0x00)
         XCTAssertEqual(response.status, 0) // Success
-        XCTAssertEqual(response.actualLength, UInt32(responseData.count))
+        // actualLength is the USB payload length, not the size of the encoded
+        // message — comparing it to responseData.count compared 8 against 56.
         XCTAssertNotNil(response.transferBuffer)
+        XCTAssertEqual(response.actualLength, UInt32(response.transferBuffer?.count ?? 0))
     }
     
     func testProcessSubmitRequestBulkTransferOut() async throws {
