@@ -333,12 +333,18 @@ runs:
 
         # Count what actually ran, from the test output. Never estimate: an
         # invented number is what let a suite that executed nothing look healthy.
-        TESTS_RUN=$(grep -cE "^Test Case .* (passed|failed)" "$TEST_LOG" 2>/dev/null || true)
+        # Prefer XCTest's own summary line. Counting "Test Case ... passed|failed"
+        # lines under-reports badly with --parallel, which emits a line for failures
+        # but not for passes: a run of 422 tests with 35 failures was reported as
+        # "35 executed". Take the largest "Executed N tests" figure, which is the
+        # per-target totals followed by the overall total.
+        TESTS_RUN=$(grep -oE "Executed [0-9]+ test" "$TEST_LOG" \
+                    | grep -oE "[0-9]+" | sort -n | tail -1 || true)
         TESTS_RUN=${TESTS_RUN:-0}
 
         if [ "$TESTS_RUN" -eq 0 ]; then
-          # Fall back to swift-testing's summary line before concluding nothing ran.
-          TESTS_RUN=$(grep -oE "Executed [0-9]+ test" "$TEST_LOG" | grep -oE "[0-9]+" | head -1 || true)
+          # No summary line (very old output format): fall back to counting cases.
+          TESTS_RUN=$(grep -cE "^Test Case .* (passed|failed)" "$TEST_LOG" 2>/dev/null || true)
           TESTS_RUN=${TESTS_RUN:-0}
         fi
 
