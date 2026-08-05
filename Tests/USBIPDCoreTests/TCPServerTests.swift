@@ -181,17 +181,37 @@ final class TCPServerTests: XCTestCase {
         
         wait(for: [connectionExpectation], timeout: 2.0)
         
-        // Try to send data after closing the connection to trigger an error
-        try? clientConnection?.close()
-        
-        // Attempt to send data on closed connection should trigger error
-        XCTAssertThrowsError(try clientConnection?.send(data: Data("test".utf8))) { error in
-            XCTAssertTrue(error is NetworkError)
-            if case NetworkError.connectionClosed = error {
-                // Expected error
-            } else {
-                XCTFail("Expected NetworkError.connectionClosed")
+        // Unwrap rather than optional-chain. `clientConnection?.send(...)` on a nil
+        // optional simply evaluates to nil without calling anything, so
+        // XCTAssertThrowsError saw "did not throw" whenever the accept handler had
+        // not yet published the connection — the intermittent failure here.
+        guard let client = clientConnection else {
+            return XCTFail("Server never surfaced an accepted connection")
+        }
+
+        try? client.close()
+
+        // close() settles asynchronously, so poll until the send actually reports the
+        // closure instead of racing it on the first attempt.
+        var thrown: Error?
+        let deadline = Date().addingTimeInterval(2.0)
+        while thrown == nil && Date() < deadline {
+            do {
+                try client.send(data: Data("test".utf8))
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            } catch {
+                thrown = error
             }
+        }
+
+        guard let sendError = thrown else {
+            return XCTFail("Sending on a closed connection should have thrown")
+        }
+        XCTAssertTrue(sendError is NetworkError)
+        if case NetworkError.connectionClosed = sendError {
+            // Expected error
+        } else {
+            XCTFail("Expected NetworkError.connectionClosed, got \(sendError)")
         }
         
         connection.cancel()

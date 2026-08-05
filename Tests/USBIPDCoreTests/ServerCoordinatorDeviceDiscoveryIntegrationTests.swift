@@ -329,7 +329,10 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         
         // Then: Server should recover gracefully from errors
         XCTAssertTrue(serverCoordinator.isRunning(), "Server should continue running after errors")
-        XCTAssertEqual(successfulConnections, 2, "Should successfully process devices after error recovery")
+        // Callbacks arrive via DispatchQueue.main.async, so this has to wait for
+        // delivery rather than reading the counter the instant simulate...() returns.
+        XCTAssertTrue(waitUntil { successfulConnections == 2 },
+                      "Should successfully process devices after error recovery, got \(successfulConnections)")
         
         // Verify error logging and recovery
         

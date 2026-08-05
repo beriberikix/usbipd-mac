@@ -225,7 +225,10 @@ public class MockIOKitInterface: IOKitInterface {
     public func notificationPortCreate(_ mainPort: mach_port_t) -> IONotificationPortRef? {
         notificationPortCreateCalls.append(mainPort)
         
-        if shouldFailNotificationPortCreate {
+        // shouldFailNotificationSetup is the general "notification setup fails" switch.
+        // It was declared and reset but never consulted, so tests that set it saw
+        // notification setup succeed anyway and their assertions could not hold.
+        if shouldFailNotificationPortCreate || shouldFailNotificationSetup {
             return nil
         }
         
@@ -286,7 +289,10 @@ public class MockIOKitInterface: IOKitInterface {
             manufacturerString: device.manufacturerString,
             productString: device.productString,
             serialNumberString: device.serialNumberString,
-            locationID: UInt32((Int(device.busID) ?? 20) << 24) | UInt32(Int(device.deviceID) ?? 0)
+            // locationID must be packed the way generateDeviceIDs unpacks it:
+            // bus in bits 24-31, device in bits 16-23. Putting the device ID in
+            // the low byte meant every simulated device decoded as device 0.
+            locationID: (UInt32(Int(device.busID) ?? 20) << 24) | (UInt32(Int(device.deviceID) ?? 0) << 16)
         )
         
         // Add to notification devices
@@ -315,7 +321,10 @@ public class MockIOKitInterface: IOKitInterface {
             manufacturerString: device.manufacturerString,
             productString: device.productString,
             serialNumberString: device.serialNumberString,
-            locationID: UInt32((Int(device.busID) ?? 20) << 24) | UInt32(Int(device.deviceID) ?? 0)
+            // locationID must be packed the way generateDeviceIDs unpacks it:
+            // bus in bits 24-31, device in bits 16-23. Putting the device ID in
+            // the low byte meant every simulated device decoded as device 0.
+            locationID: (UInt32(Int(device.busID) ?? 20) << 24) | (UInt32(Int(device.deviceID) ?? 0) << 16)
         )
         
         // Remove from notification devices

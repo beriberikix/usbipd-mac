@@ -65,7 +65,12 @@ extension IOKitDeviceDiscovery {
         
         // Create matching dictionary for USB devices
         guard let matchingDict = ioKit.serviceMatching("IOUSBDevice") else {
-            throw handleIOKitError(KERN_FAILURE, operation: "create USB device matching dictionary")
+            // IOServiceMatching returns nil rather than a status code, so there is no
+            // IOKit error to report. Mapping this to ioKitError(KERN_FAILURE) invented
+            // a code IOKit never produced and made this indistinguishable from a real
+            // IOKit failure; DeviceDiscoveryError has a dedicated case for it.
+            logger.error("Failed to create USB device matching dictionary")
+            throw DeviceDiscoveryError.failedToCreateMatchingDictionary
         }
         
         // Get matching services

@@ -444,29 +444,44 @@ final class USBIPMessagesTests: XCTestCase {
     }
     
     func testInvalidMessageFormatHandling() throws {
-        // Create a valid header but with wrong command for SUBMIT request
-        let header = USBIPHeader(command: .requestDeviceList) // Wrong command
-        let invalidData = try header.encode() + Data(count: 48) // Pad to minimum size
-        
-        XCTAssertThrowsError(try USBIPSubmitRequest.decode(from: invalidData)) { error in
-            XCTAssertTrue(error is USBIPProtocolError)
-            if case USBIPProtocolError.invalidMessageFormat = error {
-                // Expected error
-            } else {
-                XCTFail("Expected invalidMessageFormat error")
+        // A well-formed message whose command belongs to a different type must be
+        // rejected as invalidMessageFormat. This used to be built from an 8-byte op
+        // header, which no longer means anything to these decoders: SUBMIT and UNLINK
+        // read a 4-byte command from usbip_header_basic, so op-header bytes now land
+        // as an unrecognised command instead. Build the wrong-but-valid case properly.
+        let retSubmit = USBIPSubmitResponse(seqnum: 1, devid: 1, direction: 1, ep: 1,
+                                            status: 0, actualLength: 0)
+        let retSubmitData = try retSubmit.encode()
+
+        XCTAssertThrowsError(try USBIPSubmitRequest.decode(from: retSubmitData)) { error in
+            guard case USBIPProtocolError.invalidMessageFormat = error else {
+                return XCTFail("Expected invalidMessageFormat, got \(error)")
             }
         }
-        
-        // Test wrong command for UNLINK request
-        XCTAssertThrowsError(try USBIPUnlinkRequest.decode(from: invalidData)) { error in
-            XCTAssertTrue(error is USBIPProtocolError)
-            if case USBIPProtocolError.invalidMessageFormat = error {
-                // Expected error
-            } else {
-                XCTFail("Expected invalidMessageFormat error")
+        XCTAssertThrowsError(try USBIPUnlinkRequest.decode(from: retSubmitData)) { error in
+            guard case USBIPProtocolError.invalidMessageFormat = error else {
+                return XCTFail("Expected invalidMessageFormat, got \(error)")
+            }
+        }
+
+        // A command field carrying nothing recognisable is a different failure, and
+        // should be reported as such rather than as a format mismatch.
+        var garbage = Data([0xDE, 0xAD, 0xBE, 0xEF])
+        garbage.append(Data(count: USBIPProtocol.commandMessagePrefixSize - 4))
+        XCTAssertThrowsError(try USBIPSubmitRequest.decode(from: garbage)) { error in
+            guard case USBIPProtocolError.unsupportedCommand = error else {
+                return XCTFail("Expected unsupportedCommand, got \(error)")
+            }
+        }
+
+        // Anything shorter than the 48-byte prefix cannot be a CMD_/RET_ message.
+        XCTAssertThrowsError(try USBIPSubmitRequest.decode(from: Data(count: 20))) { error in
+            guard case USBIPProtocolError.invalidDataLength = error else {
+                return XCTFail("Expected invalidDataLength, got \(error)")
             }
         }
     }
+
     
     // MARK: - Edge Cases and Boundary Conditions
     
