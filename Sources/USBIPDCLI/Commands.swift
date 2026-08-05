@@ -1205,7 +1205,7 @@ public class DiagnoseCommand: Command {
         return status
     }
     
-    private func testSystemExtensionsCtlIntegration() {
+    func testSystemExtensionsCtlIntegration() {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/systemextensionsctl")
         task.arguments = ["list"]

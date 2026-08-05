@@ -85,8 +85,12 @@ check_qemu_commands() {
         log_success "All QEMU commands available"
         return 0
     else
-        log_warning "Missing QEMU commands: ${missing_commands[*]}"
-        log_info "Available commands: ${available_commands[*]}"
+        # macOS ships bash 3.2, where expanding an empty array under `set -u` is an
+        # unbound-variable error rather than an empty string. When no QEMU command is
+        # present at all, available_commands is empty and this line aborted the script
+        # mid-report — so the check crashed exactly when it had the most to say.
+        log_warning "Missing QEMU commands: ${missing_commands[*]:-none}"
+        log_info "Available commands: ${available_commands[*]:-none}"
         return 1
     fi
 }

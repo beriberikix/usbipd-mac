@@ -482,7 +482,6 @@ final class USBIPMessagesTests: XCTestCase {
         }
     }
 
-    
     // MARK: - Edge Cases and Boundary Conditions
     
     func testUSBIPSubmitRequestZeroLengthTransfer() throws {
