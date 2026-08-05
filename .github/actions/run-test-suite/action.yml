@@ -349,6 +349,21 @@ runs:
           RESULT="no-tests"
         fi
 
+        echo "::notice title=Tests Executed::${TESTS_RUN} test(s) executed"
+
+        # Surface failures as annotations, not just in the log. Downloading job logs
+        # requires admin rights on the repository, so a run whose annotations only say
+        # "failed with exit code 1" is undiagnosable for anyone without that access.
+        if [ "$RESULT" != "success" ]; then
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error title=Test Failed::${line}"
+          done <<< "$(grep -E "^Test Case .* failed" "$TEST_LOG" | head -20 || true)"
+
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error title=Compile Error::${line}"
+          done <<< "$(grep -E "error: " "$TEST_LOG" | grep -v "^Test Case" | head -15 || true)"
+        fi
+
         rm -f "$TEST_LOG"
 
         # Capabilities reflect what this environment can exercise, for the summary only.
