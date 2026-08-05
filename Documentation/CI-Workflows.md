@@ -354,7 +354,7 @@ inputs:
 # Local CI validation
 swiftlint lint --strict                          # Code quality check
 swift build --verbose                            # Build validation
-./Scripts/run-ci-tests.sh                        # CI test execution
+swift test --parallel   # CI test execution
 
 # Local release preparation
 ./Scripts/prepare-release.sh --dry-run v1.2.3    # Release preparation

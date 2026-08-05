@@ -119,63 +119,6 @@ runs:
         fi
         echo "::endgroup::"
 
-    - name: 🔧 Setup Test Scripts
-      if: inputs.setup-test-scripts == 'true'
-      shell: bash
-      run: |
-        echo "::group::Test Script Setup"
-        echo "::notice title=Script Setup::Making test scripts executable"
-        echo "🔧 Setting up test scripts..."
-        
-        # List of test scripts to make executable
-        SCRIPTS=(
-          "Scripts/run-development-tests.sh"
-          "Scripts/run-ci-tests.sh"
-          "Scripts/run-production-tests.sh"
-          "Scripts/test-environment-setup.sh"
-          "Scripts/qemu-test-validation.sh"
-        )
-        
-        for script in "${SCRIPTS[@]}"; do
-          if [ -f "$script" ]; then
-            chmod +x "$script"
-            echo "✅ Made $script executable"
-          else
-            echo "ℹ️ Script $script not found (optional)"
-          fi
-        done
-        
-        echo "::notice title=Scripts Ready::Test scripts are ready for execution"
-        echo "📊 Status: CONFIGURED"
-        echo "::endgroup::"
-
-    - name: 🔍 Validate Test Environment
-      if: inputs.validate-environment == 'true'
-      shell: bash
-      run: |
-        echo "::group::Test Environment Validation"
-        echo "::notice title=Environment Validation::Validating test environment prerequisites"
-        echo "🔍 Validating test environment..."
-        echo "📊 Status: VALIDATING"
-        
-        # Validate test environment if script exists
-        if [ -f "Scripts/test-environment-setup.sh" ]; then
-          if ./Scripts/test-environment-setup.sh validate; then
-            echo "::notice title=Environment Ready::Test environment validated successfully"
-            echo "✅ Test environment validation PASSED"
-            echo "📊 Status: VALIDATED"
-          else
-            echo "::error title=Environment Failed::Test environment validation failed"
-            echo "❌ Test environment validation FAILED"
-            echo "📊 Status: FAILED"
-            exit 1
-          fi
-        else
-          echo "::warning title=Validation Skipped::Test environment validation script not found"
-          echo "⚠️ Skipping environment validation - script not available"
-        fi
-        echo "::endgroup::"
-
 branding:
   icon: 'settings'
   color: 'blue'

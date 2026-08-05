@@ -51,31 +51,24 @@ xcodebuild -scheme usbipd-mac build
 
 ### Testing
 
-#### Environment-Specific Testing
 ```bash
-# Development environment (fast feedback, <1 min)
-./Scripts/run-development-tests.sh
+# Run the test suite
+swift test --parallel
 
-# CI environment (automated testing, <3 min)
-./Scripts/run-ci-tests.sh
-
-# Production environment (comprehensive validation, <10 min)
-./Scripts/run-production-tests.sh
+# Run one target or one test
+swift test --filter USBIPDCoreTests
+swift test --filter USBIPDCoreTests.USBIPProtocolTests
 ```
 
-#### Traditional Testing Commands
-```bash
-# Run all tests
-swift test --parallel --verbose
+Only two test targets exist in `Package.swift`: `USBIPDCLITests` and
+`USBIPDCoreTests`. There is no tiered development/CI/production test system — the
+scripts that claimed to provide one filtered on target names that were never declared,
+so they matched nothing and exited 0. They were removed in 2026-08 along with the CI
+step that called them. `swift test` is the whole story.
 
-# Run specific test environment
-swift test --filter DevelopmentTests
-swift test --filter CITests
-swift test --filter ProductionTests
-
-# Test environment validation
-./Scripts/test-environment-setup.sh validate
-```
+Note that `swift test` needs XCTest, which ships with Xcode. A machine with only the
+Command Line Tools cannot run it (`error: no such module 'XCTest'`); use CI, which runs
+on `macos-latest` with full Xcode.
 
 ### Code Quality
 ```bash
@@ -91,13 +84,11 @@ swiftlint --fix
 # Complete validation sequence (matches consolidated CI pipeline)
 swiftlint lint --strict                      # Code quality validation
 swift build --verbose                        # Build validation  
-./Scripts/run-ci-tests.sh                   # CI environment test suite
+swift test --parallel                        # Test suite
 
 # Full production validation for release preparation
 swiftlint lint --strict                      # Code quality validation
 swift build --verbose                        # Build validation
-./Scripts/run-production-tests.sh           # Production environment test suite
-./Scripts/generate-test-report.sh           # Comprehensive test reporting
 
 # Validate specific workflow components locally
 # (These match the consolidated CI workflow jobs)
@@ -110,9 +101,6 @@ swift package resolve                        # Dependency resolution
 swift build --verbose                        # Project compilation
 
 # 3. Test Suite Job validation (environment-specific)
-./Scripts/run-development-tests.sh          # Development environment tests
-./Scripts/run-ci-tests.sh                   # CI environment tests  
-./Scripts/run-production-tests.sh           # Production environment tests
 
 # 4. Release Validation (when preparing releases)
 swift build --configuration release         # Release build validation
@@ -125,17 +113,16 @@ When making changes that might affect CI workflows:
 
 ```bash
 # Test changes against CI workflow locally before pushing
-swiftlint lint --strict && swift build --verbose && ./Scripts/run-ci-tests.sh
+swiftlint lint --strict && swift build --verbose && swift test --parallel
 
 # For release-related changes, test with production environment
-swiftlint lint --strict && swift build --verbose && ./Scripts/run-production-tests.sh
+swiftlint lint --strict && swift build --verbose && swift test --parallel
 
 # Check if changes affect security scanning
 # (Security workflow runs on Package.swift, Package.resolved, and Sources/ changes)
 find Sources -name "*.swift" -exec grep -l "secret\|password\|key" {} +
 
 # Validate test environment setup before CI runs
-./Scripts/test-environment-setup.sh validate
 ```
 
 ### AI Assistant Guidance for CI Workflows
@@ -207,15 +194,10 @@ The project uses a three-tier environment-based testing approach:
 Located in `Scripts/` directory:
 
 ### Test Execution Scripts
-- `run-development-tests.sh`: Fast development test execution
-- `run-ci-tests.sh`: CI-compatible automated testing
-- `run-production-tests.sh`: Comprehensive production validation
 
 ### Test Infrastructure Scripts
 - `qemu-test-validation.sh`: QEMU server validation utilities
-- `test-environment-setup.sh`: Environment detection and setup
 - `validate-usb-entitlements.sh`: Measures which entitlement actually gates USB device claiming (macOS only, see `Documentation/development/entitlement-validation.md`)
-- `generate-test-report.sh`: Unified test execution reporting
 
 ### Release and Distribution Scripts
 - `test-homebrew-dispatch.sh`: Test repository dispatch workflow integration
@@ -226,13 +208,12 @@ Located in `Scripts/` directory:
 ### Usage Examples
 ```bash
 # Quick development feedback
-./Scripts/run-development-tests.sh
+swift test --parallel
 
 # Validate environment before testing
-./Scripts/test-environment-setup.sh validate
 
 # Generate comprehensive test report
-./Scripts/generate-test-report.sh --environment production
+swift test --parallel
 
 # Test repository dispatch workflow
 ./Scripts/test-homebrew-dispatch.sh
@@ -298,13 +279,13 @@ QEMU testing is integrated with the main test execution scripts:
 
 ```bash
 # Development tests with QEMU (optional)
-ENABLE_QEMU_TESTS=true ./Scripts/run-development-tests.sh
+swift test --parallel
 
 # CI tests with QEMU mocking
-QEMU_TEST_MODE=mock ./Scripts/run-ci-tests.sh
+swift test --parallel
 
 # Production tests with full QEMU integration
-./Scripts/run-production-tests.sh  # Automatically includes QEMU tests
+swift test --parallel   # Automatically includes QEMU tests
 ```
 
 ### QEMU Test Configuration
@@ -322,7 +303,7 @@ Environment variables for QEMU testing:
 ./Scripts/qemu/test-orchestrator.sh --report-only
 
 # Integration with main test reporting
-./Scripts/generate-test-report.sh --environment production  # Includes QEMU results
+swift test --parallel   # Includes QEMU results
 ```
 
 ## Release Automation

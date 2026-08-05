@@ -123,7 +123,7 @@ This implementation plan migrates from webhook-based Homebrew formula updates to
 
 - [ ] 13. Run comprehensive CI validation and create pull request
   - Files: Feature branch validation, CI pipeline execution
-  - Run full CI pipeline on feature branch: swiftlint lint --strict && swift build --verbose && ./Scripts/run-ci-tests.sh
+  swift test --parallel
   - Ensure all tests pass and no CI issues are introduced
   - Create pull request with title: "feat: migrate from webhook to homebrew-releaser for formula updates"
   - Add comprehensive PR description documenting migration approach and validation results

@@ -333,7 +333,7 @@ The release system integrates with the project's three-tier testing strategy:
 #### Development Tests (Fast Feedback)
 ```bash
 # Executed during: Local preparation, quick validation
-./Scripts/run-development-tests.sh
+swift test --parallel
 # Duration: <1 minute
 # Purpose: Rapid feedback during development
 ```
@@ -341,7 +341,7 @@ The release system integrates with the project's three-tier testing strategy:
 #### CI Tests (Automation Compatible)
 ```bash
 # Executed during: All validation levels, release pipeline
-./Scripts/run-ci-tests.sh
+swift test --parallel
 # Duration: <3 minutes  
 # Purpose: Reliable automated validation
 ```
@@ -349,7 +349,7 @@ The release system integrates with the project's three-tier testing strategy:
 #### Production Tests (Comprehensive)
 ```bash
 # Executed during: Release candidate validation, full releases
-./Scripts/run-production-tests.sh --no-qemu --no-system-extension --no-hardware --timeout 300
+swift test --parallel
 # Duration: <5 minutes (with CI constraints)
 # Purpose: Release readiness validation
 ```
@@ -400,7 +400,7 @@ swiftlint --fix            # Auto-fix where possible
 **Issue**: Test failures block release
 ```bash
 # Solution: Fix tests or use emergency bypass
-./Scripts/run-ci-tests.sh   # Run tests locally
+swift test --parallel   # Run tests locally
 # Fix failing tests, or for emergency:
 ./Scripts/prepare-release.sh v1.2.3 --skip-tests --force
 ```
@@ -690,7 +690,7 @@ Monitor and update action versions:
 # Local validation
 swiftlint lint --strict
 swift build --configuration release  
-./Scripts/run-ci-tests.sh
+swift test --parallel
 
 # Emergency release
 ./Scripts/prepare-release.sh v1.2.4 --skip-tests --force
@@ -711,8 +711,6 @@ gh release delete v1.2.3
 
 Scripts/
 ├── prepare-release.sh      # Release preparation script
-├── run-ci-tests.sh        # CI test execution
-└── run-production-tests.sh # Production test execution
 
 Documentation/
 ├── Release-Automation.md   # This document

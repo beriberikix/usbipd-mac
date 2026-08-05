@@ -242,9 +242,7 @@ usbipd status --verbose
 swift test
 
 # Run specific test environments (see Documentation for details)
-./Scripts/run-development-tests.sh    # Fast development tests
-./Scripts/run-ci-tests.sh             # CI-compatible tests  
-./Scripts/run-production-tests.sh     # Comprehensive validation
+swift test --parallel                 # Run the test suite
 ```
 
 ## Documentation

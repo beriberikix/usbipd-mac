@@ -38,7 +38,7 @@ gh workflow list
 ls -la Scripts/*.sh | grep -E "(prepare|validate|rollback|benchmark)"
 
 # Check test environment
-./Scripts/test-environment-setup.sh validate
+swift test --parallel
 
 # Verify documentation completeness
 find Documentation/ -name "*Release*" -o -name "*release*"
@@ -153,7 +153,7 @@ gh workflow run release.yml -f version=v1.2.3
 gh run view [run-id] --log | grep -A 30 "test.*failed"
 
 # Run tests locally with same configuration
-./Scripts/run-ci-tests.sh
+swift test --parallel
 
 # Check test environment
 TEST_ENVIRONMENT=ci swift test --parallel --verbose
@@ -408,7 +408,7 @@ brew install gh  # GitHub CLI
 ./Scripts/prepare-release.sh --dry-run v1.2.3
 
 # Check environment detection
-./Scripts/test-environment-setup.sh validate
+swift test --parallel
 
 # Verify version format
 echo "v1.2.3" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$"
@@ -423,7 +423,7 @@ echo "v1.2.3" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$"
 # Edit Scripts/prepare-release.sh to fix validation logic
 
 # Test environment setup
-./Scripts/test-environment-setup.sh install-help
+swift test --parallel
 
 # Run scripts with verbose output
 ./Scripts/prepare-release.sh --verbose v1.2.3
@@ -532,7 +532,7 @@ swift run -c debug --package-path Tests/SharedUtilities TestEnvironmentDetector
 env | grep -E "(CI|GITHUB|TEST_)"
 
 # Test capability detection
-./Scripts/test-environment-setup.sh validate
+swift test --parallel
 
 # Check test environment configuration
 cat Tests/SharedUtilities/TestEnvironmentConfig.swift | grep -A 20 "detectCurrentEnvironment"
@@ -548,7 +548,7 @@ swift test --parallel
 # Edit Tests/SharedUtilities/TestEnvironmentConfig.swift
 
 # Force environment for testing
-TEST_ENVIRONMENT=ci ./Scripts/run-ci-tests.sh
+swift test --parallel
 
 # Update environment configuration
 git add Tests/SharedUtilities/
@@ -931,7 +931,7 @@ find Documentation/ -name "*.md" -exec markdown-link-check {} \;
 swift package update
 
 # Run full test suite
-./Scripts/run-production-tests.sh
+swift test --parallel
 
 # Validate documentation
 markdownlint Documentation/

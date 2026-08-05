@@ -46,7 +46,7 @@ Ensure your environment meets the automated system requirements:
 
 ```bash
 # Validate development environment
-./Scripts/test-environment-setup.sh validate
+swift test --parallel
 
 # Check repository structure
 ls -la .github/workflows/

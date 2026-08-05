@@ -1,289 +1,66 @@
 # Testing Strategy
 
-This document outlines the comprehensive testing strategy for usbipd-mac, covering unit tests, integration tests, System Extension testing, and continuous integration validation.
-
-## Overview
-
-The testing strategy is designed to ensure reliability and functionality across all components while accommodating the unique requirements of System Extension development on macOS. Testing is performed at multiple levels with different environments and validation approaches.
-
-## Test Suite Structure
-
-### Core Test Suites
-
-#### Unit Tests
-```bash
-# Run all tests using Swift Package Manager
-swift test
-
-# Run tests using Xcode
-xcodebuild -scheme usbipd-mac test
-
-# Run specific test suites
-swift test --filter USBIPDCoreTests          # Core functionality tests
-swift test --filter USBIPDCLITests           # CLI interface tests
-swift test --filter SystemExtensionTests     # System Extension tests
-swift test --filter IntegrationTests         # Integration tests
-```
-
-#### Environment-Based Testing
-
-The project uses a three-tier environment-based testing approach:
-
-- **DevelopmentTests**: Fast unit tests with comprehensive mocking (<1 minute execution)
-- **CITests**: Automated tests without hardware dependencies (CI-compatible, <3 minutes)
-- **ProductionTests**: Comprehensive validation with QEMU and hardware integration (<10 minutes)
-
-### Environment-Specific Test Execution
-
-#### Development Environment Testing
-```bash
-# Development environment (fast feedback, <1 min)
-./Scripts/run-development-tests.sh
-```
-- **Purpose**: Rapid feedback during active development
-- **Execution time**: <1 minute
-- **Coverage**: Unit tests with comprehensive mocking
-- **Use case**: Local development, IDE integration
-
-#### CI Environment Testing
-```bash
-# CI environment (automated testing, <3 min)
-./Scripts/run-ci-tests.sh
-```
-- **Purpose**: Automated validation in GitHub Actions
-- **Execution time**: <3 minutes
-- **Coverage**: Protocol and network tests without hardware dependencies
-- **Use case**: Pull request validation, automated testing
-
-#### Production Environment Testing
-```bash
-# Production environment (comprehensive validation, <10 min)
-./Scripts/run-production-tests.sh
-```
-- **Purpose**: Complete validation for release preparation
-- **Execution time**: <10 minutes
-- **Coverage**: QEMU integration, hardware validation, System Extension testing
-- **Use case**: Release candidate validation, comprehensive testing
-
-### Traditional Testing Commands
-
-#### Basic Test Execution
-```bash
-# Run all tests with parallel execution
-swift test --parallel --verbose
-
-# Run specific test environment
-swift test --filter DevelopmentTests
-swift test --filter CITests
-swift test --filter ProductionTests
-
-# Test environment validation
-./Scripts/test-environment-setup.sh validate
-```
-
-## System Extension Testing Strategy
-
-Testing System Extension functionality requires special setup and considerations due to macOS security requirements.
-
-### Setup Requirements
+## What actually runs
 
 ```bash
-# Enable development mode for testing
-sudo systemextensionsctl developer on
-
-# Enable System Extension development mode
-sudo systemextensionsctl developer on
-
-# Build and install for development
-swift build
-sudo usbipd daemon --install-extension
-
-# Verify installation
-usbipd status
-systemextensionsctl list
+swift test --parallel
 ```
 
-### System Extension Test Types
+That is the whole test suite. `Package.swift` declares exactly two test targets:
 
-#### Installation and Activation Tests
-```bash
-# Run System Extension integration tests
-swift test --filter SystemExtensionInstallationTests
+| Target | Path |
+| --- | --- |
+| `USBIPDCoreTests` | `Tests/USBIPDCoreTests` |
+| `USBIPDCLITests` | `Tests/USBIPDCLITests` |
 
-# Test bundle creation and validation
-swift test --filter BuildOutputVerificationTests
-```
+Both also compile `Tests/SharedUtilities` via their `sources:` list.
 
-#### Runtime Testing
-```bash
-# Manual System Extension testing
-usbipd status                    # Check System Extension status
-usbipd status --detailed         # Detailed health information
-usbipd status --health           # Health check only
+`swift test` requires XCTest, which ships with Xcode. A machine with only the Command
+Line Tools cannot run it — `error: no such module 'XCTest'`. CI runs on `macos-latest`,
+which has full Xcode, and is currently the only place the suite executes.
 
-# Test System Extension functionality (requires development mode)
-swift test --filter IntegrationTests --verbose
-```
+## What does not run, and why
 
-## QEMU Testing Strategy
+This document previously described a three-tier development / CI / production testing
+system with per-tier timing budgets, driven by
+`Scripts/run-{development,ci,production}-tests.sh`. That system never executed a single
+test.
 
-### QEMU Test Server Validation
+Each script ran `swift test --filter <Tier>` against tier names — `DevelopmentTests`,
+`CITests`, `ProductionTests` — that were never declared as targets in `Package.swift`.
+SwiftPM's `--filter` is a regex matched against `Target.Class/method`, so the filters
+matched nothing, `swift test` exited 0, and the job reported success. The reported test
+count was hardcoded (`"~50"` for CI), so the summary looked plausible. This stood from
+August 2025 until August 2026.
 
-The project includes a lightweight QEMU test server for end-to-end protocol validation:
+The scripts and the CI step that called them were removed in August 2026.
 
-```bash
-# Run QEMU test server validation
-./Scripts/qemu-test-validation.sh
+## Test code that is not compiled
 
-# Build QEMU test server
-swift build --product QEMUTestServer
+Several directories under `Tests/` are referenced by no target and therefore never
+build. They are retained pending triage, not deleted, but nothing in them is exercised:
 
-# Run QEMU validation script
-./Scripts/qemu-test-validation.sh
+- `Tests/CITests.swift` (a loose file at the `Tests/` root) and `Tests/CITests/`
+- `Tests/IntegrationTests/`, `Tests/SystemExtensionTests/`, `Tests/QEMUIntegrationTests/`
+  — declared in `Package.swift` but commented out as "temporarily disabled for CI stability"
+- `Tests/Integration/`, `Tests/ProductionTests/`, `Tests/PerformanceTests/`,
+  `Tests/Distribution/`, `Tests/ReleaseValidation/`, `Tests/ReleaseWorkflowTests/`,
+  `Tests/TestMocks/` — referenced by nothing at all
 
-# Run integration tests specifically
-swift test --filter IntegrationTests --verbose
-```
+Do not cite coverage from these. If you revive one, add it as a real `testTarget` and
+confirm it compiles against current APIs first.
 
-### Integration Test Coverage
+## Guard against regression
 
-- **Network communication**: TCP server and client connection handling
-- **Protocol flow testing**: USB/IP message encoding/decoding validation
-- **End-to-end scenarios**: Complete device sharing workflows
+`.github/actions/run-test-suite` counts the tests that actually executed by parsing
+`swift test` output and **fails the job if the count is zero**, even when `swift test`
+exits 0. That guard is what would have caught the filter bug on the day it was
+introduced. Do not remove it, and do not replace a real count with an estimate.
 
-## Test Infrastructure
+## Hardware-dependent validation
 
-### Shared Testing Utilities
-
-Located in `Tests/SharedUtilities/`:
-- Common test fixtures
-- Assertion helpers
-- Environment configuration
-- Mock implementations for different test environments
-
-### Environment-Specific Mocks
-
-Located in `Tests/TestMocks/`:
-- Environment-specific mock libraries for reliable testing
-- Conditional hardware detection and graceful degradation
-- Comprehensive test reporting and environment validation
-
-### Test Execution Scripts
-
-Located in `Scripts/` directory:
-
-#### Test Execution Scripts
-- `run-development-tests.sh`: Fast development test execution
-- `run-ci-tests.sh`: CI-compatible automated testing
-- `run-production-tests.sh`: Comprehensive production validation
-
-#### Test Infrastructure Scripts
-- `qemu-test-validation.sh`: QEMU server validation utilities
-- `test-environment-setup.sh`: Environment detection and setup
-- `generate-test-report.sh`: Unified test execution reporting
-
-### Usage Examples
-```bash
-# Quick development feedback
-./Scripts/run-development-tests.sh
-
-# Validate environment before testing
-./Scripts/test-environment-setup.sh validate
-
-# Generate comprehensive test report
-./Scripts/generate-test-report.sh --environment production
-```
-
-## Performance and Optimization
-
-### Test Performance Targets
-
-- **Development Environment**: <1 minute execution time
-- **CI Environment**: <3 minutes execution time
-- **Production Environment**: <10 minutes execution time
-
-### Parallel Test Execution
-
-The testing strategy utilizes parallel test execution for optimal performance:
-- Multiple test suites can run concurrently
-- Environment-specific optimizations for different test types
-- Cached dependencies and build artifacts for faster execution
-
-## Validation Strategy
-
-### Complete Local Validation
-
-Before submitting changes, run the complete validation sequence:
-
-```bash
-# Complete validation sequence (matches CI pipeline)
-echo "Running SwiftLint..."
-swiftlint lint --strict
-
-echo "Building project..."
-swift build --verbose
-
-echo "Running unit tests..."
-swift test --parallel --verbose
-
-echo "Running integration tests..."
-./Scripts/qemu-test-validation.sh
-swift test --filter IntegrationTests --verbose
-
-echo "All checks completed successfully!"
-```
-
-### Environment Validation
-
-```bash
-# Using the provided setup script
-./Scripts/test-environment-setup.sh validate
-
-# Verify QEMU test server functionality
-./Scripts/qemu-test-validation.sh validate-environment
-```
-
-## Continuous Integration Integration
-
-### CI Pipeline Testing
-
-The testing strategy integrates with GitHub Actions CI pipeline:
-
-- **Unit Tests Job**: Validates functionality through automated unit tests
-- **Integration Tests Job**: End-to-end validation with QEMU test server
-- **Build Validation**: Ensures compilation and bundle creation
-- **Code Quality**: SwiftLint validation
-
-### Local CI Validation
-
-```bash
-# Run all checks in sequence (mimics CI pipeline)
-swiftlint lint --strict
-swift build --verbose
-swift test --parallel --verbose
-./Scripts/qemu-test-validation.sh
-```
-
-## Troubleshooting Test Issues
-
-### Test Failure Diagnosis
-
-```bash
-# Run tests with detailed output
-swift test --verbose --parallel
-
-# Run specific test suite for focused debugging
-swift test --filter USBIPDCoreTests
-swift test --filter USBIPDCLITests
-
-# System Extension specific debugging
-swift test --filter SystemExtensionInstallationTests
-```
-
-### Environment-Specific Issues
-
-- **Development Environment**: Check mock configurations and test data
-- **CI Environment**: Verify no hardware dependencies in test execution
-- **Production Environment**: Ensure QEMU server availability and System Extension permissions
-
-This comprehensive testing strategy ensures reliable functionality across all components while supporting the unique requirements of macOS System Extension development and USB/IP protocol implementation.
+`./Scripts/validate-usb-entitlements.sh` measures what userspace can do with attached
+USB devices under different code-signing entitlements. It is not part of `swift test`.
+Its `--self-test` mode runs in CI and validates the harness itself; the per-device
+measurement needs real hardware on a real Mac. See
+[entitlement-validation.md](entitlement-validation.md).

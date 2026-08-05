@@ -84,7 +84,7 @@ git rebase main
 
 # Resolve any conflicts if present
 # Run final tests
-./Scripts/run-ci-tests.sh
+swift test --parallel
 
 # Merge to main
 git checkout main

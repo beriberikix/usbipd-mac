@@ -269,12 +269,14 @@ run_tests() {
     
     log_step "Running test suite"
     
-    # Run CI tests (comprehensive but not requiring hardware)
-    log_info "Running CI test suite..."
+    # Run the package's tests directly. This previously called run-ci-tests.sh,
+    # which filtered on a "CITests" target that does not exist in Package.swift —
+    # so it matched nothing, exited 0, and reported success having run no tests.
+    log_info "Running test suite..."
     local start_time
     start_time=$(date +%s)
-    
-    if "$SCRIPT_DIR/run-ci-tests.sh"; then
+
+    if swift test --parallel; then
         local end_time test_time
         end_time=$(date +%s)
         test_time=$((end_time - start_time))
