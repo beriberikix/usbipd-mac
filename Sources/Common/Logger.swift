@@ -24,6 +24,57 @@ public enum LogLevel: Int, CaseIterable, Comparable {
         }
     }
     
+}
+
+/// Codable conformance for LogLevel.
+///
+/// Declared here, in the module that owns the type, rather than retroactively from
+/// USBIPDCore. Conforming an imported type to an imported protocol is a warning on
+/// current Swift compilers, and the CI test build promotes it to an error via
+/// -Xswiftc -warnings-as-errors.
+///
+/// Encodes as a lowercase string rather than the Int raw value, preserving the
+/// on-disk config format written by earlier versions. Do not replace this with
+/// synthesized conformance: that would silently switch the format to integers and
+/// break existing config files.
+extension LogLevel: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+
+        switch rawValue.lowercased() {
+        case "debug": self = .debug
+        case "info": self = .info
+        case "warning": self = .warning
+        case "error": self = .error
+        case "critical": self = .critical
+        default:
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Invalid log level: \(rawValue)"
+                )
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        let rawValue: String
+
+        switch self {
+        case .debug: rawValue = "debug"
+        case .info: rawValue = "info"
+        case .warning: rawValue = "warning"
+        case .error: rawValue = "error"
+        case .critical: rawValue = "critical"
+        }
+
+        try container.encode(rawValue)
+    }
+}
+
+private extension LogLevel {
     /// OSLogType mapping for system logging
     var osLogType: OSLogType {
         switch self {

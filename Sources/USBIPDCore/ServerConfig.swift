@@ -7,46 +7,14 @@ import Common
 /// Type alias for log level to use Common.LogLevel
 public typealias LogLevel = Common.LogLevel
 
-/// Extension to make Common.LogLevel Codable for configuration serialization
-extension Common.LogLevel: Codable {
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-        
-        switch rawValue.lowercased() {
-        case "debug": self = .debug
-        case "info": self = .info
-        case "warning": self = .warning
-        case "error": self = .error
-        case "critical": self = .critical
-        default:
-            throw DecodingError.dataCorrupted(
-                DecodingError.Context(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "Invalid log level: \(rawValue)"
-                )
-            )
-        }
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        let rawValue: String
-        
-        switch self {
-        case .debug: rawValue = "debug"
-        case .info: rawValue = "info"
-        case .warning: rawValue = "warning"
-        case .error: rawValue = "error"
-        case .critical: rawValue = "critical"
-        }
-        
-        try container.encode(rawValue)
-    }
-}
-
-/// Extension to make DispatchQoS.QoSClass Codable for configuration serialization
-extension DispatchQoS.QoSClass: Codable {
+/// Codable conformance for DispatchQoS.QoSClass, used by ServerConfig's synthesized
+/// Codable for the usbRequestQoS property.
+///
+/// Unlike LogLevel — which this project owns and whose conformance now lives in the
+/// Common module — QoSClass belongs to Dispatch, so the conformance is unavoidably
+/// retroactive. @retroactive acknowledges that: if Apple ever adds Codable to
+/// QoSClass, this declaration loses to theirs and the encoding could change.
+extension DispatchQoS.QoSClass: @retroactive Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
