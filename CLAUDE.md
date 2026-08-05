@@ -214,6 +214,7 @@ Located in `Scripts/` directory:
 ### Test Infrastructure Scripts
 - `qemu-test-validation.sh`: QEMU server validation utilities
 - `test-environment-setup.sh`: Environment detection and setup
+- `validate-usb-entitlements.sh`: Measures which entitlement actually gates USB device claiming (macOS only, see `Documentation/development/entitlement-validation.md`)
 - `generate-test-report.sh`: Unified test execution reporting
 
 ### Release and Distribution Scripts

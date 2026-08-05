@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Control group: ad-hoc signed with no entitlements at all.
+
+  This is the capability level usbipd-mac actually ships with today. Every other
+  variant is measured against this one.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

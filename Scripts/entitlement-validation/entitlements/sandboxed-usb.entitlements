@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The only configuration in which com.apple.security.device.usb is defined to do
+  anything: App Sandbox enabled, plus the USB hardware exception.
+
+  Comparing this against `sandboxed-only` measures the entitlement's real effect.
+  Comparing it against `baseline` measures whether it grants anything an
+  unsandboxed process does not already have.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.device.usb</key>
+	<true/>
+</dict>
+</plist>

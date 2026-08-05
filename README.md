@@ -1,5 +1,14 @@
 > [!WARNING]
-> This project needs approval from Apple to authorize USB driver access and will not work until approved. We have been waiting since August 23rd, 2025 for approval.
+> Sharing a USB device that macOS has already bound to an in-kernel driver requires the
+> DriverKit USB transport entitlements (`com.apple.developer.driverkit`,
+> `com.apple.developer.driverkit.transport.usb`). Those are managed capabilities that
+> Apple must approve; our request has been pending since August 23rd, 2025.
+>
+> This is *not* the App Sandbox entitlement `com.apple.security.device.usb`, which is
+> freely usable and does not grant this capability — see
+> [Documentation/development/entitlement-validation.md](Documentation/development/entitlement-validation.md).
+> Run `./Scripts/validate-usb-entitlements.sh` to measure which of your devices are
+> blocked and which are already usable.
 
 # usbipd-mac
 
