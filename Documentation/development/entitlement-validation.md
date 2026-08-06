@@ -233,9 +233,9 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
    | --- | --- |
    | DriverKit USB Transport - VendorID | **Declined** |
    | DriverKit UserClient Access | **Declined** |
-   | DriverKit PCI (development) | Assigned — but see the caveat below |
+   | DriverKit PCI (development) | Assigned — confirmed, see the caveat below |
    | DriverKit USB Transport - VendorID **and ProductID** | No Requests |
-   | DriverKit Family Serial | **Submitted 2026-08-06, request ID 26F53XCAGY** |
+   | DriverKit Family Serial | **Submitted** 2026-08-06, request ID 26F53XCAGY |
    | DriverKit Family HID Device | No Requests |
    | DriverKit Transport HID | No Requests |
 
@@ -265,13 +265,16 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
    (development)` shows as **Assigned** under Capability Requests, so the development
    variants go through the same request flow.
 
-   **Do not lean on the PCI row as precedent.** It was read as `Assigned` from a
-   screenshot of the Capability Requests tab, and the account holder does not recall
-   ever requesting it. A later, clearer view of the *Capabilities* tab shows
-   `DriverKit PCI (development)` unchecked and — alone among the DriverKit rows —
-   carrying no "Provisioning support required" annotation, which is consistent with it
-   never having been requested. That tab shows enablement rather than assignment, so it
-   does not settle the question either way. Either it was
+   **The PCI row is confirmed `Assigned`, but is weak precedent.** A legible view of
+   the Capability Requests tab confirms it. What it does not establish is *why*: the
+   account holder does not recall requesting it, and on the Capabilities tab the same
+   row sits unchecked without the "Provisioning support required" annotation every other
+   DriverKit row carries. The likeliest reading is that some development-tier
+   capabilities are assigned to Developer Program accounts without an explicit request.
+
+   So the account does hold it, and saying so is accurate. Do not extend that into "this
+   team has been granted a DriverKit request on merit" — an earlier revision of this
+   document did, and that inference is not supported. Either it was
    misread, or some development capabilities are assigned to Developer Program accounts
    without a request. Under the second reading the account does hold it, but it is not
    evidence that Apple granted this team a development DriverKit request — which is the

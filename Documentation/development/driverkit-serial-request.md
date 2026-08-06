@@ -3,12 +3,11 @@
 **Submitted 2026-08-06. Request ID `26F53XCAGY`.** Serial family only, development tier.
 Status appears under Capability Requests for App ID `com.usbipd.mac.system-extension`.
 
-> [!WARNING]
-> The closing sentence claims the account already holds an assigned
-> `DriverKit PCI (development)` capability. That was read from a screenshot and the
-> account holder does not recall requesting it. If the portal does not show it as
-> assigned, the submitted text contains an inaccurate statement and is worth correcting
-> with Apple against request ID `26F53XCAGY`.
+The Capability Requests tab shows this request as **Submitted**, and confirms the
+closing sentence: `DriverKit PCI (development)` really is `Assigned`, so the submitted
+text is accurate as written. Note that the account holder does not recall requesting
+that capability, so it is likely assigned to Developer Program accounts rather than
+granted on merit — true as stated, but not evidence of precedent.
 
 The text submitted is below, kept so a follow-up or re-request can build on it rather
 than start over.
