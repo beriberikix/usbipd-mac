@@ -13,6 +13,7 @@ Welcome to the usbipd-mac documentation hub. This directory contains comprehensi
 The `development/` folder contains detailed documentation for contributors:
 
 - **[Driver-free release scope](development/driver-free-release.md)** - which devices can be shared today, measured rather than assumed
+- **[DriverKit Serial request draft](development/driverkit-serial-request.md)** - text for the Apple entitlement request, and why it asks for only one family
 - **[Entitlement validation](development/entitlement-validation.md)** - which entitlement actually gates USB claiming, and how to measure it
 - **[Android/ADB validation](development/android-adb-validation.md)** - a second device class, and the connection-reset limitation it exposed
 - **[probe-rs validation](development/probe-rs-validation.md)** - end-to-end proof over USB/IP with a real tool, and what it exposed
