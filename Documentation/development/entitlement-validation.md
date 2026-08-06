@@ -252,6 +252,29 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
 
    The catch is that per-device scoping suits a targeted tool, not a general-purpose
    USB/IP server: approval would cover only the vendor and product IDs named in it.
+
+   **There is a development tier, and it is the cheaper question to answer.** The
+   Capabilities tab lists the DriverKit entries — including `DriverKit Family Serial
+   (development)` and `DriverKit USB Transport (development)` — annotated "Development
+   only" and "Provisioning support required". These are not self-serve: `DriverKit PCI
+   (development)` shows as **Assigned** under Capability Requests, so the development
+   variants go through the same request flow. But that same row proves this team has
+   successfully been granted a development DriverKit capability before, which the
+   declined production requests do not.
+
+   A development capability plus a [DriverKit development provisioning
+   profile](https://developer.apple.com/help/account/provisioning-profiles/create-a-driverkit-development-provisioning-profile/)
+   would answer the question this project has never been able to test: whether a
+   DriverKit extension can actually take a USB device from its in-kernel driver. Every
+   measurement so far establishes only that userspace cannot. Development builds are not
+   distributable, so this proves the mechanism rather than shipping it — but a working
+   demonstration is a far stronger production request than a description.
+
+   Note also that the App ID currently has only **System Extension** enabled
+   (`com.apple.developer.system-extension.install`), which is the subsystem this project
+   quarantined. DriverKit needs a *dext*, a different bundle type, shipped inside an app
+   in `/Applications`. An approval would arrive against infrastructure that does not
+   exist yet.
 3. Once approved: create the provisioning profile, base64-encode it, and set it as the
    `DRIVERKIT_PROVISIONING_PROFILE` repository secret.
 4. Update the README warning to name the correct entitlement and, if the results support
