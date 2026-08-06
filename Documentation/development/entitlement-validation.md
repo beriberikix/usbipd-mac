@@ -266,7 +266,12 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
    variants go through the same request flow.
 
    **Do not lean on the PCI row as precedent.** It was read as `Assigned` from a
-   screenshot, and the account holder does not recall ever requesting it. Either it was
+   screenshot of the Capability Requests tab, and the account holder does not recall
+   ever requesting it. A later, clearer view of the *Capabilities* tab shows
+   `DriverKit PCI (development)` unchecked and — alone among the DriverKit rows —
+   carrying no "Provisioning support required" annotation, which is consistent with it
+   never having been requested. That tab shows enablement rather than assignment, so it
+   does not settle the question either way. Either it was
    misread, or some development capabilities are assigned to Developer Program accounts
    without a request. Under the second reading the account does hold it, but it is not
    evidence that Apple granted this team a development DriverKit request — which is the
