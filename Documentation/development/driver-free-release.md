@@ -10,6 +10,7 @@ Apple silicon:
 | SEGGER J-Link `1366:0101` | none | 1/1, `kIOReturnSuccess` | usable today |
 | USB Keyboard `2109:d101` | `AppleUserHIDDevice` | 0/1, `kIOReturnExclusiveAccess` | blocked |
 | Toshiba flash drive `0930:1400` | `IOUSBMassStorageDriver` | 0/1, `kIOReturnExclusiveAccess` | blocked |
+| Logitech C910 webcam `046d:0821` | mixed, see below | 0/4, `kIOReturnExclusiveAccess` | blocked |
 
 The J-Link opened from an **unsigned, unentitled, non-root** process. No System
 Extension, no DriverKit, no Apple approval. The project's own `IOKitUSBInterface` was
@@ -55,6 +56,25 @@ what the kernel driver holds.
 So the split is final for the hardware available: nothing short of DriverKit rebinding
 releases an interface macOS has bound. Scope the release accordingly rather than
 waiting on a workaround.
+
+### Not every blocker is a kernel driver
+
+The webcam is the case that shows why the distinction matters. Its four interfaces are
+not all held by the same kind of owner:
+
+| Interface | Class | Held by |
+| --- | --- | --- |
+| 0 | 1 (audio control) | `AppleUSBAudioControlNub` — a kernel driver |
+| 1 | 1 (audio streaming) | `AppleUSBHostFrameworkInterfaceClient` — a userspace process |
+| 2, 3 | 14 (video) | `AppleUSBHostFrameworkInterfaceClient` — a userspace process |
+
+Both refuse a claim with `kIOReturnExclusiveAccess`, so the immediate outcome is the
+same, but the remedies are not: a userspace holder is released by quitting whatever has
+the device open, while a kernel driver needs an entitlement Apple has to grant. The
+probe now labels each interface accordingly rather than calling everything a kernel
+driver, which would send a reader after a DriverKit entitlement that could not help.
+
+`bind` should draw the same distinction when it starts refusing devices.
 
 ## Work required
 

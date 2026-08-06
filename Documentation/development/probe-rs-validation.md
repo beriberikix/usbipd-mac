@@ -70,6 +70,23 @@ transfers all work against a real Linux client and a real application, on one de
 
 Not established: interrupt and isochronous endpoints. The interrupt path shares the
 in/out length fix and the pipe lookup, so it is better than it was, but no interrupt
-device has been driven. Isochronous uses a different async API and is untouched. A
-target chip was not attached, so probe-rs never progressed past probe identification —
-flashing and debugging are unproven.
+device has been driven. A target chip was not attached, so probe-rs never progressed
+past probe identification — flashing and debugging are unproven.
+
+## Isochronous is incomplete, not merely untested
+
+A webcam was measured on 2026-08-06 to see whether isochronous could be exercised. It
+cannot, and not only because the device is claimed — two structural gaps would stop it
+even on a device that opened freely:
+
+- **Alternate settings are never selected.** A UVC video interface carries its
+  isochronous endpoints only in non-zero alternate settings; at setting 0 it has none,
+  which is how USB reserves bandwidth. A client selects one with a `SET_INTERFACE`
+  control request, and nothing in this codebase handles that request or calls IOKit's
+  `SetAlternateInterface`.
+- **Pipes are discovered once, at open.** `discoverPipes` runs when the interface is
+  opened and never again, so the pipe map reflects setting 0 permanently. Even if a
+  client did switch settings, the endpoints that appeared would not be visible.
+
+Isochronous therefore needs alternate-setting support before it can be tested at all,
+rather than a device to test it against. That is a design gap, not a missing fixture.

@@ -234,6 +234,20 @@ private let structuralClasses: Set<String> = [
     "IOUSBHostDeviceUserClient"
 ]
 
+/// Classes that mean "a userspace process currently holds this interface open".
+///
+/// These block a claim just as firmly as a kernel driver, but the remedy is entirely
+/// different — quit the process and the device is free, where a kernel driver needs
+/// DriverKit rebinding that Apple has to approve. Reporting both as "kernel driver
+/// owns the device" sends anyone reading the report down the wrong path: a Logitech
+/// webcam is held by the camera framework, not by a kernel driver, and no entitlement
+/// would change that.
+private let userspaceClientClasses: Set<String> = [
+    "AppleUSBHostFrameworkInterfaceClient",
+    "IOUSBHostInterfaceUserClient",
+    "AppleUSBHostFrameworkDeviceClient"
+]
+
 private func childServices(of entry: io_registry_entry_t) -> [io_registry_entry_t] {
     var iterator: io_iterator_t = 0
     guard IORegistryEntryGetChildIterator(entry, servicePlane, &iterator) == KERN_SUCCESS else {
@@ -487,6 +501,14 @@ private func verdict(kernelDriverAttached: Bool, attempt: OpenAttempt, options: 
     if interfacesOpened > 0 {
         return "PARTIAL — \(interfacesOpened)/\(interfacesTotal) interfaces open; the rest are held by a kernel driver"
     }
+    // A userspace holder is not a kernel driver, and saying so would point at
+    // DriverKit when the fix is to close whatever has the device open. Only claim this
+    // when no interface has a real driver — a webcam has both, and calling the whole
+    // device userspace-held would be as misleading as the reverse.
+    let claimants = Set(attempt.interfaces.flatMap { $0.attachedDrivers })
+    if !claimants.isEmpty && claimants.allSatisfy({ userspaceClientClasses.contains($0) }) {
+        return "BLOCKED — another process holds these interfaces open (\(claimants.sorted().joined(separator: ", "))); no entitlement changes this"
+    }
     if kernelDriverAttached {
         return "BLOCKED — kernel driver owns the device; requires DriverKit-level rebinding"
     }
@@ -694,8 +716,21 @@ private func runComparison(_ options: Options) {
                     : interface.attachedDrivers.joined(separator: ", ")
                 let open = interface.openResult ?? "not attempted"
                 let seize = interface.openSeizeResult.map { ", seize: \($0)" } ?? ""
+
+                // Distinguish who is holding this interface. Both block a claim, but
+                // only one of them is a case for DriverKit: a userspace holder is
+                // released by quitting whatever has the device open.
+                let owner: String
+                if interface.attachedDrivers.isEmpty {
+                    owner = ""
+                } else if interface.attachedDrivers.allSatisfy({ userspaceClientClasses.contains($0) }) {
+                    owner = " [held by a userspace process]"
+                } else {
+                    owner = " [kernel driver]"
+                }
+
                 lines.append("  - iface \(number) (class \(interface.interfaceClass.map(String.init) ?? "?")): "
-                    + "\(drivers) — open: \(open)\(seize)")
+                    + "\(drivers)\(owner) — open: \(open)\(seize)")
             }
         }
         lines.append("")
