@@ -303,15 +303,28 @@ public class SimulatedTestRequestProcessor {
     
     /// Process incoming USB/IP request using simulated devices
     public func processRequest(_ data: Data) throws -> Data {
+        return try processRequest(data, connectionState: USBIPConnectionState())
+    }
+
+    /// Process a request in the context of a connection.
+    ///
+    /// After a successful import the same socket carries URB traffic framed with
+    /// usbip_header_basic rather than op_common, and nothing in the bytes announces
+    /// the switch — the phase has to be remembered. See USBIPConnectionState.
+    public func processRequest(_ data: Data, connectionState: USBIPConnectionState) throws -> Data {
+        if case .attached = connectionState.phase {
+            return try handleSimulatedURBRequest(data)
+        }
+
         logger.debug("Processing USB/IP request with simulator", context: [
             "dataSize": data.count
         ])
-        
+
         // Parse the header to determine request type
         guard data.count >= 8 else {
             throw USBIPProtocolError.invalidDataLength
         }
-        
+
         let header = try USBIPHeader.decode(from: data)
         logger.info("Processing simulated request", context: [
             "command": String(format: "0x%04x", header.command.rawValue),
@@ -323,7 +336,14 @@ public class SimulatedTestRequestProcessor {
             return try handleSimulatedDeviceListRequest(data)
             
         case .requestDeviceImport:
-            return try handleSimulatedDeviceImportRequest(data)
+            let response = try handleSimulatedDeviceImportRequest(data)
+            if let request = try? DeviceImportRequest.decode(from: data),
+               let decoded = try? DeviceImportResponse.decode(from: response),
+               decoded.header.status == 0 {
+                logger.info("Connection entering attached phase", context: ["busID": request.busID])
+                connectionState.markAttached(busID: request.busID)
+            }
+            return response
             
         case .submitRequest:
             logger.warning("USB SUBMIT request simulation not implemented")
@@ -467,6 +487,53 @@ public class SimulatedTestRequestProcessor {
         }
     }
     
+    /// Handle URB traffic on an attached connection.
+    ///
+    /// These are simulated devices with no endpoints behind them, so transfers are
+    /// acknowledged rather than performed: a zero-length successful RET_SUBMIT. That
+    /// exercises the usbip_header_basic framing in both directions, which is the point
+    /// of this server, but it does not move data and a client will not get usable
+    /// descriptors back.
+    private func handleSimulatedURBRequest(_ data: Data) throws -> Data {
+        let header = try USBIPBasicHeader.decode(from: data)
+
+        switch header.command {
+        case .submit:
+            let request = try USBIPSubmitRequest.decode(from: data)
+            logger.info("Simulated URB submit", context: [
+                "seqnum": request.seqnum,
+                "endpoint": String(format: "0x%02x", request.ep),
+                "direction": request.direction,
+                "length": request.transferBufferLength
+            ])
+            let response = USBIPSubmitResponse(
+                seqnum: request.seqnum,
+                devid: request.devid,
+                direction: request.direction,
+                ep: request.ep,
+                status: 0,
+                actualLength: 0
+            )
+            return try response.encode()
+
+        case .unlink:
+            let request = try USBIPUnlinkRequest.decode(from: data)
+            logger.info("Simulated URB unlink", context: ["seqnum": request.seqnum])
+            let response = USBIPUnlinkResponse(
+                seqnum: request.seqnum,
+                devid: request.devid,
+                direction: request.direction,
+                ep: request.ep,
+                status: 0
+            )
+            return try response.encode()
+
+        case .retSubmit, .retUnlink:
+            logger.warning("Received a reply command from the client")
+            throw USBIPProtocolError.unsupportedCommand(UInt16(truncatingIfNeeded: header.command.rawValue))
+        }
+    }
+
     /// Get simulator instance for testing
     public func getSimulator() -> TestDeviceSimulator {
         return deviceSimulator

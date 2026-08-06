@@ -17,6 +17,42 @@ public protocol USBRequestHandlerProtocol {
 }
 
 /// Processes USB/IP protocol requests and generates responses
+/// Per-connection protocol state.
+///
+/// USB/IP changes framing mid-connection and gives no in-band signal that it has done
+/// so. Before import, messages use `op_common` — version(2) code(2) status(4). After a
+/// successful OP_REQ_IMPORT the *same socket* carries URB traffic framed with
+/// `usbip_header_basic` — command(4) seqnum(4) devid(4) direction(4) ep(4), no version.
+///
+/// The two cannot be told apart from the bytes alone: a CMD_SUBMIT read as op_common
+/// yields version 0x0000 and code 0x0001, which is indistinguishable from a malformed
+/// handshake message. The receiver has to remember which phase the connection is in,
+/// which is why this is state rather than a parsing heuristic.
+public final class USBIPConnectionState {
+    public enum Phase {
+        /// Handshake: device list and import, framed with op_common.
+        case handshake
+        /// Post-import: URB traffic, framed with usbip_header_basic.
+        case attached(busID: String)
+    }
+
+    private let lock = NSLock()
+    private var _phase: Phase = .handshake
+
+    public init() {}
+
+    public var phase: Phase {
+        lock.lock(); defer { lock.unlock() }
+        return _phase
+    }
+
+    /// Called once OP_REP_IMPORT has been sent successfully.
+    public func markAttached(busID: String) {
+        lock.lock(); defer { lock.unlock() }
+        _phase = .attached(busID: busID)
+    }
+}
+
 public class RequestProcessor {
     /// Device discovery for USB device enumeration
     private let deviceDiscovery: DeviceDiscovery
@@ -51,9 +87,44 @@ public class RequestProcessor {
     }
     
     /// Process incoming request data and generate a response
+    /// Process a request on a connection with no tracked state.
+    ///
+    /// Only ever sees the handshake phase, so it cannot handle URB traffic. Retained
+    /// for callers that genuinely only exchange device-list requests.
     public func processRequest(_ data: Data) throws -> Data {
+        return try processRequest(data, connectionState: USBIPConnectionState())
+    }
+
+    /// Process a request in the context of a connection.
+    ///
+    /// The phase decides how the bytes are framed; see USBIPConnectionState.
+    public func processRequest(_ data: Data, connectionState: USBIPConnectionState) throws -> Data {
+        if case .attached = connectionState.phase {
+            return try processAttachedPhaseRequest(data)
+        }
+        return try processHandshakeRequest(data, connectionState: connectionState)
+    }
+
+    /// URB traffic, framed with usbip_header_basic.
+    private func processAttachedPhaseRequest(_ data: Data) throws -> Data {
+        let header = try USBIPBasicHeader.decode(from: data)
+        log("Received URB command: \(header.command)", .debug)
+
+        switch header.command {
+        case .submit:
+            return try handleSubmitRequest(data)
+        case .unlink:
+            return try handleUnlinkRequest(data)
+        case .retSubmit, .retUnlink:
+            // Replies flow server -> client; receiving one means the peer is confused.
+            log("Received a reply command on an attached connection", .warning)
+            throw USBIPProtocolError.unsupportedCommand(UInt16(truncatingIfNeeded: header.command.rawValue))
+        }
+    }
+
+    private func processHandshakeRequest(_ data: Data, connectionState: USBIPConnectionState) throws -> Data {
         log("Processing incoming request", .debug)
-        
+
         do {
             // Validate that data contains a valid USB/IP header
             log("Validating USB/IP header", .debug)
@@ -69,7 +140,17 @@ public class RequestProcessor {
                 
             case .requestDeviceImport:
                 log("Processing device import request", .debug)
-                return try handleDeviceImportRequest(data)
+                let response = try handleDeviceImportRequest(data)
+                // Everything after a successful import is URB traffic on this same
+                // socket, framed differently. Only flip on success: a rejected import
+                // leaves the connection in the handshake phase.
+                if let importRequest = try? DeviceImportRequest.decode(from: data),
+                   let decoded = try? DeviceImportResponse.decode(from: response),
+                   decoded.header.status == 0 {
+                    log("Connection entering attached phase", .info)
+                    connectionState.markAttached(busID: importRequest.busID)
+                }
+                return response
                 
             case .submitRequest:
                 log("Processing USB SUBMIT request", .debug)

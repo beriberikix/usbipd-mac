@@ -75,6 +75,9 @@ class QEMUTestServer {
         // Cast to concrete type to allow property assignment
         if let tcpClient = client as? TCPClientConnection {
             // Set up data reception handler
+            // Per-connection framing state: op_common until import, then
+            // usbip_header_basic.
+            let connectionState = USBIPConnectionState()
             tcpClient.onDataReceived = { [weak self] data in
                 self?.logger.debug("Received data", context: [
                     "clientId": client.id.uuidString,
@@ -82,7 +85,7 @@ class QEMUTestServer {
                 ])
                 
                 do {
-                    let response = try processor.processRequest(data)
+                    let response = try processor.processRequest(data, connectionState: connectionState)
                     try client.send(data: response)
                     self?.logger.debug("Response sent successfully", context: [
                         "clientId": client.id.uuidString,

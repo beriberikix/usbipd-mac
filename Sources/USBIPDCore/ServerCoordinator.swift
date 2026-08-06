@@ -458,6 +458,11 @@ public class ServerCoordinator: USBIPServer {
             
             // Create a local mutable variable for the connection
             var connection = clientConnection
+
+            // Framing state belongs to the connection, not the processor: after a
+            // successful import this socket switches from op_common to
+            // usbip_header_basic, and nothing in the bytes says so.
+            let connectionState = USBIPConnectionState()
             
             // Set up data handler for the connection with concurrent processing
             connection.onDataReceived = { [weak self] data in
@@ -492,7 +497,8 @@ public class ServerCoordinator: USBIPServer {
                     
                     do {
                         // Process the request using the request processor
-                        let responseData = try self.requestProcessor.processRequest(data)
+                        let responseData = try self.requestProcessor.processRequest(
+                            data, connectionState: connectionState)
                         
                         // Send the response back to the client (this must be thread-safe)
                         try connection.send(data: responseData)
