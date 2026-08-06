@@ -226,11 +226,32 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
 (USB-serial, HID, mass storage) are being pursued.
 
 1. Run the harness with the target hardware attached, as both user and root.
-2. **Check the pending Developer portal request** against the corrected key list above.
-   If it names the misspelled key or bundles Endpoint Security, withdraw it and
-   re-submit for exactly `com.apple.developer.driverkit`,
-   `com.apple.developer.driverkit.transport.usb`, and
-   `com.apple.developer.driverkit.allow-any-userclient-access`.
+2. **The portal state is known.** For App ID `com.usbipd.mac.system-extension`
+   (team 592A3U6J26), the Capability Requests tab reads:
+
+   | Capability | Status |
+   | --- | --- |
+   | DriverKit USB Transport - VendorID | **Declined** |
+   | DriverKit UserClient Access | **Declined** |
+   | DriverKit PCI (development) | Assigned |
+   | DriverKit USB Transport - VendorID **and ProductID** | No Requests |
+   | DriverKit Family Serial | No Requests |
+   | DriverKit Family HID Device | No Requests |
+   | DriverKit Transport HID | No Requests |
+
+   Two things follow. The account is not blanket-blocked from DriverKit — a PCI
+   capability is assigned — so the declines are about these specific asks. And the
+   declined request was the **broad** one: USB Transport scoped to a vendor ID grants
+   access to every device from that vendor. The narrower VendorID **and** ProductID
+   variant has never been requested, nor have the per-family capabilities.
+
+   That matters for what is worth asking for next. A narrowly scoped request is a much
+   smaller ask than a vendor-wide one, and `DriverKit Family Serial` is the capability
+   that maps to the USB-serial adapters this project most often gets asked about. Both
+   are untried.
+
+   The catch is that per-device scoping suits a targeted tool, not a general-purpose
+   USB/IP server: approval would cover only the vendor and product IDs named in it.
 3. Once approved: create the provisioning profile, base64-encode it, and set it as the
    `DRIVERKIT_PROVISIONING_PROFILE` repository secret.
 4. Update the README warning to name the correct entitlement and, if the results support
