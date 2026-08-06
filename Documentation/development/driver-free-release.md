@@ -78,7 +78,14 @@ driver, which would send a reader after a DriverKit entitlement that could not h
 
 ## Work required
 
-### 1. Detect and refuse driver-bound devices with a clear error
+### 1. Detect and refuse driver-bound devices with a clear error — DONE
+
+`bind` now determines ownership up front and refuses with an explanation naming the
+owner, distinguishing a kernel driver from a userspace holder. Verified against
+hardware: a J-Link binds, a keyboard is refused with
+`macOS has bound a driver to it (AppleUserHIDDevice)`.
+
+The original description follows.
 
 Today `bind` allow-lists anything and only discovers the problem when a transfer fails.
 The daemon should determine ownership up front, using the logic already proven in
@@ -98,7 +105,12 @@ this device open" is actionable in a way "a kernel driver owns it" is not.
 allow-list with an explicit warning. Refusing is preferable: silently allow-listing a
 device that cannot be served is what the previous behaviour did.
 
-### 2. README
+### 2. README — DONE
+
+Replaced with the measured split: which classes work, which do not, that seizing was
+measured and does not work, and a pointer at the harness.
+
+### 2b. README (original description)
 
 Replace the blanket warning with the split. State plainly which classes work now, that
 the DriverKit entitlement gates the rest, and point at

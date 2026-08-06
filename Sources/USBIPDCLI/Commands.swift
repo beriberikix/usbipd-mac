@@ -165,11 +165,16 @@ public class BindCommand: Command {
     private let deviceDiscovery: DeviceDiscovery
     private let serverConfig: ServerConfig
     private let systemExtensionManager: SystemExtensionManager?
-    
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, systemExtensionManager: SystemExtensionManager? = nil) {
+    private let ownershipInspector: DeviceOwnershipInspector
+
+    public init(deviceDiscovery: DeviceDiscovery,
+                serverConfig: ServerConfig,
+                systemExtensionManager: SystemExtensionManager? = nil,
+                ownershipInspector: DeviceOwnershipInspector = DeviceOwnershipInspector()) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
         self.systemExtensionManager = systemExtensionManager
+        self.ownershipInspector = ownershipInspector
     }
     
     public func execute(with arguments: [String]) throws {
@@ -224,7 +229,51 @@ public class BindCommand: Command {
             ])
             
             let deviceIdentifier = "\(device.busID)-\(device.deviceID)"
-            
+
+            // Refuse devices something else already owns, before promising to share
+            // them. This used to allow-list anything and only surface the problem when
+            // a transfer failed, on a machine the user was no longer looking at.
+            switch ownershipInspector.ownership(vendorID: device.vendorID, productID: device.productID) {
+            case .unbound:
+                break
+
+            case .kernelDriver(let drivers):
+                let names = drivers.joined(separator: ", ")
+                logger.error("Refusing to bind a driver-bound device", context: [
+                    "busid": busid,
+                    "drivers": names
+                ])
+                // Printed rather than folded into the thrown error: the error string is
+                // also logged as context, and a multi-line message there is unreadable.
+                print("""
+                    Cannot share \(busid): macOS has bound a driver to it (\(names)).
+
+                    Releasing it needs a DriverKit entitlement Apple has to grant.
+                    Seizing the interface was measured and does not work, and neither
+                    unmounting nor ejecting releases it.
+
+                    Devices macOS does not claim — debug probes, boards in DFU mode,
+                    vendor-specific interfaces — work today. Check a specific device
+                    with ./Scripts/validate-usb-entitlements.sh
+                    """)
+                throw CommandHandlerError.deviceBindingFailed("\(busid) is owned by \(names)")
+
+            case .userspaceProcess(let clients):
+                let names = clients.joined(separator: ", ")
+                logger.error("Refusing to bind a device held by another process", context: [
+                    "busid": busid,
+                    "clients": names
+                ])
+                print("""
+                    Cannot share \(busid): another process has it open (\(names)).
+
+                    Quit whatever is using the device — a camera or audio app, a
+                    browser tab holding it over WebUSB — and bind again. Unlike a
+                    kernel driver, this needs no entitlement.
+                    """)
+                throw CommandHandlerError.deviceBindingFailed("\(busid) is open in another process")
+            }
+
             // Step 1: Validate System Extension is available and ready
             print("Checking System Extension status...")
             if let extensionManager = systemExtensionManager {
@@ -301,13 +350,18 @@ public class BindCommand: Command {
                 // is unbound and the "claim" succeeds without claiming. Saying the
                 // device is under exclusive control would be reporting an outcome that
                 // was never verified.
-                print("Registered for USB/IP sharing. Exclusive claiming is not verified:")
-                print("  devices with no kernel driver bound are servable regardless;")
-                print("  devices macOS has bound to a driver may still fail at transfer time.")
+                // bind now refuses driver-bound and process-held devices up front, so
+                // reaching this point means nothing else owns the interface. The old
+                // hedge about transfers possibly failing later no longer applies.
+                print("Registered for USB/IP sharing. No driver or process holds this device.")
             } else {
                 print("Allow-listed device \(identity)")
                 print("Not claimed: the System Extension is not active. See the warning above.")
             }
+        } catch let handlerError as CommandHandlerError {
+            // Already carries its own message. Re-wrapping produced the doubled
+            // "Device binding failed: Device binding failed: ..." prefix.
+            throw handlerError
         } catch let deviceError as DeviceDiscoveryError {
             logger.error("Device discovery error during bind", context: ["error": deviceError.localizedDescription])
             throw CommandHandlerError.deviceBindingFailed(deviceError.localizedDescription)

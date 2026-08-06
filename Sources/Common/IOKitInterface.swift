@@ -18,6 +18,13 @@ public protocol IOKitInterface {
     
     // Property access
     func registryEntryCreateCFProperty(_ entry: io_registry_entry_t, _ key: CFString, _ allocator: CFAllocator?, _ options: IOOptionBits) -> Unmanaged<CFTypeRef>?
+
+    /// Children of a registry entry in the given plane. Needed to see which drivers
+    /// have matched against a device, which is how device ownership is determined.
+    func registryEntryGetChildIterator(_ entry: io_registry_entry_t, _ plane: String, _ iterator: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t
+
+    /// The IOKit class name of a service, e.g. "IOUSBMassStorageDriver".
+    func objectCopyClass(_ object: io_object_t) -> String?
     
     // Notification system
     func notificationPortCreate(_ mainPort: mach_port_t) -> IONotificationPortRef?
@@ -49,6 +56,15 @@ public class RealIOKitInterface: IOKitInterface {
         return IOObjectRelease(object)
     }
     
+    public func registryEntryGetChildIterator(_ entry: io_registry_entry_t, _ plane: String, _ iterator: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t {
+        return IORegistryEntryGetChildIterator(entry, plane, iterator)
+    }
+
+    public func objectCopyClass(_ object: io_object_t) -> String? {
+        guard let name = IOObjectCopyClass(object) else { return nil }
+        return name.takeRetainedValue() as String
+    }
+
     public func registryEntryCreateCFProperty(_ entry: io_registry_entry_t, _ key: CFString, _ allocator: CFAllocator?, _ options: IOOptionBits) -> Unmanaged<CFTypeRef>? {
         return IORegistryEntryCreateCFProperty(entry, key, allocator, options)
     }

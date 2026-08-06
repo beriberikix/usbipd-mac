@@ -147,8 +147,20 @@ public class MockIOKitInterface: IOKitInterface {
         return KERN_SUCCESS
     }
     
+    /// Synthetic iterators handed out by registryEntryGetChildIterator.
+    public var pendingIterators: [io_iterator_t: [io_registry_entry_t]] = [:]
+    public var nextIteratorID: io_iterator_t = 9000
+
     public func iteratorNext(_ iterator: io_iterator_t) -> io_service_t {
         iteratorNextCalls.append(iterator)
+
+        // Registry-traversal iterators drain their queued children.
+        if var queued = pendingIterators[iterator] {
+            guard !queued.isEmpty else { return 0 }
+            let next = queued.removeFirst()
+            pendingIterators[iterator] = queued
+            return next
+        }
         
         // Handle notification iterators
         if iterator == addedIterator {
@@ -359,6 +371,29 @@ public class MockIOKitInterface: IOKitInterface {
     /// Clear the simulated discovery error
     public func clearSimulatedDiscoveryError() {
         simulatedDiscoveryError = nil
+    }
+    // MARK: - Registry Traversal
+
+    /// Child services keyed by parent, so a test can describe a device tree.
+    public var childrenByEntry: [io_registry_entry_t: [io_registry_entry_t]] = [:]
+    /// Class name for each entry.
+    public var classNamesByEntry: [io_registry_entry_t: String] = [:]
+
+    public func registryEntryGetChildIterator(_ entry: io_registry_entry_t, _ plane: String, _ iterator: UnsafeMutablePointer<io_iterator_t>) -> kern_return_t {
+        guard let children = childrenByEntry[entry], !children.isEmpty else {
+            iterator.pointee = 0
+            return KERN_SUCCESS
+        }
+        // Hand back a synthetic iterator id and queue its contents.
+        nextIteratorID += 1
+        let id = nextIteratorID
+        pendingIterators[id] = children
+        iterator.pointee = id
+        return KERN_SUCCESS
+    }
+
+    public func objectCopyClass(_ object: io_object_t) -> String? {
+        return classNamesByEntry[object]
     }
 }
 

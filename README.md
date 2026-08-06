@@ -1,14 +1,22 @@
-> [!WARNING]
-> Sharing a USB device that macOS has already bound to an in-kernel driver requires the
-> DriverKit USB transport entitlements (`com.apple.developer.driverkit`,
-> `com.apple.developer.driverkit.transport.usb`). Those are managed capabilities that
-> Apple must approve; our request has been pending since August 23rd, 2025.
+> [!IMPORTANT]
+> **Which devices work:** those macOS has not bound a driver to. Debug probes
+> (J-Link, ST-Link, CMSIS-DAP), boards in DFU or bootloader mode, and vendor-specific
+> interfaces generally. These need no entitlement and no System Extension — a J-Link
+> has been driven end to end from a Linux client with probe-rs.
 >
-> This is *not* the App Sandbox entitlement `com.apple.security.device.usb`, which is
-> freely usable and does not grant this capability — see
+> **Which do not:** anything macOS claims — USB-serial adapters, HID, mass storage,
+> audio, cameras. `bind` refuses these with an explanation rather than failing later.
+> Releasing them needs the DriverKit USB transport entitlements
+> (`com.apple.developer.driverkit`, `com.apple.developer.driverkit.transport.usb`),
+> which Apple must approve; our request has been pending since August 23rd, 2025.
+>
+> Seizing the interface was measured and does **not** work, and neither unmounting nor
+> ejecting a device releases it. There is no workaround short of that entitlement.
+>
+> Note this is *not* the App Sandbox entitlement `com.apple.security.device.usb`, which
+> is freely usable and grants nothing here — see
 > [Documentation/development/entitlement-validation.md](Documentation/development/entitlement-validation.md).
-> Run `./Scripts/validate-usb-entitlements.sh` to measure which of your devices are
-> blocked and which are already usable.
+> Run `./Scripts/validate-usb-entitlements.sh` to check your own hardware.
 
 # usbipd-mac
 
