@@ -196,8 +196,12 @@ public class RequestProcessor {
             log("Converting device information to USB/IP format", .debug)
             let exportedDevices = devices.map { device -> USBIPExportedDevice in
                 let exportedDevice = USBIPExportedDevice(
-                    path: "/sys/devices/\(device.busID)/\(device.deviceID)",
-                    busID: device.busID,
+                    path: "/sys/devices/\(device.busID)-\(device.deviceID)",
+                    // The busid a client passes to `usbip attach` is the composed
+                    // bus-device identifier. Advertising only the bus number made every
+                    // device on the host report the same busid, "1", so a client could
+                    // not name one to import.
+                    busID: "\(device.busID)-\(device.deviceID)",
                     busnum: UInt32(Int(device.busID.split(separator: "-").last ?? "0") ?? 0),
                     devnum: UInt32(Int(device.deviceID.split(separator: ".").last ?? "0") ?? 0),
                     speed: UInt32(device.speed.rawValue),
@@ -267,16 +271,23 @@ public class RequestProcessor {
         log("Processing device import request for busID: \(request.busID)", .info)
         
         do {
-            // Parse the busID to extract deviceID (assuming format like "1-1:1.0")
+            // Split the busid the client sends back into the bus and device numbers
+            // used for lookup. This is the same composed "bus-device" form advertised
+            // in the device list — "1-17" for a J-Link on bus 1 — so it splits on the
+            // first hyphen.
+            //
+            // This previously split on ":" and expected "1-1:1.0", a format nothing
+            // advertised or sent, so every import fell back to a default deviceID of
+            // "1.0" and looked up a device that did not exist.
             log("Parsing busID: \(request.busID)", .debug)
-            let components = request.busID.split(separator: ":")
-            guard components.count >= 1 else {
+            let parts = request.busID.split(separator: "-", maxSplits: 1)
+            guard parts.count == 2 else {
                 log("Invalid busID format", .error, ["busID": request.busID])
                 throw DeviceError.deviceNotFound("Invalid busID format: \(request.busID)")
             }
-            
-            let busID = String(components[0])
-            let deviceID = components.count > 1 ? String(components[1]) : "1.0" // Default deviceID if not specified
+
+            let busID = String(parts[0])
+            let deviceID = String(parts[1])
             
             log("Looking for device", .debug, ["busID": busID, "deviceID": deviceID])
             
@@ -340,8 +351,8 @@ public class RequestProcessor {
             // OP_REP_IMPORT carries the full usbip_usb_device on success; a header-only
             // reply leaves the client blocked waiting for 312 bytes.
             let importedDevice = USBIPExportedDevice(
-                path: "/sys/devices/\(device.busID)/\(device.deviceID)",
-                busID: device.busID,
+                path: "/sys/devices/\(device.busID)-\(device.deviceID)",
+                busID: "\(device.busID)-\(device.deviceID)",
                 busnum: UInt32(Int(device.busID.split(separator: "-").last ?? "0") ?? 0),
                 devnum: UInt32(Int(device.deviceID.split(separator: ".").last ?? "0") ?? 0),
                 speed: UInt32(device.speed.rawValue),

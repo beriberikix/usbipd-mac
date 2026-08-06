@@ -44,9 +44,13 @@ class RequestProcessorTests: XCTestCase {
     
     // Create a sample USB device for testing
     func createSampleDevice() -> USBDevice {
+        // IOKitDeviceDiscovery.generateDeviceIDs returns the bus number and device
+        // number separately — "1" and "17" for the J-Link on a real host — not an
+        // already-composed "1-1". The fixture used the composed form, which hid that
+        // the exported busid needs building from both parts.
         return USBDevice(
-            busID: "1-1",
-            deviceID: "1.0",
+            busID: "1",
+            deviceID: "17",
             vendorID: 0x1234,
             productID: 0x5678,
             deviceClass: 0x09,
@@ -98,7 +102,10 @@ class RequestProcessorTests: XCTestCase {
         
         // Verify device details
         let exportedDevice = response.devices[0]
-        XCTAssertEqual(exportedDevice.busID, device.busID, "Bus ID should match")
+        // The advertised busid is the composed bus-device identifier a client passes
+        // back to `usbip attach`.
+        XCTAssertEqual(exportedDevice.busID, "\(device.busID)-\(device.deviceID)",
+                       "Exported busid should be the composed bus-device identifier")
         XCTAssertEqual(exportedDevice.vendorID, device.vendorID, "Vendor ID should match")
         XCTAssertEqual(exportedDevice.productID, device.productID, "Product ID should match")
         XCTAssertEqual(exportedDevice.deviceClass, device.deviceClass, "Device class should match")
@@ -135,15 +142,17 @@ class RequestProcessorTests: XCTestCase {
         
         let mockDeviceClaimManager = MockDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
-        let requestData = createDeviceImportRequest(busID: "1-1:1.0")
+        let requestData = createDeviceImportRequest(busID: "1-17")
         
         // Act
         let responseData = try processor.processRequest(requestData)
         
         // Assert
         XCTAssertTrue(deviceDiscovery.getDeviceCalled, "Device discovery getDevice should be called")
-        XCTAssertEqual(deviceDiscovery.requestedBusID, "1-1", "Bus ID should be extracted correctly")
-        XCTAssertEqual(deviceDiscovery.requestedDeviceID, "1.0", "Device ID should be extracted correctly")
+        // "1-17" splits into bus 1, device 17 — the same pair generateDeviceIDs
+        // produces from a locationID, and the pair getDevice expects.
+        XCTAssertEqual(deviceDiscovery.requestedBusID, "1", "Bus number should be extracted")
+        XCTAssertEqual(deviceDiscovery.requestedDeviceID, "17", "Device number should be extracted")
         
         // Decode the response to verify it
         let response = try USBIPMessageDecoder.decodeDeviceImportResponse(from: responseData)
@@ -159,7 +168,7 @@ class RequestProcessorTests: XCTestCase {
         
         let mockDeviceClaimManager = MockDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
-        let requestData = createDeviceImportRequest(busID: "1-1:1.0")
+        let requestData = createDeviceImportRequest(busID: "1-17")
         
         // Act
         let responseData = try processor.processRequest(requestData)

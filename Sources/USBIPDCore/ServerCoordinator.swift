@@ -691,9 +691,31 @@ public class ServerCoordinator: USBIPServer {
             
             // Device claim manager is already initialized and ready
             
-            // Activate System Extension if enabled
+            // Activate the System Extension if enabled, but never let it stop the
+            // server from starting.
+            //
+            // Activation used to be fatal: a 30-second wait followed by a throw out of
+            // start(). Since the extension cannot activate from a Homebrew prefix — or
+            // anywhere outside an app bundle in /Applications — that made the daemon
+            // unstartable, and with it every device, including the ones that need no
+            // claim at all. A J-Link opens from userspace with no entitlement; there is
+            // no reason for it to be unreachable because an unrelated subsystem cannot
+            // install.
+            //
+            // Devices macOS has bound to a kernel driver still will not be servable
+            // without the extension, which is reported when they are bound rather than
+            // by refusing to run.
             if systemExtensionEnabled {
-                try activateSystemExtension()
+                do {
+                    try activateSystemExtension()
+                } catch {
+                    logger.warning("System Extension not active; continuing without it", context: [
+                        "error": error.localizedDescription
+                    ])
+                    print("⚠ System Extension is not active: \(error.localizedDescription)")
+                    print("  Serving devices that need no exclusive claim. Devices bound to a")
+                    print("  kernel driver (USB-serial, HID, mass storage) will not be servable.")
+                }
                 
                 // Attempt automatic installation if configured (disabled in current implementation)
                 // if let installationManager = automaticInstallationManager,
