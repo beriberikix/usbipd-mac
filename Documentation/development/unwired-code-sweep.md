@@ -28,14 +28,34 @@ failed. Fixed, with four tests over the mapping.
 `USBRequestHandler.init`, it was dead. Leaving it would have preserved the exact trap
 that caused the original bug: a setter that looks like the wiring point and is not.
 
+## Removed: mechanisms with tests but no production callers
+
+Deleting these removed 42 tests. That is the point — they were green tests over code
+the daemon never reached, and their passing actively disguised that nothing used it.
+
+| Removed | Why it was safe |
+| --- | --- |
+| `URBTracker` and its ~30 tests | a dead duplicate; UNLINK cancels through `USBSubmitProcessor.cancelURB`, which tracks URBs in `activeURBs` |
+| `DeviceMonitor` (192 lines) and its tests | hotplug is handled directly by `deviceDiscovery.onDeviceConnected`/`onDeviceDisconnected` in `ServerCoordinator` |
+| `logDebug`/`logInfo`/`logWarning`/`logError`/`logCritical` globals | an unused parallel API; production uses the `logger.debug(…)` methods in 739 places. Their one test asserted nothing beyond "does not crash" |
+| `USBErrorMapping.mapUSBStatusToIOKit` | the reverse direction. The server maps IOKit → USB/IP via `mapIOKitError`, which is live |
+| `USBErrorMapping.errorDescription(for:)` (static) | no callers. The *instance* `errorDescription` is `LocalizedError` conformance and was kept |
+| `ServerConfig.resetToDefaults` | no callers |
+| `CompletionFormattingUtilities.formatDescription` | no callers |
+| `CompletionFormattingUtilities.generateFallbackCompletion` | no callers, and stale: it advertised `attach` and `detach`, removed from the CLI |
+
+One near-miss worth recording: the sweep flagged `errorDescription`, but the instance
+property of that name is a `LocalizedError` requirement reached through
+`localizedDescription`. A sweep keyed on call sites cannot see protocol dispatch, so
+every hit needs checking against the conformance list before deletion. Only the static
+overload was genuinely unused.
+
 ## Confirmed unwired, not yet addressed
 
 | Thing | State | Consequence |
 | --- | --- | --- |
 | `USBIPMessageValidator.validateUSBIPMessage` | zero callers, production *and* test | the buffer-size bound it contains is never applied |
 | `USBIPMessageValidator.validateSetupPacket` | zero callers | setup packets reach IOKit unvalidated |
-| `URBTracker` (`addPendingURB`, `removeCompletedURB`, `getPendingURB`, `getAllPendingSeqnums`, `clearAllPendingURBs`) | constructed once in `USBRequestHandler`, never called | a dead duplicate; the live tracking is `USBSubmitProcessor.activeURBs`. ~30 tests cover the unused copy |
-| `DeviceMonitor` | never constructed in production | `isActive`/`getKnownDevices` are tested against a class the daemon does not use |
 | `config.maxConnections` | only copied config→config by the `config` command | connection count is unbounded |
 | `config.connectionTimeout` | same | idle connections are never reaped |
 | `config.autoBindDevices` | same | setting it does nothing |
@@ -73,7 +93,11 @@ Most remaining zero-caller hits are inside the quarantined System Extension subs
 and are expected — that code is inert by design. The signal is confined to
 `USBIPDCore` outside `SystemExtension/`, `USBIPDCLI`, and `Common`.
 
-The `TESTS-ONLY` category deserves the same suspicion as `DEAD`. A mechanism with
-tests but no production callers is not covered — it is a well-tested spare part, and
-its green tests actively obscure that nothing uses it. `URBTracker` is the clearest
-case in this repository.
+The `TESTS-ONLY` category deserved the same suspicion as `DEAD`, and is now empty for
+live code. A mechanism with tests but no production callers is not covered — it is a
+well-tested spare part whose green tests obscure that nothing uses it.
+
+Re-running the sweep is the cheap way to keep it that way. What remains is confined to
+the quarantined System Extension subsystem, which is inert by design, and to the
+`config.*` and validator rows above, which are unwired behaviour rather than unused
+code and need decisions rather than deletions.

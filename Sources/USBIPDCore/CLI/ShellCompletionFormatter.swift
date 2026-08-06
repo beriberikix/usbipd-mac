@@ -93,29 +93,6 @@ public enum CompletionFormattingUtilities {
         }
     }
     
-    /// Format a description string for shell completion
-    /// - Parameters:
-    ///   - description: The description to format
-    ///   - shellType: Target shell type
-    /// - Returns: Formatted description suitable for the shell
-    public static func formatDescription(_ description: String, for shellType: String) -> String {
-        let escaped = escapeForShell(description, shellType: shellType)
-        
-        switch shellType {
-        case "zsh":
-            // Zsh supports rich descriptions in square brackets
-            return "[\(escaped)]"
-        case "fish":
-            // Fish uses -d flag for descriptions
-            return escaped
-        case "bash":
-            // Bash completion typically doesn't show descriptions
-            return escaped
-        default:
-            return escaped
-        }
-    }
-    
     /// Generate a list of command names for completion
     /// - Parameter commands: Array of commands
     /// - Returns: Space-separated list of command names
@@ -229,58 +206,5 @@ public enum CompletionFormattingUtilities {
         }
         
         return issues
-    }
-    
-    /// Generate a fallback completion for unsupported scenarios
-    /// - Parameters:
-    ///   - shellType: Target shell type
-    ///   - commandName: Name of the command
-    /// - Returns: Basic fallback completion script
-    public static func generateFallbackCompletion(for shellType: String, commandName: String) -> String {
-        switch shellType {
-        case "bash":
-            return """
-            # Fallback bash completion for \(commandName)
-            complete -W "help list bind unbind attach detach daemon install-system-extension diagnose" \(commandName)
-            """
-            
-        case "zsh":
-            return """
-            #compdef \(commandName)
-            # Fallback zsh completion for \(commandName)
-            _\(commandName)() {
-                local commands=(
-                    'help:Display help information'
-                    'list:List available USB devices'
-                    'bind:Bind a USB device to USB/IP'
-                    'unbind:Unbind a USB device from USB/IP'
-                    'attach:Attach a remote USB device'
-                    'detach:Detach a remote USB device'
-                    'daemon:Start USB/IP daemon'
-                    'install-system-extension:Install and register the System Extension'
-                    'diagnose:Run comprehensive installation and system diagnostics'
-                )
-                _describe 'commands' commands
-            }
-            _\(commandName) "$@"
-            """
-            
-        case "fish":
-            return """
-            # Fallback fish completion for \(commandName)
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'help' -d 'Display help information'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'list' -d 'List available USB devices'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'bind' -d 'Bind a USB device to USB/IP'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'unbind' -d 'Unbind a USB device from USB/IP'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'attach' -d 'Attach a remote USB device'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'detach' -d 'Detach a remote USB device'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'daemon' -d 'Start USB/IP daemon'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'install-system-extension' -d 'Install and register the System Extension'
-            complete -c \(commandName) -n '__fish_use_subcommand' -a 'diagnose' -d 'Run comprehensive installation and system diagnostics'
-            """
-            
-        default:
-            return "# Unsupported shell type: \(shellType)"
-        }
     }
 }

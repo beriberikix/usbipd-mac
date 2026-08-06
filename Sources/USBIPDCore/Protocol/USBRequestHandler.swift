@@ -25,9 +25,6 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     /// USB device communicator for executing USB operations (will be injected later)
     private var deviceCommunicator: USBDeviceCommunicator?
     
-    /// URB tracker for managing concurrent USB requests
-    private let urbTracker: URBTracker
-    
     /// USB Submit Processor for handling SUBMIT requests
     private let submitProcessor: USBSubmitProcessor
     
@@ -53,7 +50,6 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     ) {
         self.deviceDiscovery = deviceDiscovery
         self.deviceClaimManager = deviceClaimManager
-        self.urbTracker = URBTracker()
         self.logger = logger
         
         // Initialize processors

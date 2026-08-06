@@ -98,20 +98,6 @@ final class LoggerTests: XCTestCase {
         logger.info("User action", context: context)
         logger.error("Action failed", context: context)
     }
-    
-    func testGlobalLoggingFunctions() {
-        // Test that global functions don't crash
-        logDebug("Global debug")
-        logInfo("Global info")
-        logWarning("Global warning")
-        logError("Global error")
-        logCritical("Global critical")
-        
-        let testError = NSError(domain: "TestDomain", code: 456, userInfo: nil)
-        logError(testError)
-        logError(testError, message: "Global error with message")
-    }
-    
     func testThreadSafety() {
         let logger = Logger()
         let expectation = XCTestExpectation(description: "Concurrent logging")

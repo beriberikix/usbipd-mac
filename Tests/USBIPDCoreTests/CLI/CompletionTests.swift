@@ -284,22 +284,6 @@ extension CompletionTests {
         }
     }
     
-    func testDescriptionFormatting() {
-        let description = "Test description with special characters: $PATH and 'quotes'"
-        
-        let bashDesc = CompletionFormattingUtilities.formatDescription(description, for: "bash")
-        let zshDesc = CompletionFormattingUtilities.formatDescription(description, for: "zsh")
-        let fishDesc = CompletionFormattingUtilities.formatDescription(description, for: "fish")
-        
-        XCTAssertFalse(bashDesc.isEmpty)
-        XCTAssertFalse(zshDesc.isEmpty)
-        XCTAssertFalse(fishDesc.isEmpty)
-        
-        // Zsh should have brackets
-        XCTAssertContains(zshDesc, "[")
-        XCTAssertContains(zshDesc, "]")
-    }
-    
     func testCommandNamesList() {
         let commands = [
             CompletionCommand(name: "bind", description: "Bind device"),
@@ -353,18 +337,6 @@ extension CompletionTests {
         
         let issues = CompletionFormattingUtilities.validateCompletionScript(invalidScript, for: "bash")
         XCTAssertGreaterThan(issues.count, 0)
-    }
-    
-    func testFallbackCompletion() {
-        let bashFallback = CompletionFormattingUtilities.generateFallbackCompletion(for: "bash", commandName: "usbipd")
-        XCTAssertContains(bashFallback, "complete -W")
-        XCTAssertContains(bashFallback, "usbipd")
-        
-        let zshFallback = CompletionFormattingUtilities.generateFallbackCompletion(for: "zsh", commandName: "usbipd")
-        XCTAssertContains(zshFallback, "#compdef usbipd")
-        
-        let fishFallback = CompletionFormattingUtilities.generateFallbackCompletion(for: "fish", commandName: "usbipd")
-        XCTAssertContains(fishFallback, "complete -c usbipd")
     }
 }
 

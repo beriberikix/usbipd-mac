@@ -318,28 +318,6 @@ public class ServerConfig: Codable {
         }
     }
     
-    /// Reset configuration to default values
-    public func resetToDefaults() {
-        port = ServerConfig.defaultPort
-        logLevel = ServerConfig.defaultLogLevel
-        debugMode = false
-        maxConnections = 10
-        connectionTimeout = 30.0
-        allowedDevices = []
-        autoBindDevices = false
-        logFilePath = nil
-        maxConcurrentRequests = 16
-        maxTotalConcurrentRequests = 64
-        usbOperationTimeout = 5000
-        maxUSBBufferSize = 1048576
-        maxPendingURBsPerDevice = 32
-        usbRequestQoS = .userInitiated
-        systemExtensionBundleConfig = nil
-        enableSystemExtensionAutoInstall = true
-        maxAutoInstallAttempts = 3
-        autoInstallRetryDelay = 30.0
-    }
-    
     /// Check if a device is allowed based on configuration
     /// - Parameter deviceID: Device ID to check
     /// - Returns: True if device is allowed

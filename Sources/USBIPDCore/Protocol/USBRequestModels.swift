@@ -202,61 +202,6 @@ public struct USBErrorMapping {
             return USBStatus.requestFailed.rawValue
         }
     }
-    
-    /// Maps USB status codes to IOKit errors for consistency
-    public static func mapUSBStatusToIOKit(_ usbStatus: Int32) -> IOReturn {
-        switch USBStatus(rawValue: usbStatus) {
-        case .success:
-            return kIOReturnSuccess
-        case .timeout:
-            return kIOReturnTimeout
-        case .cancelled:
-            return kIOReturnAborted
-        case .stall:
-            return kIOReturnError
-        case .deviceGone, .noDevice:
-            return kIOReturnNoDevice
-        case .memoryError:
-            return kIOReturnNoMemory
-        case .invalidRequest:
-            return kIOReturnBadArgument
-        case .shortPacket:
-            return kIOReturnUnderrun
-        case .bufferError:
-            return kIOReturnOverrun
-        default:
-            return kIOReturnError
-        }
-    }
-    
-    /// Creates a localized error description for USB status codes
-    public static func errorDescription(for status: Int32) -> String {
-        switch USBStatus(rawValue: status) {
-        case .success:
-            return "Operation completed successfully"
-        case .stall:
-            return "USB endpoint stalled"
-        case .timeout:
-            return "USB transfer timed out"
-        case .cancelled:
-            return "USB transfer was cancelled"
-        case .shortPacket:
-            return "Short packet received"
-        case .deviceGone:
-            return "USB device disconnected or not present"
-        case .requestFailed:
-            // EPROTO also covers protocolError and busError, which share this code.
-            return "USB request failed (protocol or bus error)"
-        case .memoryError:
-            return "Memory allocation error"
-        case .invalidRequest:
-            return "Invalid USB request"
-        case .bufferError:
-            return "USB buffer error"
-        default:
-            return "Unknown USB error (code: \(status))"
-        }
-    }
 }
 
 /// USB-specific errors for request processing
@@ -317,58 +262,6 @@ extension USBRequestError: LocalizedError {
             return "USB request was cancelled"
         case .requestFailed:
             return "USB request failed"
-        }
-    }
-}
-
-/// URB lifecycle tracking for concurrent request management
-public class URBTracker {
-    private var pendingURBs: [UInt32: USBRequestBlock] = [:]
-    private let queue = DispatchQueue(label: "com.usbipd.urb-tracker", attributes: .concurrent)
-    
-    public init() {}
-    
-    /// Add a pending URB for tracking
-    public func addPendingURB(_ urb: USBRequestBlock) {
-        queue.async(flags: .barrier) {
-            self.pendingURBs[urb.seqnum] = urb
-        }
-    }
-    
-    /// Remove a completed URB from tracking
-    public func removeCompletedURB(_ seqnum: UInt32) -> USBRequestBlock? {
-        return queue.sync(flags: .barrier) {
-            return self.pendingURBs.removeValue(forKey: seqnum)
-        }
-    }
-    
-    /// Get a pending URB by sequence number
-    public func getPendingURB(_ seqnum: UInt32) -> USBRequestBlock? {
-        return queue.sync {
-            return self.pendingURBs[seqnum]
-        }
-    }
-    
-    /// Get all pending URB sequence numbers
-    public func getAllPendingSeqnums() -> [UInt32] {
-        return queue.sync {
-            return Array(self.pendingURBs.keys)
-        }
-    }
-    
-    /// Get count of pending URBs
-    public var pendingCount: Int {
-        return queue.sync {
-            return self.pendingURBs.count
-        }
-    }
-    
-    /// Clear all pending URBs (used during cleanup/reset)
-    public func clearAllPendingURBs() -> [USBRequestBlock] {
-        return queue.sync(flags: .barrier) {
-            let pending = Array(self.pendingURBs.values)
-            self.pendingURBs.removeAll()
-            return pending
         }
     }
 }

@@ -134,32 +134,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertNoThrow(try config.validate())
     }
     
-    func testResetToDefaults() {
-        let config = ServerConfig(
-            port: 3245,
-            logLevel: .debug,
-            debugMode: true,
-            maxConnections: 15,
-            connectionTimeout: 45.0,
-            allowedDevices: ["test-device-1", "test-device-2"],
-            autoBindDevices: true,
-            logFilePath: "/tmp/test-log.log"
-        )
-        
-        // Reset to defaults
-        config.resetToDefaults()
-        
-        // Verify all properties are reset
-        XCTAssertEqual(config.port, ServerConfig.defaultPort)
-        XCTAssertEqual(config.logLevel, ServerConfig.defaultLogLevel)
-        XCTAssertFalse(config.debugMode)
-        XCTAssertEqual(config.maxConnections, 10)
-        XCTAssertEqual(config.connectionTimeout, 30.0)
-        XCTAssertTrue(config.allowedDevices.isEmpty)
-        XCTAssertFalse(config.autoBindDevices)
-        XCTAssertNil(config.logFilePath)
-    }
-    
     func testDeviceAllowance() {
         let config = ServerConfig()
         

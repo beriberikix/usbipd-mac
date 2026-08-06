@@ -14,7 +14,6 @@ final class USBRequestProcessorTests: XCTestCase {
     var unlinkProcessor: USBUnlinkProcessor!
     var mockDeviceCommunicator: MockUSBDeviceCommunicator!
     fileprivate var mockDeviceDiscovery: StubDeviceDiscovery!
-    var urbTracker: URBTracker!
     var testDevice: USBDevice!
     
     // MARK: - Test Setup and Teardown
@@ -23,7 +22,6 @@ final class USBRequestProcessorTests: XCTestCase {
         super.setUp()
         
         mockDeviceCommunicator = MockUSBDeviceCommunicator()
-        urbTracker = URBTracker()
         testDevice = createTestDevice()
 
         // The processor resolves a submitted devid to a real device through discovery.
@@ -46,7 +44,6 @@ final class USBRequestProcessorTests: XCTestCase {
         unlinkProcessor = nil
         mockDeviceCommunicator = nil
         mockDeviceDiscovery = nil
-        urbTracker = nil
         testDevice = nil
         super.tearDown()
     }
@@ -501,85 +498,6 @@ final class USBRequestProcessorTests: XCTestCase {
         
         await fulfillment(of: [expectation], timeout: 5.0)
     }
-    
-    // MARK: - URB Lifecycle Management Tests
-    
-    func testURBTrackingLifecycle() async throws {
-        // Test that URBs are properly tracked through their lifecycle
-        let initialCount = urbTracker.pendingCount
-        
-        // Create a URB manually for tracking
-        let urb = USBRequestBlock(
-            seqnum: 1001,
-            devid: 1,
-            direction: .in,
-            endpoint: 0x81,
-            transferType: .bulk,
-            transferFlags: 0,
-            bufferLength: 128
-        )
-        
-        // Add to tracker
-        urbTracker.addPendingURB(urb)
-        XCTAssertEqual(urbTracker.pendingCount, initialCount + 1)
-        
-        // Verify retrieval
-        let retrievedURB = urbTracker.getPendingURB(1001)
-        XCTAssertNotNil(retrievedURB)
-        XCTAssertEqual(retrievedURB?.seqnum, 1001)
-        
-        // Remove from tracker
-        let removedURB = urbTracker.removeCompletedURB(1001)
-        XCTAssertNotNil(removedURB)
-        XCTAssertEqual(removedURB?.seqnum, 1001)
-        XCTAssertEqual(urbTracker.pendingCount, initialCount)
-        
-        // Verify removal
-        let shouldBeNil = urbTracker.getPendingURB(1001)
-        XCTAssertNil(shouldBeNil)
-    }
-    
-    func testURBTrackingConcurrentAccess() async throws {
-        let expectation = XCTestExpectation(description: "Concurrent URB operations")
-        expectation.expectedFulfillmentCount = 10
-        
-        // Add URBs concurrently
-        for i in 0..<5 {
-            Task {
-                let urb = USBRequestBlock(
-                    seqnum: UInt32(2000 + i),
-                    devid: 1,
-                    direction: .out,
-                    endpoint: 0x02,
-                    transferType: .bulk,
-                    transferFlags: 0,
-                    bufferLength: 64
-                )
-                urbTracker.addPendingURB(urb)
-                expectation.fulfill()
-            }
-        }
-        
-        // Remove URBs concurrently
-        for i in 0..<5 {
-            Task {
-                // Small delay to allow addition
-                try await Task.sleep(nanoseconds: 1_000_000) // 1ms
-                _ = urbTracker.removeCompletedURB(UInt32(2000 + i))
-                expectation.fulfill()
-            }
-        }
-        
-        await fulfillment(of: [expectation], timeout: 3.0)
-        
-        // Verify final state consistency
-        let finalSeqnums = urbTracker.getAllPendingSeqnums()
-        let finalCount = urbTracker.pendingCount
-        XCTAssertEqual(finalSeqnums.count, finalCount)
-    }
-    
-    // MARK: - End-to-End Integration Tests
-    
     func testCompleteUSBOperationFlow() async throws {
         // Configure mock for device descriptor request
         let deviceDescriptor = Data([
