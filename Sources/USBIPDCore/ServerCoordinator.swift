@@ -444,6 +444,19 @@ public class ServerCoordinator: USBIPServer {
             }
         }
         
+        // Wire the USB request handler. Without it RequestProcessor has no way to
+        // service SUBMIT or UNLINK: every URB fell into a `guard let handler` and threw
+        // invalidMessageFormat, which reads like a protocol error and is really "no
+        // handler configured". setUSBRequestHandler existed, USBRequestHandler existed,
+        // and nothing ever connected the two — so the transfer path was unreachable no
+        // matter how correct the framing was.
+        self.requestProcessor.setUSBRequestHandler(
+            USBRequestHandler(
+                deviceDiscovery: deviceDiscovery,
+                deviceClaimManager: self.deviceClaimManager
+            )
+        )
+
         setupCallbacks()
         setupSystemExtensionCallbacks()
     }
