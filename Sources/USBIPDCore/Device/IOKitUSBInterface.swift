@@ -64,6 +64,14 @@ public final class IOKitUSBInterface: @unchecked Sendable {
     
     /// IOKit USB interface references keyed by endpoint
     private var interfaceRefs: [UInt8: USBInterfaceHandle] = [:]
+
+    /// Endpoint address -> (IOKit pipe reference, USB transfer type).
+    ///
+    /// IOKit addresses pipes by a 1-based index into the interface, which is not the
+    /// endpoint number. The two coincide on simple devices and diverge as soon as an
+    /// interface has gaps or more than a couple of endpoints, so deriving one from the
+    /// other was only ever going to work by accident.
+    private var pipesByEndpoint: [UInt8: (pipeRef: UInt8, transferType: UInt8)] = [:]
     
     /// Track interface open state
     private var isOpen: Bool = false
@@ -480,11 +488,67 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             throw IOKitError.operationFailed("USBInterfaceOpen", openResult)
         }
         
-        // Store the interface reference for endpoint 0 (will be enhanced with endpoint discovery)
         interfaceRefs[0] = interface
         logger.debug("Successfully opened USB interface \(interfaceNumber)")
-        
-        // TODO: Add endpoint discovery to populate interfaceRefs with proper pipe references
+
+        discoverPipes(on: interface)
+    }
+
+    /// Ask IOKit what pipes this interface actually has.
+    ///
+    /// USB/IP does not carry a transfer type on the wire — CMD_SUBMIT has no field for
+    /// it — so the server is expected to know each endpoint's type from the device.
+    /// Guessing it from the request's interval field misclassified every bulk endpoint
+    /// with a non-zero bInterval, which is common: a J-Link reports bInterval 1 on both
+    /// of its bulk pipes.
+    private func discoverPipes(on interface: USBInterfaceHandle) {
+        pipesByEndpoint.removeAll()
+
+        var endpointCount: UInt8 = 0
+        let countResult = interface.vtable.GetNumEndpoints(interface, &endpointCount)
+        guard countResult == kIOReturnSuccess else {
+            logger.warning("Could not read endpoint count: \(countResult)")
+            return
+        }
+
+        // Pipe 0 is the default control pipe and is not reported by GetNumEndpoints.
+        guard endpointCount > 0 else { return }
+
+        for pipeRef in 1...endpointCount {
+            var direction: UInt8 = 0
+            var number: UInt8 = 0
+            var transferType: UInt8 = 0
+            var maxPacketSize: UInt16 = 0
+            var interval: UInt8 = 0
+
+            let result = interface.vtable.GetPipeProperties(
+                interface, pipeRef, &direction, &number, &transferType, &maxPacketSize, &interval)
+            guard result == kIOReturnSuccess else {
+                logger.warning("Could not read properties for pipe \(pipeRef): \(result)")
+                continue
+            }
+
+            // Direction 1 is IN, which USB encodes as bit 7 of the endpoint address.
+            let address = direction == 1 ? (number | 0x80) : number
+            pipesByEndpoint[address] = (pipeRef: pipeRef, transferType: transferType)
+
+            logger.debug("""
+                Pipe \(pipeRef): endpoint 0x\(String(address, radix: 16)), \
+                type \(transferType), maxPacket \(maxPacketSize), interval \(interval)
+                """)
+        }
+    }
+
+    /// IOKit pipe reference for an endpoint address, or nil if the interface has no
+    /// such endpoint.
+    func pipeReference(for endpoint: UInt8) -> UInt8? {
+        return pipesByEndpoint[endpoint]?.pipeRef
+    }
+
+    /// The endpoint's transfer type as the device reports it: 0 control, 1 isochronous,
+    /// 2 bulk, 3 interrupt.
+    public func transferType(for endpoint: UInt8) -> UInt8? {
+        return pipesByEndpoint[endpoint]?.transferType
     }
     
     // Note: openSpecificInterface method removed - will be implemented in task 4 when we add transfer execution
@@ -615,7 +679,10 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         
         // Check if this is an IN or OUT transfer based on endpoint direction
         let isInTransfer = (endpoint & 0x80) != 0
-        let pipeRef = endpoint & 0x7F  // Remove direction bit to get pipe reference
+        guard let pipeRef = pipeReference(for: endpoint) else {
+            logger.error("No pipe for endpoint 0x\(String(endpoint, radix: 16))")
+            throw USBRequestError.invalidParameters
+        }
         
         logger.debug("Bulk transfer: endpoint=0x\(String(endpoint, radix: 16)), direction=\(isInTransfer ? "IN" : "OUT"), bufferLength=\(bufferLength)")
         
@@ -642,6 +709,12 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(bufferLength))
             defer { buffer.deallocate() }
 
+            // ReadPipeTO's size argument is in/out: on entry it is the capacity of the
+            // buffer, on return the number of bytes actually read. Leaving it at 0 told
+            // IOKit the buffer could hold nothing, so any packet the device sent
+            // overran it — kIOReturnOverrun, reported to the client as EMSGSIZE. Every
+            // IN transfer on this path failed that way.
+            actualLength = bufferLength
             result = interface.vtable.ReadPipeTO(interface, pipeRef, buffer, &actualLength, timeout, timeout)
 
             if result == kIOReturnSuccess && actualLength > 0 {
@@ -710,7 +783,10 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         
         // Check if this is an IN or OUT transfer based on endpoint direction
         let isInTransfer = (endpoint & 0x80) != 0
-        let pipeRef = endpoint & 0x7F  // Remove direction bit to get pipe reference
+        guard let pipeRef = pipeReference(for: endpoint) else {
+            logger.error("No pipe for endpoint 0x\(String(endpoint, radix: 16))")
+            throw USBRequestError.invalidParameters
+        }
         
         logger.debug("Interrupt transfer: endpoint=0x\(String(endpoint, radix: 16)), direction=\(isInTransfer ? "IN" : "OUT"), bufferLength=\(bufferLength)")
         
@@ -731,6 +807,12 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             defer { buffer.deallocate() }
             
             // Use timeout-based read for interrupt transfers to handle periodic polling
+            // ReadPipeTO's size argument is in/out: on entry it is the capacity of the
+            // buffer, on return the number of bytes actually read. Leaving it at 0 told
+            // IOKit the buffer could hold nothing, so any packet the device sent
+            // overran it — kIOReturnOverrun, reported to the client as EMSGSIZE. Every
+            // IN transfer on this path failed that way.
+            actualLength = bufferLength
             result = interface.vtable.ReadPipeTO(interface, pipeRef, buffer, &actualLength, timeout, timeout)
             
             if result == kIOReturnSuccess && actualLength > 0 {
@@ -798,7 +880,10 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         
         // Check if this is an IN or OUT transfer based on endpoint direction
         let isInTransfer = (endpoint & 0x80) != 0
-        let pipeRef = endpoint & 0x7F  // Remove direction bit to get pipe reference
+        guard let pipeRef = pipeReference(for: endpoint) else {
+            logger.error("No pipe for endpoint 0x\(String(endpoint, radix: 16))")
+            throw USBRequestError.invalidParameters
+        }
         
         logger.debug("Isochronous transfer: endpoint=0x\(String(endpoint, radix: 16)), direction=\(isInTransfer ? "IN" : "OUT"), bufferLength=\(bufferLength), startFrame=\(startFrame), packets=\(numberOfPackets)")
         

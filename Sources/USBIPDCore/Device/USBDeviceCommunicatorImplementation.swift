@@ -154,6 +154,24 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     
     // MARK: - Transfer Methods
     
+    /// Ask the open interface what kind of endpoint this is. IOKit reports the type
+    /// from the device's own descriptors, which is the only authoritative source —
+    /// USB/IP does not put it on the wire.
+    public func endpointTransferType(device: USBDevice, endpoint: UInt8) -> USBTransferType? {
+        guard let interface = try? getInterface(for: device, interfaceNumber: 0),
+              let raw = interface.transferType(for: endpoint) else {
+            return nil
+        }
+
+        switch raw {
+        case 0: return .control
+        case 1: return .isochronous
+        case 2: return .bulk
+        case 3: return .interrupt
+        default: return nil
+        }
+    }
+
     public func executeControlTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
         // Validate device claim and request type
         _ = try validateDeviceClaim(device: device)

@@ -206,6 +206,11 @@ final class USBRequestProcessorTests: XCTestCase {
         // Configure mock for interrupt transfer
         let responseData = Data([0x01, 0x02, 0x03, 0x04])
         mockDeviceCommunicator.setInterruptTransferResponse(responseData)
+
+        // The device decides the transfer type; CMD_SUBMIT does not carry one. A
+        // non-zero interval used to imply interrupt, which misroutes bulk endpoints
+        // that declare a bInterval — most of them.
+        mockDeviceCommunicator.setEndpointTransferType(.interrupt, for: 0x81)
         
         // Create interrupt IN transfer request
         let requestData = try createUSBSubmitRequestData(

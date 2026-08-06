@@ -252,6 +252,20 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicator {
         return interfaceQueue.sync { openInterfaces.contains(key) }
     }
     
+    // MARK: - Endpoint Types
+
+    /// What each endpoint reports itself as. Real devices are asked through IOKit;
+    /// tests state it directly so routing can be exercised without hardware.
+    private var endpointTypes: [UInt8: USBTransferType] = [:]
+
+    func setEndpointTransferType(_ type: USBTransferType, for endpoint: UInt8) {
+        endpointTypes[endpoint] = type
+    }
+
+    func endpointTransferType(device: USBDevice, endpoint: UInt8) -> USBTransferType? {
+        return endpointTypes[endpoint]
+    }
+
     // MARK: - Device Validation
     
     func validateDeviceClaim(device: USBDevice) throws -> Bool {

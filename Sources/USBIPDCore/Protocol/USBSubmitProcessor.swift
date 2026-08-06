@@ -99,13 +99,26 @@ public class USBSubmitProcessor {
             )
         }
         
+        // Prefer the device's own description of the endpoint. CMD_SUBMIT has no
+        // transfer-type field, so anything derived from the request alone is a guess —
+        // and the interval-based guess below misreads every bulk endpoint that
+        // declares a non-zero bInterval, which is common.
+        let device = try? createUSBDeviceFromRequest(request)
+        let endpointAddress = UInt8(request.ep & 0xFF)
+        let reportedType = device.flatMap { resolved in
+            deviceCommunicator?.endpointTransferType(
+                device: resolved,
+                endpoint: request.direction == 1 ? (endpointAddress | 0x80) : endpointAddress
+            )
+        }
+
         // Create URB for tracking
         let urb = USBRequestBlock(
             seqnum: request.seqnum,
             devid: request.devid,
             direction: request.direction == 1 ? .in : .out,
             endpoint: UInt8(request.ep & 0xFF),
-            transferType: try inferTransferType(from: request),
+            transferType: try reportedType ?? inferTransferType(from: request),
             transferFlags: request.transferFlags,
             bufferLength: request.transferBufferLength,
             setupPacket: request.setup.isEmpty ? nil : request.setup,
@@ -372,15 +385,11 @@ public class USBSubmitProcessor {
             return .isochronous
         }
 
-        // A non-zero polling interval on a data endpoint means interrupt. Bulk
-        // transfers leave interval at 0, and the isochronous case is already handled
-        // above, so this is unambiguous for the fields CMD_SUBMIT actually carries.
-        //
-        // Without this every interrupt endpoint was driven as bulk, since the branch
-        // below was the only remaining outcome.
-        if request.interval > 0 {
-            return .interrupt
-        }
+        // Fallback only: reached when the device cannot be asked. A non-zero interval
+        // does NOT mean interrupt — bulk endpoints commonly declare bInterval 1, and a
+        // J-Link does on both of its bulk pipes — so this guess is wrong as often as
+        // it is right. It exists so a device that refuses to describe itself still
+        // gets a plausible route rather than no transfer at all.
 
         // Default to bulk for data endpoints.
         //

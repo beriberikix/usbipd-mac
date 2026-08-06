@@ -83,3 +83,71 @@ final class IOKitTimeoutMappingTests: XCTestCase {
         XCTAssertNotEqual(USBErrorMapping.mapIOKitError(IOReturn(bitPattern: 0xE000_4051)), -71)
     }
 }
+
+/// Transfer type comes from the device, not from the request.
+final class EndpointTypeRoutingTests: XCTestCase {
+
+    private func submitData(endpoint: UInt8, interval: UInt32) throws -> Data {
+        let request = USBIPSubmitRequest(
+            seqnum: 1,
+            devid: 0x0001_0011,
+            direction: 1,
+            ep: UInt32(endpoint),
+            transferFlags: 0,
+            transferBufferLength: 64,
+            startFrame: 0,
+            numberOfPackets: 0,
+            interval: interval,
+            setup: Data(count: 8),
+            transferBuffer: nil
+        )
+        return try request.encode()
+    }
+
+    /// An interrupt endpoint must reach the interrupt path because the device says so.
+    /// Nothing in CMD_SUBMIT identifies it: with no device to ask, the fallback routes
+    /// every data endpoint to bulk, so this passes only if the reported type is used.
+    /// The converse is the bug this replaced — a J-Link declares bInterval 1 on both
+    /// of its bulk pipes, and inferring interrupt from that sent bulk traffic to the
+    /// interrupt path, where it failed against real hardware.
+    func testEndpointRoutesByReportedTypeRatherThanInterval() async throws {
+        let communicator = MockUSBDeviceCommunicator()
+        communicator.setShouldSucceed(true)
+        communicator.setBulkTransferResponse(Data([0xAA, 0xBB]))
+        communicator.setInterruptTransferResponse(Data([0xCC, 0xDD, 0xEE]))
+        communicator.setEndpointTransferType(.interrupt, for: 0x81)
+
+        let device = USBDevice(
+            busID: "1", deviceID: "17", vendorID: 0x1366, productID: 0x0101,
+            deviceClass: 0, deviceSubClass: 0, deviceProtocol: 0, speed: .high,
+            manufacturerString: nil, productString: nil, serialNumberString: nil
+        )
+
+        let processor = USBSubmitProcessor(
+            deviceCommunicator: communicator,
+            deviceDiscovery: SingleDeviceDiscovery(device: device)
+        )
+
+        let response = try USBIPSubmitResponse.decode(
+            from: try await processor.processSubmitRequest(submitData(endpoint: 0x81, interval: 0)))
+
+        XCTAssertEqual(response.status, 0)
+        XCTAssertEqual(response.transferBuffer, Data([0xCC, 0xDD, 0xEE]),
+                       "Must take the interrupt path the device reported, not the bulk fallback")
+    }
+}
+
+/// Resolves any lookup to one device so submitted URBs have hardware to target.
+private final class SingleDeviceDiscovery: DeviceDiscovery {
+    private let device: USBDevice
+
+    var onDeviceConnected: ((USBDevice) -> Void)?
+    var onDeviceDisconnected: ((USBDevice) -> Void)?
+
+    init(device: USBDevice) { self.device = device }
+
+    func discoverDevices() throws -> [USBDevice] { [device] }
+    func getDevice(busID: String, deviceID: String) throws -> USBDevice? { device }
+    func startNotifications() throws {}
+    func stopNotifications() {}
+}

@@ -8,6 +8,11 @@ import IOKit.usb
 
 /// Protocol defining USB device communication operations
 public protocol USBDeviceCommunicator: AnyObject {
+    /// The transfer type the device reports for an endpoint, or nil if it cannot be
+    /// determined. CMD_SUBMIT carries no transfer type, so the server has to learn it
+    /// from the device rather than infer it from the request.
+    func endpointTransferType(device: USBDevice, endpoint: UInt8) -> USBTransferType?
+
     /// Execute a control transfer on the specified device
     /// - Parameters:
     ///   - device: Target USB device
@@ -84,6 +89,13 @@ public protocol USBDeviceCommunicator: AnyObject {
 }
 
 /// Default implementation of USB device communication
+public extension USBDeviceCommunicator {
+    /// Conformers that cannot inspect the device fall back to the caller's inference.
+    func endpointTransferType(device: USBDevice, endpoint: UInt8) -> USBTransferType? {
+        return nil
+    }
+}
+
 public class DefaultUSBDeviceCommunicator: USBDeviceCommunicator, @unchecked Sendable {
     
     // MARK: - Properties
