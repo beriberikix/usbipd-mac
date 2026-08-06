@@ -98,6 +98,17 @@ public class ServerConfig: Codable {
     public var maxTotalConcurrentRequests: Int
     
     /// Default timeout for USB operations in milliseconds
+    /// Per-transfer USB timeout in milliseconds.
+    ///
+    /// This defaulted to 5000, which breaks real clients: an IN endpoint with nothing
+    /// to say is normal, and adb was measured giving up when a bulk read returned
+    /// ETIMEDOUT after five seconds. Real usbip servers leave such reads pending until
+    /// data arrives or the client unlinks them.
+    ///
+    /// It cannot simply be removed. UNLINK currently answers RET_UNLINK without
+    /// aborting the in-flight IOKit read, so the read is only reclaimed when this
+    /// timeout expires — without it, a cancelled transfer would leak permanently.
+    /// Wiring AbortPipe into the unlink path is what would allow unlimited waits.
     public var usbOperationTimeout: UInt32
     
     /// Maximum buffer size for USB transfers (1MB default)
@@ -134,7 +145,7 @@ public class ServerConfig: Codable {
         logFilePath: String? = nil,
         maxConcurrentRequests: Int = 16,
         maxTotalConcurrentRequests: Int = 64,
-        usbOperationTimeout: UInt32 = 5000,
+        usbOperationTimeout: UInt32 = 60000,
         maxUSBBufferSize: UInt32 = 1048576,
         maxPendingURBsPerDevice: Int = 32,
         usbRequestQoS: DispatchQoS.QoSClass = .userInitiated,

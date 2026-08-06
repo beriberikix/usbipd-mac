@@ -721,8 +721,14 @@ public final class IOKitUSBInterface: @unchecked Sendable {
                 transferData = Data(bytes: buffer, count: Int(actualLength))
                 logger.debug("Bulk IN transfer completed: \(actualLength) bytes read")
             } else if result == kIOReturnTimeout {
+                // actualLength was primed with the buffer capacity for IOKit's in/out
+                // contract, and IOKit does not reset it when nothing was read. Left
+                // as-is, RET_SUBMIT reported a full buffer alongside a failure status
+                // and no payload, so a client reading that many bytes desynchronised.
+                actualLength = 0
                 logger.debug("Bulk IN transfer timed out after \(timeout)ms")
             } else {
+                actualLength = 0
                 logger.warning("Bulk IN transfer failed with result: \(result)")
             }
         } else {
@@ -819,8 +825,14 @@ public final class IOKitUSBInterface: @unchecked Sendable {
                 transferData = Data(bytes: buffer, count: Int(actualLength))
                 logger.debug("Interrupt IN transfer completed: \(actualLength) bytes read")
             } else if result == kIOReturnTimeout {
+                // actualLength was primed with the buffer capacity for IOKit's in/out
+                // contract, and IOKit does not reset it when nothing was read. Left
+                // as-is, RET_SUBMIT reported a full buffer alongside a failure status
+                // and no payload, so a client reading that many bytes desynchronised.
+                actualLength = 0
                 logger.debug("Interrupt IN transfer timed out (normal for polling)")
             } else {
+                actualLength = 0
                 logger.warning("Interrupt IN transfer failed with result: \(result)")
             }
         } else {

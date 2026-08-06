@@ -36,7 +36,7 @@ public class USBSubmitProcessor {
     private var maxUSBBufferSize: UInt32 { config?.maxUSBBufferSize ?? 1_048_576 }
 
     /// Per-operation USB timeout in milliseconds
-    private var usbOperationTimeout: UInt32 { config?.usbOperationTimeout ?? 5000 }
+    private var usbOperationTimeout: UInt32 { config?.usbOperationTimeout ?? 60000 }
 
     /// Initialize with device communicator
     public init(deviceCommunicator: USBDeviceCommunicator? = nil,

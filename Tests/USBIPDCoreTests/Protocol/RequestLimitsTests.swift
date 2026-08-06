@@ -60,7 +60,7 @@ final class RequestLimitsTests: XCTestCase {
         XCTAssertEqual(config.maxTotalConcurrentRequests, 64)
         XCTAssertEqual(config.maxPendingURBsPerDevice, 32)
         XCTAssertEqual(config.maxUSBBufferSize, 1_048_576)
-        XCTAssertEqual(config.usbOperationTimeout, 5000)
+        XCTAssertEqual(config.usbOperationTimeout, 60000)
     }
 }
 
