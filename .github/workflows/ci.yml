@@ -274,10 +274,15 @@ jobs:
         run: |
           echo "Verifying completion script content..."
           
-          # Expected commands that should be in completion scripts
+          # Must match the commands the CLI registers. Completions are generated from
+          # the parser's registry, so this list only has to track that.
+          #
           # attach/detach were removed: usbipd is the USB/IP server, and both only ever
           # threw operationNotSupported while appearing in help and completions.
-          EXPECTED_COMMANDS=("help" "list" "bind" "unbind" "daemon" "install-system-extension" "diagnose" "completion")
+          # install-system-extension could not succeed from a Homebrew prefix, and
+          # diagnose did not complete; both were removed too.
+          EXPECTED_COMMANDS=("help" "list" "bind" "unbind" "daemon" "status" "completion")
+          REMOVED_COMMANDS=("attach" "detach" "install-system-extension" "diagnose")
           
           for cmd in "${EXPECTED_COMMANDS[@]}"; do
             echo "Checking for command: $cmd"
@@ -306,6 +311,18 @@ jobs:
               exit 1
             fi
           done
+
+          # A removed command reappearing means a hardcoded list drifted back, which is
+          # how attach and detach lingered in the fish script after deletion.
+          for cmd in "${REMOVED_COMMANDS[@]}"; do
+            for script in "$COMPLETION_DIR"/*; do
+              if grep -q -- "$cmd" "$script"; then
+                echo "  ❌ Removed command '$cmd' still present in $(basename "$script")"
+                exit 1
+              fi
+            done
+          done
+          echo "✅ No removed commands present in completion scripts"
           
           echo "✅ All expected commands found in completion scripts"
 
