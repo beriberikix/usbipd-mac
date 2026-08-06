@@ -176,13 +176,19 @@ public enum USBStatus: Int32 {
 
 /// USB error handling utilities for IOKit to USB status mapping
 public struct USBErrorMapping {
-    
+
+    /// IOUSBFamily's own timeout code, distinct from kIOReturnTimeout and not exposed
+    /// by the Swift IOKit overlay. ReadPipeTO and WritePipeTO report expiry with this,
+    /// so without it a timed-out bulk transfer was reported to the client as EPROTO —
+    /// a protocol error — rather than ETIMEDOUT.
+    static let kIOUSBTransactionTimeout = IOReturn(bitPattern: 0xE000_4051)
+
     /// Maps IOKit error codes to USB status codes
     public static func mapIOKitError(_ ioKitError: IOReturn) -> Int32 {
         switch ioKitError {
         case kIOReturnSuccess:
             return USBStatus.success.rawValue
-        case kIOReturnTimeout:
+        case kIOReturnTimeout, USBErrorMapping.kIOUSBTransactionTimeout:
             return USBStatus.timeout.rawValue
         case kIOReturnAborted:
             return USBStatus.cancelled.rawValue

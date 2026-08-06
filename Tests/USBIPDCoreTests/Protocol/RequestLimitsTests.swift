@@ -63,3 +63,23 @@ final class RequestLimitsTests: XCTestCase {
         XCTAssertEqual(config.usbOperationTimeout, 5000)
     }
 }
+
+/// The bulk path uses ReadPipeTO/WritePipeTO, which report expiry with IOUSBFamily's
+/// own timeout code rather than kIOReturnTimeout.
+final class IOKitTimeoutMappingTests: XCTestCase {
+
+    func testTransactionTimeoutMapsToETIMEDOUT() {
+        let status = USBErrorMapping.mapIOKitError(IOReturn(bitPattern: 0xE000_4051))
+        XCTAssertEqual(status, -110, "kIOUSBTransactionTimeout must map to ETIMEDOUT")
+    }
+
+    func testGenericTimeoutStillMapsToETIMEDOUT() {
+        XCTAssertEqual(USBErrorMapping.mapIOKitError(kIOReturnTimeout), -110)
+    }
+
+    /// Before the mapping existed a timed-out transfer surfaced as EPROTO, telling the
+    /// client its protocol was wrong rather than that the device had nothing to say.
+    func testTransactionTimeoutIsNotReportedAsProtocolError() {
+        XCTAssertNotEqual(USBErrorMapping.mapIOKitError(IOReturn(bitPattern: 0xE000_4051)), -71)
+    }
+}

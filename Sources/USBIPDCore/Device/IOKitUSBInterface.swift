@@ -631,15 +631,24 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         let result: IOReturn
         
         if isInTransfer {
-            // IN transfer (device to host) - ReadPipe
+            // IN transfer (device to host) - ReadPipeTO.
+            //
+            // This used ReadPipe, which has no timeout and blocks until the device
+            // sends something. A bulk IN request on an endpoint with nothing to say
+            // therefore hung forever: the URB timeout was set but never reached IOKit,
+            // and the client waited on a reply the server would not produce until the
+            // device happened to speak. The timeout arguments are noData and
+            // completion, matching the interrupt path.
             let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(bufferLength))
             defer { buffer.deallocate() }
-            
-            result = interface.vtable.ReadPipe(interface, pipeRef, buffer, &actualLength)
-            
+
+            result = interface.vtable.ReadPipeTO(interface, pipeRef, buffer, &actualLength, timeout, timeout)
+
             if result == kIOReturnSuccess && actualLength > 0 {
                 transferData = Data(bytes: buffer, count: Int(actualLength))
                 logger.debug("Bulk IN transfer completed: \(actualLength) bytes read")
+            } else if result == kIOReturnTimeout {
+                logger.debug("Bulk IN transfer timed out after \(timeout)ms")
             } else {
                 logger.warning("Bulk IN transfer failed with result: \(result)")
             }
@@ -653,11 +662,13 @@ public final class IOKitUSBInterface: @unchecked Sendable {
                 actualLength = UInt32(data.count)
                 result = data.withUnsafeBytes { bytes in
                     let buffer = UnsafeMutableRawPointer(mutating: bytes.baseAddress!)
-                    return interface.vtable.WritePipe(interface, pipeRef, buffer, actualLength)
+                    return interface.vtable.WritePipeTO(interface, pipeRef, buffer, actualLength, timeout, timeout)
                 }
-                
+
                 if result == kIOReturnSuccess {
                     logger.debug("Bulk OUT transfer completed: \(actualLength) bytes written")
+                } else if result == kIOReturnTimeout {
+                    logger.debug("Bulk OUT transfer timed out after \(timeout)ms")
                 } else {
                     logger.warning("Bulk OUT transfer failed with result: \(result)")
                 }
