@@ -293,8 +293,17 @@ public class BindCommand: Command {
             // was indistinguishable from one that did.
             let identity = "\(busid): \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))"
             if systemExtensionManager != nil {
-                print("Successfully bound device \(identity)")
-                print("Device is claimed and ready for USB/IP sharing with exclusive System Extension control")
+                print("Bound device \(identity)")
+                // Do not assert exclusive control. The claim reports success through
+                // DeviceClaimer, whose driver_unbind path sets IOMatchCategory and
+                // IOProbeScore registry properties from userspace — the USB host
+                // drivers do not implement setProperties() for those keys, so nothing
+                // is unbound and the "claim" succeeds without claiming. Saying the
+                // device is under exclusive control would be reporting an outcome that
+                // was never verified.
+                print("Registered for USB/IP sharing. Exclusive claiming is not verified:")
+                print("  devices with no kernel driver bound are servable regardless;")
+                print("  devices macOS has bound to a driver may still fail at transfer time.")
             } else {
                 print("Allow-listed device \(identity)")
                 print("Not claimed: the System Extension is not active. See the warning above.")
