@@ -73,13 +73,6 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         self.submitProcessor.setDeviceDiscovery(deviceDiscovery)
     }
     
-    /// Set the USB device communicator for actual USB operations
-    public func setUSBDeviceCommunicator(_ communicator: USBDeviceCommunicator) {
-        self.deviceCommunicator = communicator
-        // Also set the communicator on the submit processor
-        self.submitProcessor.setDeviceCommunicator(communicator)
-    }
-    
     // MARK: - USBRequestHandlerProtocol Implementation
     
     /// Handle a USB SUBMIT request and return response data
