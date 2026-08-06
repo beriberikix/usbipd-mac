@@ -117,7 +117,15 @@ the DriverKit entitlement gates the rest, and point at
 `./Scripts/validate-usb-entitlements.sh` so users can check their own hardware rather
 than guess.
 
-### 3. Formula
+### 3. Formula — DONE
+
+The system extension resource, its staging under `prefix/Library/SystemExtensions`,
+and the `post_install` instruction to run `usbipd install-system-extension` were
+removed from the tap on 2026-08-06, along with the `assert_path_exists` for the bundle.
+Both update paths were fixed too, so a future release cannot reintroduce them.
+`post_install` now states which devices can be shared. `license "MIT"` was added.
+
+### 3b. Formula (original description)
 
 Nothing to drop yet, and nothing to add. The formula already installs the CLI to
 `bin`. The System Extension bundle it stages under
