@@ -233,7 +233,7 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
    | --- | --- |
    | DriverKit USB Transport - VendorID | **Declined** |
    | DriverKit UserClient Access | **Declined** |
-   | DriverKit PCI (development) | Assigned |
+   | DriverKit PCI (development) | Assigned — but see the caveat below |
    | DriverKit USB Transport - VendorID **and ProductID** | No Requests |
    | DriverKit Family Serial | **Submitted 2026-08-06, request ID 26F53XCAGY** |
    | DriverKit Family HID Device | No Requests |
@@ -263,9 +263,14 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
    (development)` and `DriverKit USB Transport (development)` — annotated "Development
    only" and "Provisioning support required". These are not self-serve: `DriverKit PCI
    (development)` shows as **Assigned** under Capability Requests, so the development
-   variants go through the same request flow. But that same row proves this team has
-   successfully been granted a development DriverKit capability before, which the
-   declined production requests do not.
+   variants go through the same request flow.
+
+   **Do not lean on the PCI row as precedent.** It was read as `Assigned` from a
+   screenshot, and the account holder does not recall ever requesting it. Either it was
+   misread, or some development capabilities are assigned to Developer Program accounts
+   without a request. Under the second reading the account does hold it, but it is not
+   evidence that Apple granted this team a development DriverKit request — which is the
+   weight it was originally given here. Verify the row directly before citing it.
 
    A development capability plus a [DriverKit development provisioning
    profile](https://developer.apple.com/help/account/provisioning-profiles/create-a-driverkit-development-provisioning-profile/)
