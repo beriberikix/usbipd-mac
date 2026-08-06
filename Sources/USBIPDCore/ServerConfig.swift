@@ -344,11 +344,10 @@ public class ServerConfig: Codable {
     /// - Parameter deviceID: Device ID to check
     /// - Returns: True if device is allowed
     public func isDeviceAllowed(_ deviceID: String) -> Bool {
-        // If no allowed devices are specified, all devices are allowed
-        guard !allowedDevices.isEmpty else {
-            return true
-        }
-        
+        // Sharing is opt-in: `usbipd bind` is the act of offering a device, so a device
+        // absent from the list is not shared. This used to return true for an empty
+        // list, which meant a fresh install with nothing bound offered every USB device
+        // on the machine to any host that could reach the port.
         return allowedDevices.contains(deviceID)
     }
     

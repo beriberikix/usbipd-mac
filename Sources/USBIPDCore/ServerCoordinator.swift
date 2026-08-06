@@ -387,7 +387,8 @@ public class ServerCoordinator: USBIPServer {
         // Create request processor with device claim manager and configurable logging
         self.requestProcessor = RequestProcessor(
             deviceDiscovery: deviceDiscovery, 
-            deviceClaimManager: self.deviceClaimManager
+            deviceClaimManager: self.deviceClaimManager,
+            config: config
         ) { [weak config] message, processorLevel in
             guard let config = config else { return }
             

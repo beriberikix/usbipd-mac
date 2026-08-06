@@ -163,8 +163,9 @@ final class ServerConfigTests: XCTestCase {
     func testDeviceAllowance() {
         let config = ServerConfig()
         
-        // By default, all devices are allowed when allowedDevices is empty
-        XCTAssertTrue(config.isDeviceAllowed("any-device"))
+        // Sharing is opt-in: nothing bound means nothing shared. This asserted the
+        // opposite, which let the server offer every USB device on a fresh install.
+        XCTAssertFalse(config.isDeviceAllowed("any-device"))
         
         // Add specific allowed devices
         config.allowedDevices = ["device1", "device2"]

@@ -187,25 +187,20 @@ three paths above is viable.
 
 ## Next steps after a run
 
+Nothing here blocks shipping. The driver-free CLI release needs no entitlement at all —
+see `driver-free-release.md`. The steps below matter only if the blocked device classes
+(USB-serial, HID, mass storage) are being pursued.
+
 1. Run the harness with the target hardware attached, as both user and root.
-2. If the results confirm the expected outcome, **file a new Feedback report** —
-   FB22897007 is closed and explicitly no longer monitored. The new report should:
-   - reference FB22897007 and thank Apple for the clarification;
-   - state plainly that the original report named the wrong entitlement;
-   - name `com.apple.developer.driverkit.transport.usb` and the associated DriverKit
-     entitlements as the actual request, pending since August 2025;
-   - attach `report.md` as the evidence that the App Sandbox entitlement changes nothing;
-   - restate the original ask (a first-party USB/IP server) as the alternative that would
-     make the entitlement request moot.
-3. **Check the pending Developer portal request** against the corrected key list above.
+2. **Check the pending Developer portal request** against the corrected key list above.
    If it names the misspelled key or bundles Endpoint Security, withdraw it and
    re-submit for exactly `com.apple.developer.driverkit`,
    `com.apple.developer.driverkit.transport.usb`, and
    `com.apple.developer.driverkit.allow-any-userclient-access`.
-4. Consider spending a DTS ticket. A closed Feedback is a dead channel; DTS puts a human
-   on the record confirming DriverKit is the required path, which strengthens the
-   re-filed request.
-5. Once approved: create the provisioning profile, base64-encode it, and set it as the
+3. Once approved: create the provisioning profile, base64-encode it, and set it as the
    `DRIVERKIT_PROVISIONING_PROFILE` repository secret.
-6. Update the README warning to name the correct entitlement and, if the results support
+4. Update the README warning to name the correct entitlement and, if the results support
    it, to scope the warning to device classes that are actually blocked.
+
+Filing a new Feedback report was previously listed here. It is not a prerequisite for
+any of the above and has been dropped.

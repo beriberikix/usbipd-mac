@@ -59,6 +59,10 @@ public class RequestProcessor {
     
     /// Device claim manager for device claiming
     private let deviceClaimManager: DeviceClaimManager
+
+    /// Bind allow-list. When nil no filtering is applied, which is the behaviour direct
+    /// unit-test construction relies on; the daemon always supplies it.
+    private let config: ServerConfig?
     
     /// USB request handler for SUBMIT/UNLINK operations (will be injected later)
     private var usbRequestHandler: USBRequestHandlerProtocol?
@@ -75,7 +79,8 @@ public class RequestProcessor {
     }
     
     /// Initialize with device discovery and device claim manager
-    public init(deviceDiscovery: DeviceDiscovery, deviceClaimManager: DeviceClaimManager, logger: ((String, LogLevel) -> Void)? = nil) {
+    public init(deviceDiscovery: DeviceDiscovery, deviceClaimManager: DeviceClaimManager, config: ServerConfig? = nil, logger: ((String, LogLevel) -> Void)? = nil) {
+        self.config = config
         self.deviceDiscovery = deviceDiscovery
         self.deviceClaimManager = deviceClaimManager
         self.logger = logger
@@ -178,6 +183,12 @@ public class RequestProcessor {
     }
     
     /// Handle a device list request
+    /// Whether a device has been bound for sharing. Absent config means no filtering.
+    private func isDeviceShared(busID: String, deviceID: String) -> Bool {
+        guard let config = config else { return true }
+        return config.isDeviceAllowed("\(busID)-\(deviceID)")
+    }
+
     private func handleDeviceListRequest(_ data: Data) throws -> Data {
         // Decode the request
         log("Decoding device list request", .debug)
@@ -188,9 +199,16 @@ public class RequestProcessor {
         do {
             // Get the list of devices from the device discovery
             log("Discovering USB devices", .debug)
-            let devices = try deviceDiscovery.discoverDevices()
-            
-            log("Found \(devices.count) USB devices", .info)
+            let allDevices = try deviceDiscovery.discoverDevices()
+
+            // Only advertise devices that were explicitly bound. Without this the list
+            // exposed every USB device on the machine regardless of what `bind` had
+            // been run on, which made bind and unbind decorative.
+            let devices = allDevices.filter { device in
+                isDeviceShared(busID: device.busID, deviceID: device.deviceID)
+            }
+
+            log("Found \(allDevices.count) USB devices, \(devices.count) shared", .info)
             
             // Convert USBDevice objects to USBIPExportedDevice objects
             log("Converting device information to USB/IP format", .debug)
@@ -290,7 +308,14 @@ public class RequestProcessor {
             let deviceID = String(parts[1])
             
             log("Looking for device", .debug, ["busID": busID, "deviceID": deviceID])
-            
+
+            // Refuse devices that were never bound, so an unbound device cannot be
+            // imported by guessing its busid even though it is absent from the list.
+            guard isDeviceShared(busID: busID, deviceID: deviceID) else {
+                log("Device is not shared", .error, ["busID": request.busID])
+                throw DeviceError.deviceNotFound("Device not shared: \(request.busID). Run 'usbipd bind \(request.busID)' first.")
+            }
+
             // Get the device from the device discovery
             guard let device = try deviceDiscovery.getDevice(busID: busID, deviceID: deviceID) else {
                 log("Device not found", .error, ["busID": busID, "deviceID": deviceID])

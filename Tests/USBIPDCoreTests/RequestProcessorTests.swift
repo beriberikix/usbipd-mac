@@ -111,6 +111,75 @@ class RequestProcessorTests: XCTestCase {
         XCTAssertEqual(exportedDevice.deviceClass, device.deviceClass, "Device class should match")
     }
     
+    // MARK: - Bind Allow-List Enforcement
+
+    // The allow-list was written to config by `bind` and then consulted by nothing, so
+    // the server advertised and served every USB device on the machine no matter what
+    // was bound. These cover both points where sharing is now decided.
+
+    func testDeviceListOmitsUnboundDevices() throws {
+        let deviceDiscovery = MockDeviceDiscovery()
+        let device = createSampleDevice()
+        deviceDiscovery.devices = [device]
+
+        let config = ServerConfig()
+        config.allowedDevices = []
+
+        let processor = RequestProcessor(
+            deviceDiscovery: deviceDiscovery,
+            deviceClaimManager: MockDeviceClaimManager(),
+            config: config
+        )
+
+        let responseData = try processor.processRequest(createDeviceListRequest())
+        let response = try USBIPMessageDecoder.decodeDeviceListResponse(from: responseData)
+
+        XCTAssertEqual(response.deviceCount, 0, "An unbound device must not be advertised")
+        XCTAssertEqual(response.devices.count, 0, "An unbound device must not be advertised")
+    }
+
+    func testDeviceListIncludesBoundDevices() throws {
+        let deviceDiscovery = MockDeviceDiscovery()
+        let device = createSampleDevice()
+        deviceDiscovery.devices = [device]
+
+        let config = ServerConfig()
+        config.allowedDevices = ["\(device.busID)-\(device.deviceID)"]
+
+        let processor = RequestProcessor(
+            deviceDiscovery: deviceDiscovery,
+            deviceClaimManager: MockDeviceClaimManager(),
+            config: config
+        )
+
+        let responseData = try processor.processRequest(createDeviceListRequest())
+        let response = try USBIPMessageDecoder.decodeDeviceListResponse(from: responseData)
+
+        XCTAssertEqual(response.deviceCount, 1, "A bound device should be advertised")
+    }
+
+    func testImportRefusesUnboundDevice() throws {
+        let deviceDiscovery = MockDeviceDiscovery()
+        let device = createSampleDevice()
+        deviceDiscovery.devices = [device]
+
+        let config = ServerConfig()
+        config.allowedDevices = []
+
+        let processor = RequestProcessor(
+            deviceDiscovery: deviceDiscovery,
+            deviceClaimManager: MockDeviceClaimManager(),
+            config: config
+        )
+
+        // Absent from the list, so a client that guesses the busid must still be refused.
+        let busID = "\(device.busID)-\(device.deviceID)"
+        let responseData = try processor.processRequest(createDeviceImportRequest(busID: busID))
+        let response = try USBIPMessageDecoder.decodeDeviceImportResponse(from: responseData)
+
+        XCTAssertNotEqual(response.header.status, 0, "Importing an unbound device must fail")
+    }
+
     func testProcessDeviceListRequestWithNoDevices() throws {
         // Arrange
         let deviceDiscovery = MockDeviceDiscovery()
