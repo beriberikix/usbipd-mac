@@ -207,15 +207,21 @@ final class EncodingTests: XCTestCase {
         let deviceImportRequestData = try USBIPMessageEncoder.encodeDeviceImportRequest(busID: "1-1")
         XCTAssertEqual(deviceImportRequestData.count, 40)
         
-        // Test device import response encoding (success case)
-        // Note: Device import response doesn't include device info, just status
-        
-        let deviceImportResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 0)
-        XCTAssertEqual(deviceImportResponseData.count, 12) // 8 + 4
-        
-        // Test device import response encoding (error case)
+        // op_import_reply is a usbip_usb_device, so a successful reply is
+        // op_common(8) + 312. Only the failure case is header-only. The previous
+        // expectation of 12 bytes for both described a reply carrying a returnCode,
+        // which left a real client blocked waiting for the device record.
+        let importedDevice = USBIPExportedDevice(
+            path: "/sys/devices/1-1", busID: "1-1", busnum: 1, devnum: 1, speed: 2,
+            vendorID: 0x1234, productID: 0x5678, deviceClass: 0, deviceSubClass: 0,
+            deviceProtocol: 0, configurationCount: 1, configurationValue: 1, interfaceCount: 1)
+
+        let deviceImportResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(
+            returnCode: 0, device: importedDevice)
+        XCTAssertEqual(deviceImportResponseData.count, 8 + 312)
+
         let deviceImportErrorResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 1)
-        XCTAssertEqual(deviceImportErrorResponseData.count, 12) // 8 + 4
+        XCTAssertEqual(deviceImportErrorResponseData.count, 8)
     }
     
     // MARK: - Message Decoder Tests
@@ -408,23 +414,37 @@ final class EncodingTests: XCTestCase {
     
     func testDeviceImportResponseDecoding() throws {
         // Test successful device import response
-        let successResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 0)
+        let successResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(
+            returnCode: 0,
+            device: USBIPExportedDevice(
+                path: "/sys/devices/1-1", busID: "1-1", busnum: 1, devnum: 1, speed: 2,
+                vendorID: 0x1234, productID: 0x5678, deviceClass: 0, deviceSubClass: 0,
+                deviceProtocol: 0, configurationCount: 1, configurationValue: 1, interfaceCount: 1))
         let decodedSuccessResponse = try USBIPMessageDecoder.decodeDeviceImportResponse(from: successResponseData)
-        XCTAssertEqual(decodedSuccessResponse.returnCode, 0)
+        XCTAssertEqual(decodedSuccessResponse.header.status, 0)
         
         // Test error device import response
         let errorResponseData = try USBIPMessageEncoder.encodeDeviceImportResponse(returnCode: 1)
         let decodedErrorResponse = try USBIPMessageDecoder.decodeDeviceImportResponse(from: errorResponseData)
-        XCTAssertEqual(decodedErrorResponse.returnCode, 1)
+        XCTAssertEqual(decodedErrorResponse.header.status, 1)
         
         // Test invalid length for device import response
-        let invalidLengthData = Data(count: 20) // Invalid length
-        XCTAssertThrowsError(try USBIPMessageDecoder.decodeDeviceImportResponse(from: invalidLengthData)) { error in
-            XCTAssertTrue(error is USBIPProtocolError)
-            if case USBIPProtocolError.invalidMessageFormat = error {
-                // Expected error
-            } else {
-                XCTFail("Expected invalidMessageFormat error")
+        // Twenty zero bytes carry command 0x0000, which is not a known op code, so
+        // this is an unsupported command rather than a length problem. It used to
+        // report invalidMessageFormat only because a fixed 12-byte length check ran
+        // first — and that check encoded the wrong reply shape.
+        XCTAssertThrowsError(try USBIPMessageDecoder.decodeDeviceImportResponse(from: Data(count: 20))) { error in
+            guard case USBIPProtocolError.unsupportedCommand = error else {
+                return XCTFail("Expected unsupportedCommand, got \(error)")
+            }
+        }
+
+        // A success reply whose device record is truncated is a length problem.
+        var truncated = try USBIPHeader(command: .replyDeviceImport, status: 0).encode()
+        truncated.append(Data(count: 100)) // short of the 312-byte usbip_usb_device
+        XCTAssertThrowsError(try USBIPMessageDecoder.decodeDeviceImportResponse(from: truncated)) { error in
+            guard case USBIPProtocolError.invalidDataLength = error else {
+                return XCTFail("Expected invalidDataLength, got \(error)")
             }
         }
     }

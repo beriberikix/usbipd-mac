@@ -268,35 +268,56 @@ public struct DeviceImportRequest: USBIPMessageCodable {
     }
 }
 
-/// Device import response message
+/// Device import response message (OP_REP_IMPORT)
+///
+/// `struct op_import_reply` is exactly one `struct usbip_usb_device`, so a successful
+/// reply is op_common(8) + 312 bytes. This previously encoded op_common plus a 4-byte
+/// returnCode and nothing else — 12 bytes total. A real client reads op_common, sees
+/// status OK, then blocks forever waiting for the 312 bytes of device that never
+/// arrive. `usbip attach` hung indefinitely against this server.
+///
+/// The old `returnCode` was also redundant: status already lives in op_common.
 public struct DeviceImportResponse: USBIPMessageCodable {
     public let header: USBIPHeader
-    public let returnCode: UInt32
-    
-    public init(header: USBIPHeader = USBIPHeader(command: .replyDeviceImport), returnCode: UInt32) {
+
+    /// The imported device. Required when status is 0; omitted on failure, where the
+    /// reply is op_common alone.
+    public let device: USBIPExportedDevice?
+
+    public init(header: USBIPHeader = USBIPHeader(command: .replyDeviceImport),
+                device: USBIPExportedDevice? = nil) {
         self.header = header
-        self.returnCode = returnCode
+        self.device = device
     }
-    
+
     public func encode() throws -> Data {
         var data = try header.encode()
-        data.append(EndiannessConverter.writeUInt32ToData(returnCode))
+        // On failure the reply is the header alone — there is no device to describe.
+        if header.status == 0, let device = device {
+            data.append(try device.encode())
+        }
         return data
     }
-    
+
     public static func decode(from data: Data) throws -> DeviceImportResponse {
-        guard data.count >= 12 else { // 8 + 4
+        guard data.count >= 8 else {
             throw USBIPProtocolError.invalidDataLength
         }
-        
+
         let header = try USBIPHeader.decode(from: data.subdata(in: 0..<8))
-        
+
         guard header.command == .replyDeviceImport else {
             throw USBIPProtocolError.invalidMessageFormat
         }
-        
-        let returnCode = try EndiannessConverter.readUInt32FromData(data, at: 8)
-        
-        return DeviceImportResponse(header: header, returnCode: returnCode)
+
+        guard header.status == 0 else {
+            return DeviceImportResponse(header: header, device: nil)
+        }
+
+        guard data.count >= 8 + 312 else {
+            throw USBIPProtocolError.invalidDataLength
+        }
+        let device = try USBIPExportedDevice.decode(from: data.subdata(in: 8..<(8 + 312)))
+        return DeviceImportResponse(header: header, device: device)
     }
 }

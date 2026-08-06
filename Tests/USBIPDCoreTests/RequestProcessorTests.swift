@@ -149,7 +149,7 @@ class RequestProcessorTests: XCTestCase {
         let response = try USBIPMessageDecoder.decodeDeviceImportResponse(from: responseData)
         XCTAssertEqual(response.header.command, USBIPProtocol.Command.replyDeviceImport, "Response should be a device import reply")
         XCTAssertEqual(response.header.status, 0, "Status should be success (0)")
-        XCTAssertEqual(response.returnCode, 0, "Return code should be success (0)")
+        XCTAssertEqual(response.header.status, 0, "Status should be success (0)")
     }
     
     func testProcessDeviceImportRequestDeviceNotFound() throws {
@@ -170,7 +170,7 @@ class RequestProcessorTests: XCTestCase {
         // Decode the response to verify it
         let response = try USBIPMessageDecoder.decodeDeviceImportResponse(from: responseData)
         XCTAssertEqual(response.header.command, USBIPProtocol.Command.replyDeviceImport, "Response should be a device import reply")
-        XCTAssertEqual(response.returnCode, 1, "Return code should be error (1)")
+        XCTAssertEqual(response.header.status, 1, "Status should be error (1)")
     }
     
     func testProcessInvalidRequest() throws {

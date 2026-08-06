@@ -256,12 +256,29 @@ public class RequestProcessor {
             
             // Create and encode the response (success)
             log("Creating device import response", .debug)
+            // OP_REP_IMPORT carries the full usbip_usb_device on success; a header-only
+            // reply leaves the client blocked waiting for 312 bytes.
+            let importedDevice = USBIPExportedDevice(
+                path: "/sys/devices/\(device.busID)/\(device.deviceID)",
+                busID: device.busID,
+                busnum: UInt32(Int(device.busID.split(separator: "-").last ?? "0") ?? 0),
+                devnum: UInt32(Int(device.deviceID.split(separator: ".").last ?? "0") ?? 0),
+                speed: UInt32(device.speed.rawValue),
+                vendorID: device.vendorID,
+                productID: device.productID,
+                deviceClass: device.deviceClass,
+                deviceSubClass: device.deviceSubClass,
+                deviceProtocol: device.deviceProtocol,
+                configurationCount: 1,
+                configurationValue: 1,
+                interfaceCount: 1
+            )
             let response = DeviceImportResponse(
                 header: USBIPHeader(
                     command: .replyDeviceImport,
                     status: 0 // Success
                 ),
-                returnCode: 0 // Success
+                device: importedDevice
             )
             
             log("Sending successful device import response", .info, [
@@ -287,8 +304,7 @@ public class RequestProcessor {
                 header: USBIPHeader(
                     command: .replyDeviceImport,
                     status: 1 // Error
-                ),
-                returnCode: 1 // Error
+                )
             )
             
             log("Sending error response for device import request", .info, ["busID": request.busID])

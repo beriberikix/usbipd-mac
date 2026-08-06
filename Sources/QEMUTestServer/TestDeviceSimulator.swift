@@ -399,8 +399,7 @@ public class SimulatedTestRequestProcessor {
                 ])
                 
                 let response = DeviceImportResponse(
-                    header: USBIPHeader(command: .replyDeviceImport, status: 1),
-                    returnCode: 1
+                    header: USBIPHeader(command: .replyDeviceImport, status: 1)
                 )
                 return try response.encode()
             }
@@ -419,8 +418,7 @@ public class SimulatedTestRequestProcessor {
                     ])
                     
                     let response = DeviceImportResponse(
-                        header: USBIPHeader(command: .replyDeviceImport, status: 1),
-                        returnCode: 1
+                        header: USBIPHeader(command: .replyDeviceImport, status: 1)
                     )
                     return try response.encode()
                 }
@@ -430,8 +428,27 @@ public class SimulatedTestRequestProcessor {
                 ])
             }
             
-            // Success response
-            let response = DeviceImportResponse(returnCode: 0)
+            // OP_REP_IMPORT must carry the usbip_usb_device; a header-only reply
+            // leaves the client blocked reading the 312 bytes that follow.
+            let importedDevice = USBIPExportedDevice(
+                path: "/sys/devices/simulated/\(device.busID)",
+                busID: device.busID,
+                busnum: UInt32(Int(device.busID.split(separator: "-").first ?? "1") ?? 1),
+                devnum: UInt32(Int(device.busID.split(separator: "-").last ?? "1") ?? 1),
+                speed: UInt32(device.speed.rawValue),
+                vendorID: device.vendorID,
+                productID: device.productID,
+                deviceClass: device.deviceClass,
+                deviceSubClass: device.deviceSubClass,
+                deviceProtocol: device.deviceProtocol,
+                configurationCount: 1,
+                configurationValue: 1,
+                interfaceCount: 1
+            )
+            let response = DeviceImportResponse(
+                header: USBIPHeader(command: .replyDeviceImport, status: 0),
+                device: importedDevice
+            )
             logger.info("Simulated device import successful", context: [
                 "busID": request.busID,
                 "product": device.productString ?? "Unknown"
@@ -444,8 +461,7 @@ public class SimulatedTestRequestProcessor {
             ])
             
             let response = DeviceImportResponse(
-                header: USBIPHeader(command: .replyDeviceImport, status: 1),
-                returnCode: 1
+                header: USBIPHeader(command: .replyDeviceImport, status: 1)
             )
             return try response.encode()
         }

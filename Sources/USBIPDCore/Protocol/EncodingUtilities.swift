@@ -79,8 +79,11 @@ public struct USBIPMessageEncoder {
     }
     
     /// Encode a device import response
-    public static func encodeDeviceImportResponse(returnCode: UInt32) throws -> Data {
-        let response = DeviceImportResponse(returnCode: returnCode)
+    public static func encodeDeviceImportResponse(returnCode: UInt32,
+                                                 device: USBIPExportedDevice? = nil) throws -> Data {
+        let response = DeviceImportResponse(
+            header: USBIPHeader(command: .replyDeviceImport, status: returnCode),
+            device: device)
         return try response.encode()
     }
     
@@ -280,16 +283,13 @@ public struct USBIPMessageDecoder {
     
     /// Decode a device import response with validation
     public static func decodeDeviceImportResponse(from data: Data) throws -> DeviceImportResponse {
-        // Validate minimum data length (header + returnCode)
-        guard data.count >= 12 else {
+        // op_common alone on failure; op_common + usbip_usb_device(312) on success.
+        // The old fixed 12-byte expectation described a reply carrying a returnCode
+        // instead of the device, which is not the protocol.
+        guard data.count >= 8 else {
             throw USBIPProtocolError.invalidDataLength
         }
-        
-        // Validate expected length: 12 bytes (header + returnCode)
-        guard data.count == 12 else {
-            throw USBIPProtocolError.invalidMessageFormat
-        }
-        
+
         return try DeviceImportResponse.decode(from: data)
     }
     
