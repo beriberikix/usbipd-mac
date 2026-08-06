@@ -8,7 +8,8 @@ turn that into evidence Apple can act on.
 FB22897007 ("Ship a first-party USB/IP server for macOS") described the blocker as:
 
 > it requires the `com.apple.security.device.usb` entitlement to rebind host USB
-> drivers. That entitlement request has been pending since August 2025 with no response.
+> drivers. That entitlement request was submitted in August 2025 and **denied on
+> 25 February 2026**.
 
 Apple replied:
 
@@ -52,7 +53,7 @@ an Apple-issued provisioning profile embedded in the signed binary. Ad-hoc signi
 does not work — AMFI kills the process at launch. That launch failure is itself
 reproducible evidence, and the validation harness captures it.
 
-This is the request that has been pending since August 2025. It is a materially higher
+This is the request that was denied on 25 February 2026. It is a materially higher
 bar than the App Sandbox entitlement Apple pointed at, and it is the thing worth
 re-filing about.
 
@@ -184,6 +185,39 @@ The probe deliberately measures the real capability (can the interface be opened
 than exercising that code path, so the results are not confounded by it. Fixing the claim
 strategy is separate work, and only worth doing once the measurements say which of the
 three paths above is viable.
+
+## Apple's answer, 25 February 2026
+
+The DriverKit request — "DriverKit UserClient Access, DriverKit USB Transport -
+VendorID, DriverKit" — was **denied**. The reply redirected it:
+
+> Please request the `com.apple.developer.usb.host-controller-interface` instead of
+> DriverKit (review `IOUSBHostControllerInterface`).
+
+**That entitlement does not solve this project's problem.**
+`IOUSBHostControllerInterface` is for *implementing a USB host controller* — presenting
+devices to macOS. That is what a USB/IP **client** needs, so that a Mac can consume a
+device shared by another machine. usbipd-mac is a **server**: it takes devices macOS
+has already enumerated and offers them to other machines. Nothing about a virtual host
+controller detaches an `AppleUserHIDDevice` from a keyboard.
+
+So Apple has declined the capability this server would need and offered one aimed at
+the opposite direction of traffic. Reading the reply generously, the reviewer saw
+"USB/IP on macOS" and answered the more common request.
+
+Two things follow.
+
+**For this server, the blocked device classes stay blocked.** Nothing in the reply
+changes what `validate-usb-entitlements.sh` measures, and re-submitting the same
+DriverKit request unchanged is unlikely to land differently.
+
+**A macOS USB/IP client is a real possibility, and is a different product.** The
+entitlement Apple named is managed, but the request volume is low enough that it was
+never added to the developer portal — requests go through Feedback Assistant in the
+format the denial email specifies. It can also be skipped entirely during development:
+`IOUSBHostControllerInterface` works for a process running as root on a system with SIP
+disabled. [carlossless/usbip-macos](https://github.com/carlossless/usbip-macos) is an
+existing experimental client that takes exactly that route.
 
 ## Next steps after a run
 

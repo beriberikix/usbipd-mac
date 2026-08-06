@@ -15,7 +15,11 @@
 > audio, cameras. `bind` refuses these with an explanation rather than failing later.
 > Releasing them needs the DriverKit USB transport entitlements
 > (`com.apple.developer.driverkit`, `com.apple.developer.driverkit.transport.usb`),
-> which Apple must approve; our request has been pending since August 23rd, 2025.
+> which Apple must approve. **That request was denied on 25 February 2026.** Apple
+> redirected it to `com.apple.developer.usb.host-controller-interface`, which enables
+> a virtual USB host controller — the capability a USB/IP *client* needs, not the one
+> this server needs. See
+> [Documentation/development/entitlement-validation.md](Documentation/development/entitlement-validation.md).
 >
 > Seizing the interface was measured and does **not** work, and neither unmounting nor
 > ejecting a device releases it. There is no workaround short of that entitlement.
