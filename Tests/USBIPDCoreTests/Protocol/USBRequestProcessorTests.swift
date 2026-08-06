@@ -13,6 +13,7 @@ final class USBRequestProcessorTests: XCTestCase {
     var submitProcessor: USBSubmitProcessor!
     var unlinkProcessor: USBUnlinkProcessor!
     var mockDeviceCommunicator: MockUSBDeviceCommunicator!
+    fileprivate var mockDeviceDiscovery: StubDeviceDiscovery!
     var urbTracker: URBTracker!
     var testDevice: USBDevice!
     
@@ -23,11 +24,17 @@ final class USBRequestProcessorTests: XCTestCase {
         
         mockDeviceCommunicator = MockUSBDeviceCommunicator()
         urbTracker = URBTracker()
-        
-        submitProcessor = USBSubmitProcessor(deviceCommunicator: mockDeviceCommunicator)
-        unlinkProcessor = USBUnlinkProcessor(submitProcessor: submitProcessor)
-        
         testDevice = createTestDevice()
+
+        // The processor resolves a submitted devid to a real device through discovery.
+        // Without this the lookup fails and every transfer returns ENODEV.
+        mockDeviceDiscovery = StubDeviceDiscovery(device: testDevice)
+
+        submitProcessor = USBSubmitProcessor(
+            deviceCommunicator: mockDeviceCommunicator,
+            deviceDiscovery: mockDeviceDiscovery
+        )
+        unlinkProcessor = USBUnlinkProcessor(submitProcessor: submitProcessor)
         
         // Configure mock device communicator
         mockDeviceCommunicator.reset()
@@ -38,6 +45,7 @@ final class USBRequestProcessorTests: XCTestCase {
         submitProcessor = nil
         unlinkProcessor = nil
         mockDeviceCommunicator = nil
+        mockDeviceDiscovery = nil
         urbTracker = nil
         testDevice = nil
         super.tearDown()
@@ -714,4 +722,28 @@ final class USBRequestProcessorTests: XCTestCase {
         XCTAssertEqual(finalResponse.status, 0)
         XCTAssertEqual(finalResponse.actualLength, 16)
     }
+}
+
+/// Returns a single device for any lookup, so submitted URBs resolve to test hardware.
+private final class StubDeviceDiscovery: DeviceDiscovery {
+    private let device: USBDevice
+
+    var onDeviceConnected: ((USBDevice) -> Void)?
+    var onDeviceDisconnected: ((USBDevice) -> Void)?
+
+    init(device: USBDevice) {
+        self.device = device
+    }
+
+    func discoverDevices() throws -> [USBDevice] {
+        return [device]
+    }
+
+    func getDevice(busID: String, deviceID: String) throws -> USBDevice? {
+        return device
+    }
+
+    func startNotifications() throws {}
+
+    func stopNotifications() {}
 }

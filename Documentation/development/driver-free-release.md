@@ -88,14 +88,16 @@ stays quarantined.
 
 ## Honest limits
 
-- **Interop is unproven.** The wire format was corrected and verified against
-  `linux/drivers/usb/usbip/usbip_common.h`, and 418 tests pass — but the tests encode
-  this project's reading of the spec, so they cannot catch a misreading. No Linux
-  client has ever attached to this server. The QEMU harness starts a local test server
-  and inspects its log; it boots no VM and runs no `usbip` client.
+- **Interop is proven for the handshake, not the full session.** The wire format was
+  verified against `linux/drivers/usb/usbip/usbip_common.h`, and a real Linux `usbip`
+  client (Docker LinuxKit, which has `vhci_hcd` built in) completes both `list` and
+  `attach` against this server. Note the QEMU harness is not what established this — it
+  starts a local test server and inspects its log; it boots no VM and runs no client.
 - **One device measured per category.** J-Link and a keyboard.
-- **The transfer path has never moved real data.** `IOKitUSBInterface` opens and closes
-  a J-Link; no bulk transfer has been exercised against hardware.
+- **Only control transfers have moved real data.** A GET_DESCRIPTOR control transfer
+  against the J-Link returns its genuine 18-byte device descriptor over USB/IP
+  (`Scripts/verify-usb-transfer.py`). Bulk, interrupt, and isochronous transfers remain
+  unexercised against hardware.
 
 Interop validation is the prerequisite for calling this shippable. Everything else here
 is ready.

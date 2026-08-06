@@ -65,7 +65,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                     // Check if interface is already open
                     if let deviceInterfaces = self.activeInterfaces[deviceKey],
                        deviceInterfaces[interfaceNumber] != nil {
-                        self.logger.debug("USB interface \\(interfaceNumber) already open for device \\(deviceKey)")
+                        self.logger.debug("USB interface \(interfaceNumber) already open for device \(deviceKey)")
                         continuation.resume()
                         return
                     }
@@ -83,10 +83,10 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                     }
                     self.activeInterfaces[deviceKey]![interfaceNumber] = interface
                     
-                    self.logger.info("Successfully opened USB interface \\(interfaceNumber) for device \\(deviceKey)")
+                    self.logger.info("Successfully opened USB interface \(interfaceNumber) for device \(deviceKey)")
                     continuation.resume()
                 } catch {
-                    self.logger.error("Failed to open USB interface \\(interfaceNumber) for device \\(deviceKey): \\(error)")
+                    self.logger.error("Failed to open USB interface \(interfaceNumber) for device \(deviceKey): \(error)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -104,7 +104,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                 do {
                     guard let deviceInterfaces = self.activeInterfaces[deviceKey],
                           let interface = deviceInterfaces[interfaceNumber] else {
-                        self.logger.debug("USB interface \\(interfaceNumber) not open for device \\(deviceKey)")
+                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey)")
                         continuation.resume()
                         return
                     }
@@ -120,10 +120,10 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                         self.activeInterfaces.removeValue(forKey: deviceKey)
                     }
                     
-                    self.logger.info("Successfully closed USB interface \\(interfaceNumber) for device \\(deviceKey)")
+                    self.logger.info("Successfully closed USB interface \(interfaceNumber) for device \(deviceKey)")
                     continuation.resume()
                 } catch {
-                    self.logger.error("Failed to close USB interface \\(interfaceNumber) for device \\(deviceKey): \\(error)")
+                    self.logger.error("Failed to close USB interface \(interfaceNumber) for device \(deviceKey): \(error)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -145,7 +145,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         let deviceID = deviceIdentifier(for: device)
         
         guard deviceClaimManager.isDeviceClaimed(deviceID: deviceID) else {
-            logger.error("Device \\(deviceID) is not claimed for USB operations")
+            logger.error("Device \(deviceID) is not claimed for USB operations")
             throw USBRequestError.deviceNotClaimed(deviceID)
         }
         
@@ -237,7 +237,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     /// - Parameter device: USB device
     /// - Returns: Device identifier string
     private func deviceIdentifier(for device: USBDevice) -> String {
-        return "\\(device.busID)-\\(device.deviceID)"
+        return "\(device.busID)-\(device.deviceID)"
     }
     
     /// Validate that a USB request has the expected transfer type and required parameters
@@ -305,7 +305,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         
         guard let deviceInterfaces = activeInterfaces[deviceKey],
               let interface = deviceInterfaces[interfaceNumber] else {
-            logger.error("USB interface \\(interfaceNumber) not open for device \\(deviceKey)")
+            logger.error("USB interface \(interfaceNumber) not open for device \(deviceKey)")
             throw USBRequestError.deviceNotAvailable
         }
         
@@ -325,7 +325,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                 do {
                     guard let deviceInterfaces = self.activeInterfaces[deviceKey],
                           let interface = deviceInterfaces[interfaceNumber] else {
-                        self.logger.debug("USB interface \\(interfaceNumber) not open for device \\(deviceKey) - no transfers to cancel")
+                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey) - no transfers to cancel")
                         continuation.resume()
                         return
                     }
@@ -333,10 +333,10 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                     // Cancel all transfers on the interface
                     try interface.cancelAllTransfers()
                     
-                    self.logger.info("Successfully cancelled all transfers on interface \\(interfaceNumber) for device \\(deviceKey)")
+                    self.logger.info("Successfully cancelled all transfers on interface \(interfaceNumber) for device \(deviceKey)")
                     continuation.resume()
                 } catch {
-                    self.logger.error("Failed to cancel transfers on interface \\(interfaceNumber) for device \\(deviceKey): \\(error)")
+                    self.logger.error("Failed to cancel transfers on interface \(interfaceNumber) for device \(deviceKey): \(error)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -354,7 +354,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                 do {
                     guard let deviceInterfaces = self.activeInterfaces[deviceKey],
                           let interface = deviceInterfaces[interfaceNumber] else {
-                        self.logger.debug("USB interface \\(interfaceNumber) not open for device \\(deviceKey) - no transfers to cancel")
+                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey) - no transfers to cancel")
                         continuation.resume()
                         return
                     }
@@ -362,10 +362,10 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
                     // Cancel transfers on the specific endpoint
                     try interface.cancelTransfers(endpoint: endpoint)
                     
-                    self.logger.info("Successfully cancelled transfers on endpoint 0x\\(String(endpoint, radix: 16)) for device \\(deviceKey)")
+                    self.logger.info("Successfully cancelled transfers on endpoint 0x\(String(endpoint, radix: 16)) for device \(deviceKey)")
                     continuation.resume()
                 } catch {
-                    self.logger.error("Failed to cancel transfers on endpoint 0x\\(String(endpoint, radix: 16)) for device \\(deviceKey): \\(error)")
+                    self.logger.error("Failed to cancel transfers on endpoint 0x\(String(endpoint, radix: 16)) for device \(deviceKey): \(error)")
                     continuation.resume(throwing: error)
                 }
             }

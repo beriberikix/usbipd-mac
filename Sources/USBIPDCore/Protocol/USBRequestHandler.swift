@@ -5,6 +5,15 @@ import Foundation
 import Common
 
 /// Default implementation of USB request handler for SUBMIT/UNLINK operations
+/// Carries a result across the thread boundary in executeAsyncSynchronously.
+///
+/// Declared at file scope because Swift does not allow a type to be nested inside a
+/// generic function. Access is ordered by the semaphore: the task writes before
+/// signalling, the waiter reads after waiting.
+private final class AsyncResultBox<T>: @unchecked Sendable {
+    var result: Result<T, Error>?
+}
+
 public class USBRequestHandler: USBRequestHandlerProtocol {
     
     /// Device discovery for finding USB devices
@@ -53,6 +62,15 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         
         // Link processors together for URB cancellation
         self.unlinkProcessor.setSubmitProcessor(self.submitProcessor)
+
+        // Wire the submit processor for real USB traffic. This used to depend on
+        // setUSBDeviceCommunicator, which nothing ever called, so the processor ran
+        // permanently unconfigured and every transfer failed. Both dependencies are
+        // available right here, so there is no reason to defer them to a setter.
+        let communicator = USBDeviceCommunicatorImplementation(deviceClaimManager: deviceClaimManager)
+        self.deviceCommunicator = communicator
+        self.submitProcessor.setDeviceCommunicator(communicator)
+        self.submitProcessor.setDeviceDiscovery(deviceDiscovery)
     }
     
     /// Set the USB device communicator for actual USB operations
@@ -69,15 +87,19 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         log("Processing USB SUBMIT request with USBSubmitProcessor", .debug)
         
         // Validate minimum data length for USB/IP header
-        guard data.count >= 8 else {
+        // These arrive after import, so they are framed with usbip_header_basic — a
+        // 4-byte command at offset 0, no version — not the 8-byte op_common used by
+        // the handshake. Decoding them as op_common read version 0x0000 and code
+        // 0x0001, which is not a valid op code, so every SUBMIT was rejected as
+        // "Unsupported USB/IP command: 0x1" before it reached a processor.
+        guard data.count >= USBIPProtocol.commandMessagePrefixSize else {
             log("Invalid data length for USB SUBMIT request", .error, ["dataSize": String(data.count)])
             throw USBIPProtocolError.invalidDataLength
         }
-        
-        // Extract basic header information for validation
-        let header = try USBIPHeader.decode(from: data)
-        guard header.command == .submitRequest else {
-            log("Invalid command for USB SUBMIT request", .error, ["command": String(format: "0x%04x", header.command.rawValue)])
+
+        let header = try USBIPBasicHeader.decode(from: data)
+        guard header.command == .submit else {
+            log("Invalid command for USB SUBMIT request", .error, ["command": String(format: "0x%08x", header.command.rawValue)])
             throw USBIPProtocolError.invalidMessageFormat
         }
         
@@ -96,15 +118,19 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         log("Processing USB UNLINK request with USBUnlinkProcessor", .debug)
         
         // Validate minimum data length for USB/IP header
-        guard data.count >= 8 else {
+        // These arrive after import, so they are framed with usbip_header_basic — a
+        // 4-byte command at offset 0, no version — not the 8-byte op_common used by
+        // the handshake. Decoding them as op_common read version 0x0000 and code
+        // 0x0001, which is not a valid op code, so every UNLINK was rejected as
+        // "Unsupported USB/IP command: 0x1" before it reached a processor.
+        guard data.count >= USBIPProtocol.commandMessagePrefixSize else {
             log("Invalid data length for USB UNLINK request", .error, ["dataSize": String(data.count)])
             throw USBIPProtocolError.invalidDataLength
         }
-        
-        // Extract basic header information for validation
-        let header = try USBIPHeader.decode(from: data)
-        guard header.command == .unlinkRequest else {
-            log("Invalid command for USB UNLINK request", .error, ["command": String(format: "0x%04x", header.command.rawValue)])
+
+        let header = try USBIPBasicHeader.decode(from: data)
+        guard header.command == .unlink else {
+            log("Invalid command for USB UNLINK request", .error, ["command": String(format: "0x%08x", header.command.rawValue)])
             throw USBIPProtocolError.invalidMessageFormat
         }
         
@@ -207,26 +233,41 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     
     /// Execute an async throwing task synchronously
     /// This is a temporary bridge until the protocol can be made async
+    /// Bridge an async processor call into this synchronous request path.
+    ///
+    /// The previous implementation wrapped everything in MainActor.assumeIsolated.
+    /// Requests are processed on ServerCoordinator's background queue, so that
+    /// assertion failed and took the whole daemon down with SIGTRAP the first time a
+    /// URB arrived — dispatch_assert_queue_fail, via _swift_task_checkIsolatedSwift.
+    ///
+    /// It would not have worked had the assertion passed: it spun on Thread.sleep
+    /// while holding the main actor, which is exactly what the Task needed in order to
+    /// finish, and it read `result` from two threads with no synchronization.
+    ///
+    /// A semaphore is the honest bridge here. Note it does block the calling thread
+    /// until the operation completes; that is acceptable on a dedicated request queue,
+    /// but the real fix is to make this path async end to end rather than to bridge.
     private func executeAsyncSynchronously<T>(_ operation: @escaping () async throws -> T) throws -> T {
-        // Use Swift 6 compatible approach with MainActor synchronization
-        return try MainActor.assumeIsolated {
-            var result: Result<T, Error>?
-            _ = Task {
-                do {
-                    let value = try await operation()
-                    result = .success(value)
-                } catch {
-                    result = .failure(error)
-                }
+        let box = AsyncResultBox<T>()
+        let semaphore = DispatchSemaphore(value: 0)
+
+        // Detached so it runs on the global executor rather than inheriting whatever
+        // context this happens to be called from.
+        Task.detached {
+            do {
+                box.result = .success(try await operation())
+            } catch {
+                box.result = .failure(error)
             }
-            
-            // Wait for task completion in a blocking manner
-            while result == nil {
-                Thread.sleep(forTimeInterval: 0.001) // Small sleep to avoid busy waiting
-            }
-            
-            return try result!.get()
+            semaphore.signal()
         }
+
+        semaphore.wait()
+
+        guard let result = box.result else {
+            throw USBIPProtocolError.decodingFailed("async operation completed without a result")
+        }
+        return try result.get()
     }
 }
 

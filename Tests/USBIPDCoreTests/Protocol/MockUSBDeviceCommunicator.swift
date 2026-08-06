@@ -229,19 +229,30 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicator {
     // MARK: - Interface Management
     
     private var openInterfaces: Set<String> = []
-    
+
+    // Concurrency tests drive these from several tasks at once. Unsynchronized Set
+    // mutation corrupts its storage, which surfaces as an unrelated-looking
+    // "unrecognized selector" crash rather than as a clean race report.
+    private let interfaceLock = NSLock()
+
     func openUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
         let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
+        interfaceLock.lock()
+        defer { interfaceLock.unlock() }
         openInterfaces.insert(key)
     }
     
     func closeUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
         let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
+        interfaceLock.lock()
+        defer { interfaceLock.unlock() }
         openInterfaces.remove(key)
     }
     
     func isInterfaceOpen(device: USBDevice, interfaceNumber: UInt8) -> Bool {
         let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
+        interfaceLock.lock()
+        defer { interfaceLock.unlock() }
         return openInterfaces.contains(key)
     }
     

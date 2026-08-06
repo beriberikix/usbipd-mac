@@ -12,6 +12,10 @@ public class USBSubmitProcessor {
     
     /// Device communicator for executing USB transfers
     private weak var deviceCommunicator: USBDeviceCommunicator?
+
+    /// Used to resolve a devid back to the real device. Without it the processor can
+    /// only fabricate a placeholder, which no IOKit lookup can match.
+    private var deviceDiscovery: DeviceDiscovery?
     
     /// Logger for error and diagnostic information
     private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "usb-submit-processor")
@@ -20,14 +24,22 @@ public class USBSubmitProcessor {
     private let maxConcurrentRequests: Int = 64
     
     /// Initialize with device communicator
-    public init(deviceCommunicator: USBDeviceCommunicator? = nil) {
+    public init(deviceCommunicator: USBDeviceCommunicator? = nil,
+                deviceDiscovery: DeviceDiscovery? = nil) {
         self.deviceCommunicator = deviceCommunicator
+        self.deviceDiscovery = deviceDiscovery
     }
     
     /// Set the device communicator
     public func setDeviceCommunicator(_ communicator: USBDeviceCommunicator) {
         self.deviceCommunicator = communicator
         logger.info("USBSubmitProcessor configured with production device communicator")
+    }
+
+    /// Provide device discovery so submitted URBs can be matched to a real device.
+    public func setDeviceDiscovery(_ discovery: DeviceDiscovery) {
+        self.deviceDiscovery = discovery
+        logger.info("USBSubmitProcessor configured with device discovery")
     }
     
     /// Process a USB SUBMIT request and return response data
@@ -415,27 +427,23 @@ public class USBSubmitProcessor {
     /// Create a USBDevice object from USB/IP request information
     /// Uses device discovery to get actual device information instead of placeholders
     private func createUSBDeviceFromRequest(_ request: USBIPSubmitRequest) throws -> USBDevice {
-        // Convert devid to bus and device components
-        // USB/IP devid is typically encoded as (busnum << 16) | devnum
+        // USB/IP encodes devid as (busnum << 16) | devnum.
         let busID = String((request.devid >> 16) & 0xFF)
         let deviceID = String(request.devid & 0xFFFF)
-        
-        // For production implementation, we would look up the device through device discovery
-        // This requires access to a device discovery service that maintains the device registry
-        // For now, create a device with the available information from the request
-        // The deviceCommunicator will handle validation of device availability
-        return USBDevice(
-            busID: busID,
-            deviceID: deviceID,
-            vendorID: 0x0000,  // Would be populated from device discovery in full implementation
-            productID: 0x0000, // Would be populated from device discovery in full implementation
-            deviceClass: 0x00, // Would be populated from device discovery in full implementation
-            deviceSubClass: 0x00, // Would be populated from device discovery in full implementation
-            deviceProtocol: 0x00, // Would be populated from device discovery in full implementation
-            speed: .unknown,   // Would be populated from device discovery in full implementation
-            manufacturerString: "Unknown", // Would be populated from device discovery in full implementation
-            productString: "Unknown",       // Would be populated from device discovery in full implementation
-            serialNumberString: nil // Would be populated from device discovery in full implementation
-        )
+
+        // Resolve the real device. This used to fabricate one with vendorID and
+        // productID of 0x0000 and speed .unknown, deferring to "full implementation".
+        // IOKitUSBInterface locates a device by vendor and product ID, so a
+        // placeholder matched nothing and every transfer came back ENODEV — a
+        // correctly framed RET_SUBMIT reporting that the device did not exist.
+        guard let discovery = deviceDiscovery else {
+            throw USBRequestError.deviceNotAvailable
+        }
+
+        guard let device = try discovery.getDevice(busID: busID, deviceID: deviceID) else {
+            throw USBRequestError.deviceNotAvailable
+        }
+
+        return device
     }
 }
