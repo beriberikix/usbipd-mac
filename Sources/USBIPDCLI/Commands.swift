@@ -527,6 +527,28 @@ public class UnbindCommand: Command {
 // CommandHandlerError.operationNotSupported while still appearing in --help and in
 // generated shell completions.
 
+/// Whether a command actually started the server this process.
+///
+/// main.swift decides whether to block on RunLoop.main.run(). It used to decide by
+/// looking for the word "daemon" in argv, which is not the same question:
+/// `usbipd daemon --help` prints help, returns from execute(), and then had the
+/// process block forever anyway. Ask the command what it did rather than guessing
+/// from the arguments.
+public enum DaemonRuntime {
+    private static let lock = NSLock()
+    private static var _serverDidStart = false
+
+    public static var serverDidStart: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _serverDidStart
+    }
+
+    public static func markServerStarted() {
+        lock.lock(); defer { lock.unlock() }
+        _serverDidStart = true
+    }
+}
+
 public class DaemonCommand: Command {
     public let name = "daemon"
     public let description = "Start USB/IP daemon"
@@ -606,7 +628,8 @@ public class DaemonCommand: Command {
             // Start the server
             logger.info("Starting USB/IP server", context: ["port": serverConfig.port])
             try server.start()
-            
+            DaemonRuntime.markServerStarted()
+
             logger.info("USB/IP server started successfully", context: ["port": serverConfig.port])
             print("USB/IP daemon started on port \(serverConfig.port)")
             

@@ -47,11 +47,6 @@ private func setupLogging() {
 }
 
 /// Check if the command is daemon mode
-private func isDaemonCommand(_ arguments: [String]) -> Bool {
-    let args = Array(arguments.dropFirst())
-    return !args.isEmpty && args[0] == "daemon"
-}
-
 /// Check if arguments require early exit (help, version, etc.)
 private func shouldExitEarly(_ arguments: [String]) -> Bool {
     let args = Array(arguments.dropFirst())
@@ -226,8 +221,10 @@ func main() {
         logger.debug("Parsing command line arguments")
         try parser.parse(arguments: CommandLine.arguments)
         
-        // If this was a daemon command, keep the process running
-        if isDaemonCommand(CommandLine.arguments) {
+        // Keep the process alive only if a server is actually running. Testing argv
+        // for "daemon" answered a different question: `daemon --help` printed help and
+        // then blocked forever, and `daemon` with a bad option would have too.
+        if DaemonRuntime.serverDidStart {
             logger.info("Daemon mode detected, keeping process alive")
             
             // Check if we're running in foreground mode
