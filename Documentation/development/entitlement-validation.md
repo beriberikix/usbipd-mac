@@ -235,7 +235,7 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
    | DriverKit UserClient Access | **Declined** |
    | DriverKit PCI (development) | Assigned |
    | DriverKit USB Transport - VendorID **and ProductID** | No Requests |
-   | DriverKit Family Serial | No Requests |
+   | DriverKit Family Serial | **Submitted 2026-08-06, request ID 26F53XCAGY** |
    | DriverKit Family HID Device | No Requests |
    | DriverKit Transport HID | No Requests |
 
@@ -244,6 +244,11 @@ see `driver-free-release.md`. The steps below matter only if the blocked device 
    declined request was the **broad** one: USB Transport scoped to a vendor ID grants
    access to every device from that vendor. The narrower VendorID **and** ProductID
    variant has never been requested, nor have the per-family capabilities.
+
+   The Serial request is the one outstanding. It asks for that family alone, at the
+   development tier, and deliberately omits UserClient Access — declined in February,
+   and unnecessary because the dext and the daemon are signed by the same team. See
+   `driverkit-serial-request.md` for the submitted text.
 
    That matters for what is worth asking for next. A narrowly scoped request is a much
    smaller ask than a vendor-wide one, and `DriverKit Family Serial` is the capability

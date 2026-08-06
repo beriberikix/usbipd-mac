@@ -1,6 +1,10 @@
-# DriverKit Serial entitlement request — draft
+# DriverKit Serial entitlement request
 
-Paste the body below into "Describe your apps and how they'll use these entitlements."
+**Submitted 2026-08-06. Request ID `26F53XCAGY`.** Serial family only, development tier.
+Status appears under Capability Requests for App ID `com.usbipd.mac.system-extension`.
+
+The text submitted is below, kept so a follow-up or re-request can build on it rather
+than start over.
 
 **Form settings:** entitlement type `DriverKit Entitlement`; check **Serial** only.
 Do not re-check UserClient Access — it was declined on 25 February 2026, and it is not
