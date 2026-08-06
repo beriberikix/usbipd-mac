@@ -248,8 +248,9 @@ public struct USBIPMessageDecoder {
     
     /// Decode a device list response with validation
     public static func decodeDeviceListResponse(from data: Data) throws -> DeviceListResponse {
-        // Validate minimum data length (header + device count + reserved)
-        guard data.count >= 16 else {
+        // op_common(8) + ndev(4). There is no reserved field, so an empty device
+        // list is exactly 12 bytes and the old 16-byte floor rejected it.
+        guard data.count >= 12 else {
             throw USBIPProtocolError.invalidDataLength
         }
         

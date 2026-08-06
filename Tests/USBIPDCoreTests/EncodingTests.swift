@@ -118,8 +118,12 @@ final class EncodingTests: XCTestCase {
         let encodedData = try response.encode()
         
         // Verify the encoded data has the correct length
-        // 8 (header) + 4 (device count) + 4 (reserved) + 2 * 312 (devices) = 640 bytes
-        XCTAssertEqual(encodedData.count, 640)
+        // op_common(8) + ndev(4) + 2 * usbip_usb_device(312), plus four bytes for
+        // each declared interface. op_devlist_reply has no padding after ndev; the
+        // previous expectation of 640 included four reserved bytes that the protocol
+        // does not define and omitted the interface records entirely.
+        let interfaceBytes = [device1, device2].reduce(0) { $0 + Int($1.interfaceCount) * 4 }
+        XCTAssertEqual(encodedData.count, 12 + 2 * 312 + interfaceBytes)
         
         // Verify the data can be decoded back correctly
         let decodedResponse = try DeviceListResponse.decode(from: encodedData)

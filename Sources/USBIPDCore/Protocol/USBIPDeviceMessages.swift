@@ -36,6 +36,9 @@ public struct USBIPExportedDevice: USBIPMessageCodable {
     public let speed: UInt32
     public let vendorID: UInt16
     public let productID: UInt16
+    /// bcdDevice — the device release number. Absent from this struct until 2026-08,
+    /// which shifted every byte after idProduct two positions early on the wire.
+    public let bcdDevice: UInt16
     public let deviceClass: UInt8
     public let deviceSubClass: UInt8
     public let deviceProtocol: UInt8
@@ -51,6 +54,7 @@ public struct USBIPExportedDevice: USBIPMessageCodable {
         speed: UInt32,
         vendorID: UInt16,
         productID: UInt16,
+        bcdDevice: UInt16 = 0,
         deviceClass: UInt8,
         deviceSubClass: UInt8,
         deviceProtocol: UInt8,
@@ -65,6 +69,7 @@ public struct USBIPExportedDevice: USBIPMessageCodable {
         self.speed = speed
         self.vendorID = vendorID
         self.productID = productID
+        self.bcdDevice = bcdDevice
         self.deviceClass = deviceClass
         self.deviceSubClass = deviceSubClass
         self.deviceProtocol = deviceProtocol
@@ -88,15 +93,15 @@ public struct USBIPExportedDevice: USBIPMessageCodable {
         data.append(EndiannessConverter.writeUInt32ToData(speed))
         data.append(EndiannessConverter.writeUInt16ToData(vendorID))
         data.append(EndiannessConverter.writeUInt16ToData(productID))
+        data.append(EndiannessConverter.writeUInt16ToData(bcdDevice))
         data.append(deviceClass)
         data.append(deviceSubClass)
         data.append(deviceProtocol)
-        data.append(configurationCount)
+        // Order matters and is not alphabetical: bConfigurationValue precedes
+        // bNumConfigurations in struct usbip_usb_device.
         data.append(configurationValue)
+        data.append(configurationCount)
         data.append(interfaceCount)
-        
-        // Reserved: 2 bytes for alignment
-        data.append(contentsOf: [0 as UInt8, 0 as UInt8])
         
         return data
     }
@@ -118,12 +123,13 @@ public struct USBIPExportedDevice: USBIPMessageCodable {
         let speed = try EndiannessConverter.readUInt32FromData(data, at: 296)
         let vendorID = try EndiannessConverter.readUInt16FromData(data, at: 300)
         let productID = try EndiannessConverter.readUInt16FromData(data, at: 302)
-        let deviceClass = data[304]
-        let deviceSubClass = data[305]
-        let deviceProtocol = data[306]
-        let configurationCount = data[307]
-        let configurationValue = data[308]
-        let interfaceCount = data[309]
+        let bcdDevice = try EndiannessConverter.readUInt16FromData(data, at: 304)
+        let deviceClass = data[306]
+        let deviceSubClass = data[307]
+        let deviceProtocol = data[308]
+        let configurationValue = data[309]
+        let configurationCount = data[310]
+        let interfaceCount = data[311]
         
         return USBIPExportedDevice(
             path: path,
@@ -133,6 +139,7 @@ public struct USBIPExportedDevice: USBIPMessageCodable {
             speed: speed,
             vendorID: vendorID,
             productID: productID,
+            bcdDevice: bcdDevice,
             deviceClass: deviceClass,
             deviceSubClass: deviceSubClass,
             deviceProtocol: deviceProtocol,
@@ -158,19 +165,34 @@ public struct DeviceListResponse: USBIPMessageCodable {
     public func encode() throws -> Data {
         var data = try header.encode()
         data.append(EndiannessConverter.writeUInt32ToData(deviceCount))
-        
-        // Reserved: 4 bytes
-        data.append(contentsOf: [UInt8](repeating: 0, count: 4))
-        
+
+        // struct op_devlist_reply is just `uint32_t ndev` followed by the device
+        // records — there is no padding after the count. Four reserved bytes used to
+        // be written here, which pushed the first device record four bytes late and
+        // made a real usbip client misparse it.
+
         for device in devices {
             data.append(try device.encode())
+
+            // Each device record is followed by bNumInterfaces × struct
+            // usbip_usb_interface, four bytes each. These were not written at all,
+            // so a client that consumed them read into the *next* device's path —
+            // visible as interface classes like 2f/73/79, which is ASCII "/sy".
+            //
+            // Per-interface descriptors are not currently plumbed through from device
+            // discovery, so these are emitted as zeros, which a client renders as
+            // "(Defined at Interface level)". The stream is correct; the interface
+            // detail is simply not populated yet.
+            for _ in 0..<Int(device.interfaceCount) {
+                data.append(contentsOf: [0 as UInt8, 0, 0, 0])
+            }
         }
-        
+
         return data
     }
     
     public static func decode(from data: Data) throws -> DeviceListResponse {
-        guard data.count >= 16 else {
+        guard data.count >= 12 else {
             throw USBIPProtocolError.invalidDataLength
         }
         
@@ -181,22 +203,28 @@ public struct DeviceListResponse: USBIPMessageCodable {
         }
         
         let deviceCount = try EndiannessConverter.readUInt32FromData(data, at: 8)
-        
-        // Skip 4 bytes of reserved data
-        
+
         var devices: [USBIPExportedDevice] = []
-        var offset = 16
-        
+        // Device records begin immediately after ndev — op_devlist_reply has no
+        // padding.
+        var offset = 12
+
         for _ in 0..<deviceCount {
             guard data.count >= offset + 312 else {
                 throw USBIPProtocolError.invalidDataLength
             }
-            
+
             let deviceData = data.subdata(in: offset..<(offset + 312))
             let device = try USBIPExportedDevice.decode(from: deviceData)
             devices.append(device)
-            
             offset += 312
+
+            // Then bNumInterfaces × struct usbip_usb_interface, four bytes each.
+            let interfaceBytes = Int(device.interfaceCount) * 4
+            guard data.count >= offset + interfaceBytes else {
+                throw USBIPProtocolError.invalidDataLength
+            }
+            offset += interfaceBytes
         }
         
         return DeviceListResponse(header: header, devices: devices)
