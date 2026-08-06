@@ -13,9 +13,17 @@ usbipd-mac is a macOS USB/IP protocol implementation for sharing USB devices ove
 
 **Works, verified against hardware.** Devices macOS has *not* bound a driver to are
 served end to end: enumeration, string descriptors, control transfers, and
-bidirectional bulk transfers. A SEGGER J-Link was driven from a Linux client with
+bidirectional bulk transfers. Two device classes have been driven: a SEGGER J-Link with
 probe-rs, which read the probe's VTref over the wire and behaved exactly as it does
-connected directly. No System Extension and no entitlement are involved.
+connected directly, and a Pixel 10a in ADB mode, which answered a CNXN with its AUTH
+challenge. No System Extension and no entitlement are involved.
+
+**A caveat that is not about claiming.** A client whose protocol keys off USB
+connection or reset events may not work even on a claimable device. `adb` reports a
+Pixel `offline` because the phone announces itself once per connection and macOS
+already received that announcement; attaching from a client causes no bus reset the
+phone can observe. Request/response devices are unaffected. See
+`Documentation/development/android-adb-validation.md`.
 
 **Does not work, and cannot be made to.** Devices macOS binds a driver to —
 USB-serial, HID, mass storage, audio, cameras. `bind` refuses these up front with an
@@ -236,6 +244,8 @@ existed in the repository.
 - `entitlement-validation/USBClaimProbe.swift`: the probe the above compiles and signs
 - `verify-jlink-bulk.py`: J-Link protocol exchange over USB/IP, proving bulk transfers
 - `verify-usb-transfer.py`: raw USB/IP control transfer, bypassing kernel enumeration
+- `verify-adb-protocol.py`: sends an ADB CNXN to an Android device and reads its reply,
+  which tests the transport without depending on adb's connection state machine
 
 ### QEMU
 - `qemu/test-orchestrator.sh`, `qemu/vm-manager.sh`, `qemu/validate-environment.sh`,

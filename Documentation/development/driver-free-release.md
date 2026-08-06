@@ -11,6 +11,7 @@ Apple silicon:
 | USB Keyboard `2109:d101` | `AppleUserHIDDevice` | 0/1, `kIOReturnExclusiveAccess` | blocked |
 | Toshiba flash drive `0930:1400` | `IOUSBMassStorageDriver` | 0/1, `kIOReturnExclusiveAccess` | blocked |
 | Logitech C910 webcam `046d:0821` | mixed, see below | 0/4, `kIOReturnExclusiveAccess` | blocked |
+| Pixel 10a `18d1:4ee7` (ADB mode) | none | 1/1, `kIOReturnSuccess` | usable today |
 
 The J-Link opened from an **unsigned, unentitled, non-root** process. No System
 Extension, no DriverKit, no Apple approval. The project's own `IOKitUSBInterface` was
@@ -24,6 +25,7 @@ until approved" is wrong for a meaningful slice of embedded hardware.
 | Works today | Still blocked |
 | --- | --- |
 | Debug probes — J-Link, ST-Link, CMSIS-DAP | USB-serial — FTDI, CP210x, CH340 |
+| Android devices in ADB mode | Android in MTP mode |
 | DFU / bootloader modes | Boards exposing CDC ACM (most Arduino-likes) |
 | Vendor-specific bulk interfaces generally | HID, mass storage, audio |
 
@@ -146,6 +148,22 @@ DriverKit extension appears, since a dext must live in an app bundle in `/Applic
 No System Extension, no DriverKit entitlement, no provisioning profile, no
 notarization beyond what already exists. The 20,445-line System Extension subsystem
 stays quarantined.
+
+## A limitation that is not about claiming
+
+A device can be fully claimable and still not work with its usual client, if that
+client's protocol keys off connection or reset events.
+
+Measured with a Pixel 10a: the ADB interface claims cleanly and moves bulk traffic in
+both directions, but `adb devices` reports the phone `offline`. On USB the phone
+announces itself with `CNXN` once per connection, and macOS received that announcement
+when the phone was plugged in. Attaching from a USB/IP client causes no bus reset the
+phone can observe, so it never repeats it.
+
+This follows from sharing a device macOS has already enumerated while not owning the
+port, so it applies to any such protocol. Request/response devices — a debug probe, a
+device in DFU mode — are unaffected, because the host initiates every exchange and
+there is no announcement to miss. See `android-adb-validation.md`.
 
 ## Honest limits
 

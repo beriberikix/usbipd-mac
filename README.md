@@ -1,8 +1,15 @@
 > [!IMPORTANT]
 > **Which devices work:** those macOS has not bound a driver to. Debug probes
-> (J-Link, ST-Link, CMSIS-DAP), boards in DFU or bootloader mode, and vendor-specific
-> interfaces generally. These need no entitlement and no System Extension — a J-Link
-> has been driven end to end from a Linux client with probe-rs.
+> (J-Link, ST-Link, CMSIS-DAP), boards in DFU or bootloader mode, Android devices in
+> ADB mode, and vendor-specific interfaces generally. These need no entitlement and no
+> System Extension — a J-Link has been driven end to end from a Linux client with
+> probe-rs, and a Pixel answers ADB protocol messages over the wire.
+>
+> **One caveat even for devices that work:** a client whose protocol keys off USB
+> connection or reset events may still not function. `adb` is the known example — it
+> waits for the phone's once-per-connection announcement, which macOS already received.
+> Request/response devices are unaffected. See
+> [Documentation/development/android-adb-validation.md](Documentation/development/android-adb-validation.md).
 >
 > **Which do not:** anything macOS claims — USB-serial adapters, HID, mass storage,
 > audio, cameras. `bind` refuses these with an explanation rather than failing later.

@@ -55,6 +55,17 @@ matters most: `IOKitUSBInterface` allocated `Int(bufferLength)` straight from a
 wire-supplied `UInt32`. `autoBindDevices` was removed rather than implemented, being
 the opposite of the opt-in model.
 
+### Fixed — transfers reported bytes they did not have
+
+A timed-out IN transfer answered with `actualLength` set to the buffer capacity and no
+payload, because that field is primed for `ReadPipeTO`'s in/out contract and IOKit does
+not reset it when nothing is read. A client reading that many bytes would
+desynchronise. Zeroed on every non-success path, for bulk and interrupt.
+
+The default transfer timeout was also raised from 5000 ms to 60000 ms. At five seconds
+any merely idle IN endpoint produced ETIMEDOUT, and `adb` gave up on its first read.
+Both were found by testing against an Android device.
+
 ### Fixed — miscellaneous
 
 - Bulk transfers apply a timeout; they used `ReadPipe`/`WritePipe`, which block forever
@@ -92,6 +103,17 @@ distribution unstated.
   here; the DriverKit transport entitlements are what gate this.
 
 ### Known limitations
+
+- **Clients whose protocol keys off connection or reset events may not work**, even on
+  a device that claims cleanly. `adb` reports an otherwise-working Pixel `offline`: the
+  phone announces itself once per USB connection and macOS already received that
+  announcement, and attaching from a client causes no bus reset the phone can observe.
+  Request/response devices are unaffected.
+- **UNLINK does not abort an in-flight read.** It answers `RET_UNLINK` immediately, but
+  the transfer is only reclaimed when its own timeout expires. This is why the timeout
+  cannot be removed in favour of unlimited waits.
+- **`bind` does not affect a running daemon**, which reads the allow-list only at
+  startup.
 
 - Interrupt endpoints are unverified against hardware
 - Isochronous is structurally incomplete: alternate settings are never selected and
