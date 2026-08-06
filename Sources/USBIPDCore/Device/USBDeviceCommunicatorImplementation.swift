@@ -173,6 +173,21 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         )
     }
     
+    // Compose the USB endpoint address IOKit expects.
+    //
+    // USB/IP carries the endpoint number and its direction in separate fields:
+    // usbip_header_basic.ep is the bare number (0-15) and direction is a distinct
+    // field. The IOKit layer, like USB itself, encodes direction in bit 7 of the
+    // endpoint address. Passing ep through untouched meant every IN transfer from a
+    // real client — which sends ep=1, direction=1 — arrived with bit 7 clear and was
+    // executed as an OUT, failing with "No data provided for bulk OUT transfer".
+    // Internal rather than private so the mapping can be asserted directly; the
+    // IOKit factory returns a concrete type, leaving no seam to capture the call.
+    func endpointAddress(for request: USBRequestBlock) -> UInt8 {
+        let number = request.endpoint & 0x7F
+        return request.direction == .in ? (number | 0x80) : number
+    }
+
     public func executeBulkTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
         // Validate device claim and request type
         _ = try validateDeviceClaim(device: device)
@@ -185,7 +200,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         
         // Execute bulk transfer through IOKit interface
         return try await interface.executeBulkTransfer(
-            endpoint: request.endpoint,
+            endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             timeout: request.timeout
@@ -204,7 +219,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         
         // Execute interrupt transfer through IOKit interface
         return try await interface.executeInterruptTransfer(
-            endpoint: request.endpoint,
+            endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             timeout: request.timeout
@@ -223,7 +238,7 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         
         // Execute isochronous transfer through IOKit interface
         return try await interface.executeIsochronousTransfer(
-            endpoint: request.endpoint,
+            endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             startFrame: request.startFrame,
