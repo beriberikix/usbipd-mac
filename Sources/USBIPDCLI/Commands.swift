@@ -56,7 +56,7 @@ public class HelpCommand: Command {
         logger.debug("Executing help command")
         
         print("USB/IP Daemon for macOS")
-        print("Version: 0.1.0")
+        print("Version: \(USBIPDVersion.current)")
         print("")
         print("Usage: usbipd [command] [options]")
         print("")

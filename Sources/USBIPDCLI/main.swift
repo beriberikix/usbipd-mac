@@ -81,7 +81,7 @@ private func handleEarlyExit(_ arguments: [String]) {
     
     if args[0] == "--version" || args[0] == "-v" {
         print("USB/IP Daemon for macOS")
-        print("Version: 0.1.0") 
+        print("Version: \(USBIPDVersion.current)")
         print("Build: Development")
         return
     }

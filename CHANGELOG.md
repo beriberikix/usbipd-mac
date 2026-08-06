@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.5.0] - 2026-08-06
+
+First release in which the software does what it claims. Every prior release shipped a
+transfer path that had never moved data, and a `bind` that recorded devices without
+serving them. Those releases have been deleted rather than left to mislead.
+
+The version number also means something now: it was hardcoded as "0.1.0" in three
+separate print statements, so every previous release reported 0.1.0 regardless of its
+tag.
 
 ### Fixed — USB transfers now reach real hardware
 

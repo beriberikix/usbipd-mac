@@ -129,7 +129,7 @@ public class CommandLineParser {
     /// Print version information
     private func printVersion() {
         print("USB/IP Daemon for macOS")
-        print("Version: 0.1.0")
+        print("Version: \(USBIPDVersion.current)")
         print("Build: \(getBuildInfo())")
         logger.info("Version information displayed")
     }
