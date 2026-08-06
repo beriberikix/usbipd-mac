@@ -1,5 +1,11 @@
 # Release Workflow Troubleshooting Guide
 
+> [!NOTE]
+> Some diagnostic scripts referenced below (`release-health-check.sh`,
+> `validate-release-environment.sh`, `collect-diagnostics.sh`) do not exist in this
+> repository. The tooling that does exist is `Scripts/prepare-release.sh` and
+> `Scripts/rollback-release.sh`; for CI failures use `gh run view <id> --log-failed`.
+
 This comprehensive guide provides solutions for common issues encountered during the automated release workflow, including diagnostic procedures, resolution steps, workflow debugging, and manual intervention procedures.
 
 ## Overview

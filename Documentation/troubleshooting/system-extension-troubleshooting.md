@@ -1,5 +1,19 @@
 # System Extension Troubleshooting
 
+> [!IMPORTANT]
+> **The System Extension subsystem is quarantined.** No shipping path activates it:
+> `OSSystemExtensionRequest` resolves extensions inside the calling app's bundle and
+> requires that bundle to live in `/Applications`, so a Homebrew install never
+> consults it. The daemon runs without one, and the devices it can serve need no
+> System Extension at all.
+>
+> Several scripts referenced below (`install-extension.sh`, `setup-dev-environment.sh`,
+> `extension-status.sh`) do not exist in the repository. This document is kept for
+> reference should the subsystem ever be revived.
+>
+> See `Sources/USBIPDCore/SystemExtension/README.md` and
+> `Documentation/development/driver-free-release.md`.
+
 This document provides comprehensive troubleshooting guidance for the USB/IP System Extension on macOS.
 
 ## Diagnostic Tools

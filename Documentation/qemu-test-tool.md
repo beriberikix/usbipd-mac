@@ -4,6 +4,15 @@
 
 The QEMU test tool components provide testing infrastructure for validating USB/IP protocol implementation. Currently, this consists of test validation utilities and a placeholder test server, with plans for expanded QEMU-based testing capabilities.
 
+> [!IMPORTANT]
+> These utilities do not validate interop. The orchestrator starts a local test server
+> and inspects its log — it boots no VM and runs no `usbip` client, so a green run says
+> nothing about whether a real client can talk to this server.
+>
+> Interop is validated with a Linux client in Docker instead. Docker Desktop's LinuxKit
+> kernel has `vhci_hcd` built in, so no VM is needed. See
+> [development/probe-rs-validation.md](development/probe-rs-validation.md).
+
 ## Current Implementation Status
 
 ### Available Components

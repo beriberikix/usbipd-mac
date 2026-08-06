@@ -9,6 +9,31 @@ usbipd-mac is a macOS USB/IP protocol implementation for sharing USB devices ove
 **Main Repository**: https://github.com/beriberikix/usbipd-mac  
 **Homebrew Tap Repository**: https://github.com/beriberikix/homebrew-usbipd-mac
 
+### Current state — what works and what does not
+
+**Works, verified against hardware.** Devices macOS has *not* bound a driver to are
+served end to end: enumeration, string descriptors, control transfers, and
+bidirectional bulk transfers. A SEGGER J-Link was driven from a Linux client with
+probe-rs, which read the probe's VTref over the wire and behaved exactly as it does
+connected directly. No System Extension and no entitlement are involved.
+
+**Does not work, and cannot be made to.** Devices macOS binds a driver to —
+USB-serial, HID, mass storage, audio, cameras. `bind` refuses these up front with an
+explanation naming the owner. This was measured, not assumed: `USBInterfaceOpenSeize`
+returns the same `kIOReturnExclusiveAccess` as a plain open, and neither unmounting
+nor ejecting releases a device. Only the DriverKit USB transport entitlements would
+change it, and Apple has to grant those.
+
+**Untested.** Interrupt endpoints (no unbound interrupt device has been available).
+Isochronous is not merely untested but structurally incomplete: alternate settings are
+never selected and pipes are discovered once at open, so a UVC device's isochronous
+endpoints would never appear. See `Documentation/development/probe-rs-validation.md`.
+
+The **SystemExtension** target is quarantined — roughly 20,000 lines that no shipping
+path uses. `OSSystemExtensionRequest` resolves extensions inside the calling app's
+bundle and requires that bundle to live in `/Applications`, so a Homebrew install
+never consults it. See `Sources/USBIPDCore/SystemExtension/README.md`.
+
 ## Architecture
 
 The project is structured as a multi-target Swift package:
@@ -20,7 +45,7 @@ The project is structured as a multi-target Swift package:
   - `Protocol/`: USB/IP message encoding/decoding and request processing
 - **USBIPDCLI**: Command-line interface executable (`usbipd` binary)
 - **Common**: Shared utilities (logging, error handling)
-- **SystemExtension**: macOS System Extension integration
+- **SystemExtension**: quarantined; no shipping path activates it (see above)
 - **QEMUTestServer**: QEMU validation test server
 
 ### Test Structure
@@ -164,47 +189,68 @@ The project uses a comprehensive SwiftLint configuration (`.swiftlint.yml`) with
 
 ## Testing Strategy
 
-The project uses a three-tier environment-based testing approach:
+`swift test --parallel` is the whole suite — 397 tests across `USBIPDCoreTests` and
+`USBIPDCLITests`. There is no development/CI/production tier system; the scripts that
+claimed to provide one filtered on target names that were never declared, matched
+nothing, and exited 0. See `Documentation/development/testing-strategy.md`.
 
-### Development Environment
-- **Purpose**: Rapid feedback during active development
-- **Execution time**: <1 minute
-- **Coverage**: Unit tests with comprehensive mocking
-- **Use case**: Local development, IDE integration
+CI runs the same command. It additionally builds with `-Xswiftc -warnings-as-errors`,
+which local builds do not, so a clean local build can still fail CI — most recently on
+`NSLock.lock()` being unavailable from async contexts under Swift 6. Reproduce CI's
+strictness with:
 
-### CI Environment  
-- **Purpose**: Automated validation in GitHub Actions
-- **Execution time**: <3 minutes
-- **Coverage**: Protocol and network tests without hardware dependencies
-- **Use case**: Pull request validation, automated testing
+```bash
+swift build --build-tests -Xswiftc -warnings-as-errors
+```
 
-### Production Environment
-- **Purpose**: Complete validation for release preparation
-- **Execution time**: <10 minutes
-- **Coverage**: QEMU integration, hardware validation, System Extension testing
-- **Use case**: Release candidate validation, comprehensive testing
-- **QEMU Integration**: Full VM-based testing with protocol validation
+### Hardware validation
 
-### Key Features
-- Environment-specific mock libraries for reliable testing
-- Conditional hardware detection and graceful degradation
-- QEMU-based end-to-end integration testing infrastructure
-- Comprehensive test reporting and environment validation
-- Parallel test execution for optimal performance
+Unit tests cannot reach the IOKit transfer path, and mocks of it have been wrong in
+ways the suite could not detect. Three scripts exercise real hardware:
+
+- `Scripts/verify-jlink-bulk.py` — writes `EMU_CMD_VERSION` to a J-Link and reads the
+  reply, proving bidirectional bulk traffic over USB/IP
+- `Scripts/verify-usb-transfer.py` — a raw USB/IP client that issues a control
+  transfer, bypassing kernel enumeration
+- `Scripts/validate-usb-entitlements.sh` — measures which devices can be claimed and
+  which are owned; `--only VID:PID` scopes it, which matters with `--seize`
+
+Real interop is validated with a Linux client in Docker, not with QEMU. Docker
+Desktop's LinuxKit kernel has `vhci_hcd` built in, so `--privileged` plus
+`-v /dev/bus/usb:/dev/bus/usb` is enough to run `usbip attach` and then probe-rs. See
+`Documentation/development/probe-rs-validation.md`.
 
 ## Scripts
 
-Located in `Scripts/` directory:
+Located in `Scripts/` directory. This list is exhaustive — several scripts named in
+earlier revisions of this file (`release-health-check.sh`,
+`validate-release-environment.sh`, `generate-release-diagnostics.sh`,
+`validate-release-artifacts.sh`, and the per-environment test runners) have never
+existed in the repository.
 
-### Test Execution Scripts
+### Hardware and entitlement validation
+- `validate-usb-entitlements.sh`: measures which devices can be claimed and which are
+  owned, across five entitlement variants. `--only VID:PID` restricts it to one
+  device, which matters with `--seize` since that flag otherwise targets everything
+  attached. See `Documentation/development/entitlement-validation.md`
+- `entitlement-validation/USBClaimProbe.swift`: the probe the above compiles and signs
+- `verify-jlink-bulk.py`: J-Link protocol exchange over USB/IP, proving bulk transfers
+- `verify-usb-transfer.py`: raw USB/IP control transfer, bypassing kernel enumeration
 
-### Test Infrastructure Scripts
-- `qemu-test-validation.sh`: QEMU server validation utilities
-- `validate-usb-entitlements.sh`: Measures which entitlement actually gates USB device claiming (macOS only, see `Documentation/development/entitlement-validation.md`)
+### QEMU
+- `qemu/test-orchestrator.sh`, `qemu/vm-manager.sh`, `qemu/validate-environment.sh`,
+  `qemu/cleanup.sh`, `qemu/create-test-image.sh`, `qemu/setup-usb-testing.sh`,
+  `qemu/portable-timeout.sh`, `qemu-test.sh`, `qemu-test-validation.sh`
 
-### Release and Distribution Scripts
-- `prepare-release.sh`: Comprehensive release preparation and validation
-- `rollback-release.sh`: Release rollback and cleanup utilities
+  Treat the QEMU harness with suspicion. The orchestrator starts a local test server
+  and inspects its log; it does not boot a VM and runs no `usbip` client, so a green
+  run says nothing about interop. Docker is what actually validates interop.
+
+### Release and distribution
+- `prepare-release.sh`: release preparation and validation
+- `rollback-release.sh`: release rollback and cleanup
+- `update-changelog.sh`, `generate-completions.sh`
+- `generate-homebrew-metadata.sh`, `validate-homebrew-metadata.sh`
 
 ### Usage Examples
 ```bash
@@ -611,15 +657,16 @@ gh workflow run release.yml -f version=v1.2.4-hotfix -f skip_tests=true
 #### Diagnostic Commands
 
 ```bash
-# Comprehensive release health check
-./Scripts/release-health-check.sh
+# Preview a release without changing anything
+./Scripts/prepare-release.sh --dry-run v1.2.3
 
-# Validate release environment
-./Scripts/validate-release-environment.sh
-
-# Generate release troubleshooting report
-./Scripts/generate-release-diagnostics.sh --verbose
+# Inspect a run that failed
+gh run list --workflow=ci.yml --limit 5
+gh run view <run-id> --log-failed
 ```
+
+Earlier revisions listed `release-health-check.sh`, `validate-release-environment.sh`
+and `generate-release-diagnostics.sh` here. None of them exist.
 
 ### AI Assistant Context for Release Management
 

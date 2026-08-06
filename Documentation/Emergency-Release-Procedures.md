@@ -434,8 +434,8 @@ usbipd status     # Should show system ready
 
 ### Support
 If you experience issues with this emergency release:
-1. Check [troubleshooting guide](link)
-2. Report issues at [GitHub Issues](link)
+1. Check [Release-Troubleshooting.md](Release-Troubleshooting.md)
+2. Report issues at [GitHub Issues](https://github.com/beriberikix/usbipd-mac/issues)
 3. For urgent issues, contact [emergency contact]
 
 ### Next Steps

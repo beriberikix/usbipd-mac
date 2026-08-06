@@ -1,10 +1,21 @@
 # System Architecture
 
-This document provides a comprehensive overview of the usbipd-mac system architecture, covering component design, System Extension integration, and technical decisions.
+This document covers component design and technical decisions.
+
+> [!IMPORTANT]
+> The System Extension sections below describe a subsystem that is **quarantined**. No
+> shipping path activates it: `OSSystemExtensionRequest` resolves extensions inside the
+> calling app's bundle and requires that bundle to live in `/Applications`, so a
+> Homebrew install never consults it. The daemon runs without one, and the devices it
+> can serve need no System Extension at all. See
+> `Sources/USBIPDCore/SystemExtension/README.md` and `driver-free-release.md`.
 
 ## Overview
 
-usbipd-mac is a macOS implementation of the USB/IP protocol that allows sharing USB devices over IP networks. The system architecture is designed around modern macOS security requirements, utilizing System Extensions for secure USB device access while maintaining compatibility with existing USB/IP clients.
+usbipd-mac is a macOS implementation of the USB/IP protocol that allows sharing USB
+devices over IP networks. Device access goes through IOKit from userspace: devices
+macOS has not bound a driver to can be claimed and served directly, and devices it has
+bound cannot be reached at all without a DriverKit entitlement Apple must grant.
 
 ## Core Architecture Components
 

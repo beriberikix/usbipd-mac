@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — USB transfers now reach real hardware
+
+The transfer path had never moved data. Several defects sat between a client
+request and the device, each hiding the next.
+
+- `ReadPipeTO`'s size argument is in/out — buffer capacity in, bytes read out — and was
+  initialised to 0 and never set. IOKit was told the buffer could hold nothing, so any
+  packet the device sent overran it. **Every IN transfer on the bulk and interrupt paths
+  failed this way.**
+- Transfer type was guessed from the request's interval field. USB/IP carries no
+  transfer type, so it now comes from the device via `GetPipeProperties`. A J-Link
+  declares `bInterval 1` on both of its *bulk* pipes, so the guess routed bulk traffic
+  to the interrupt path.
+- IOKit addresses pipes by a 1-based index into the interface, not by endpoint number.
+  Endpoint discovery is now implemented and the index looked up.
+- Direction was taken from bit 7 of the endpoint address, which a conforming client
+  leaves clear because it sends direction in its own field.
+- `USBSubmitProcessor` fabricated a `0000:0000` device instead of resolving the devid,
+  so every lookup failed with ENODEV.
+- 33 escaped string interpolations in `USBDeviceCommunicatorImplementation` — the one in
+  `deviceIdentifier(for:)` gave every device the same literal key, so no claim matched.
+
+Verified with probe-rs driving a J-Link from a Linux client over USB/IP, reading the
+probe's VTref exactly as it does connected directly.
+
+### Fixed — the bind allow-list is enforced
+
+`bind` wrote devices to `allowedDevices` and nothing ever read it back. The server
+advertised **every** USB device on the machine and served transfers on any of them,
+bound or not. `isDeviceAllowed` also returned true for an empty list, so a fresh
+install offered everything. Both are fixed; sharing is opt-in.
+
+### Added — `bind` refuses devices something else owns
+
+Previously it allow-listed anything and failed later at transfer time. It now reads
+ownership from the IORegistry and refuses with an explanation naming the owner,
+distinguishing a kernel driver (needs a DriverKit entitlement) from a userspace holder
+(quit the app).
+
+### Added — configuration settings are honoured
+
+`maxUSBBufferSize`, `usbOperationTimeout`, `maxTotalConcurrentRequests`,
+`maxPendingURBsPerDevice`, `maxConnections` and `connectionTimeout` all persisted and
+validated their own ranges while nothing read them. They now apply. `maxUSBBufferSize`
+matters most: `IOKitUSBInterface` allocated `Int(bufferLength)` straight from a
+wire-supplied `UInt32`. `autoBindDevices` was removed rather than implemented, being
+the opposite of the opt-in model.
+
+### Fixed — miscellaneous
+
+- Bulk transfers apply a timeout; they used `ReadPipe`/`WritePipe`, which block forever
+- `kIOUSBTransactionTimeout` maps to ETIMEDOUT rather than falling through to EPROTO
+- A `defer` in a registry loop released the entry the next iteration was about to read
+- `CommandHandlerError` was re-wrapped in itself, doubling error prefixes
+- Data races in `USBSubmitProcessor` (concurrent-queue writes without `.barrier`)
+
+### Removed
+
+- `attach` and `detach`, which macOS cannot implement — that is a client-side operation
+- `URBTracker`, `DeviceMonitor`, the global logging functions, and five other
+  mechanisms that had tests but no production callers, dropping 42 tests that covered
+  code the daemon never reached
+- Two message validators with no callers anywhere, one of which contained a check that
+  could never fire (`endpoint & 0x0F > 15`)
+- ~17,800 lines of test targets that no target compiled and that had never run
+
+### Measured
+
+- Seizing an interface does **not** take it from a kernel driver:
+  `USBInterfaceOpenSeize` returns the same `kIOReturnExclusiveAccess` as a plain open.
+  Neither unmounting nor ejecting releases a device either. Measured against mass
+  storage, HID and a webcam.
+- `com.apple.security.device.usb` is an App Sandbox entitlement and grants nothing
+  here; the DriverKit transport entitlements are what gate this.
+
+### Known limitations
+
+- Interrupt endpoints are unverified against hardware
+- Isochronous is structurally incomplete: alternate settings are never selected and
+  pipes are discovered once at open, so a UVC device's isochronous endpoints never appear
+- The System Extension subsystem is quarantined and no shipping path activates it
+
 ## [v0.1.34] - 2025-08-28
 
 ### Added

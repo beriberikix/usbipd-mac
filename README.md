@@ -29,17 +29,18 @@ usbipd-mac is a macOS implementation of the USB/IP protocol that allows sharing 
 ## Features
 
 - USB device sharing from macOS to other systems over network
-- Full compatibility with the USB/IP protocol specification
-- System Extensions integration for reliable device access and claiming
-- Automated System Extension bundle creation and deployment
-- Lightweight QEMU test server for validation
-- Docker enablement for USB device access from containers
+- Compatible with the standard Linux `usbip` client — verified with a real client
+  performing enumeration, control transfers and bulk transfers
+- `bind` refuses devices macOS already owns, naming the owner, instead of failing
+  later at transfer time
+- No System Extension or entitlement required for the devices it can serve
 
 ## Requirements
 
-- **macOS 11.0+**: System Extensions are only supported on macOS Big Sur and later
-- **Xcode 13+**: Required for System Extensions support and Swift Package Manager
-- **Code Signing**: Optional for development, required for distribution
+- **macOS 11.0+**
+- **Xcode 13+**: needed to build, and to run the test suite (`swift test` requires
+  XCTest, which the Command Line Tools alone do not provide)
+- **Code Signing**: optional for development, required for distribution
 
 ## Installation
 
@@ -60,7 +61,7 @@ brew install usbip
 After installation, you can manage the usbipd daemon using Homebrew services:
 
 ```bash
-# Start the service (requires sudo for System Extension access)
+# Start the service (sudo is needed for USB device access)
 sudo brew services start usbip
 
 # Stop the service
@@ -73,68 +74,49 @@ sudo brew services restart usbip
 brew services info usbip
 ```
 
-#### System Extension Setup
+#### System Extension: not required, and not installable this way
 
-After Homebrew installation, you'll need to install and approve the System Extension:
+Earlier versions of this document told you to run `sudo usbipd install-system-extension`
+after a Homebrew install. That command cannot succeed from a Homebrew prefix:
+`OSSystemExtensionRequest` resolves extensions inside the *calling app's* bundle and
+requires that bundle to live in `/Applications`, so the staged bundle is never
+consulted.
 
-1. **Automatic Installation**: Use the built-in installation command:
-   ```bash
-   # Install and register the System Extension (requires sudo)
-   sudo usbipd install-system-extension
-   ```
+It is also unnecessary. Devices macOS has not bound a driver to are served without any
+System Extension, and devices it has bound are not reachable with one either — that
+needs a DriverKit entitlement Apple must grant. See
+[Documentation/development/driver-free-release.md](Documentation/development/driver-free-release.md).
 
-2. **System Extension Approval**: macOS will prompt you to approve the System Extension in **System Preferences > Security & Privacy > General**
-3. **Restart Required**: A restart may be required for the System Extension to become active
-4. **Verification**: Check the System Extension status with `usbipd status`
-
-**Installation Diagnostics**: If you encounter issues, run comprehensive diagnostics:
-```bash
-# Run complete installation diagnostics
-usbipd diagnose
-
-# Run verbose diagnostics for detailed troubleshooting
-usbipd diagnose --verbose
-```
 
 #### Troubleshooting Homebrew Installation
 
 Common installation issues and solutions:
 
-- **Permission Errors**: Ensure you run service commands with `sudo` as the daemon requires System Extension privileges
-- **System Extension Blocked**: Check System Preferences > Security & Privacy and approve the extension
+- **Permission Errors**: run service commands with `sudo`; the daemon needs privileged USB access
 - **Service Won't Start**: Verify the binary installed correctly with `which usbipd` and check logs with `brew services list`
 - **Version Issues**: Update with `brew upgrade usbip` or reinstall with `brew reinstall usbip`
 
-#### System Extension Installation Troubleshooting
+#### If a device will not bind
 
-For System Extension specific issues:
+`bind` names what owns the device:
 
-**Installation Problems**:
-- **Bundle Not Found**: Ensure Homebrew installation completed successfully, reinstall if needed
-- **Registration Failed**: Run `sudo usbipd install-system-extension --verbose` for detailed error information
-- **User Approval Required**: System Extensions require explicit user approval in System Preferences
-- **Developer Mode Required**: For unsigned builds, enable developer mode: `sudo systemextensionsctl developer on`
-
-**Common Error Solutions**:
-```bash
-# Check detailed installation status
-usbipd diagnose --verbose
-
-# Re-install System Extension if corrupted
-sudo usbipd install-system-extension --skip-verification
-
-# Verify System Extension is properly registered
-systemextensionsctl list
-
-# Check System Extension process status
-usbipd status
+```
+$ usbipd bind 1-19
+Cannot share 1-19: macOS has bound a driver to it (AppleUserHIDDevice).
 ```
 
-**System Requirements**:
-- **macOS 11.0+**: System Extensions are only available on Big Sur and later
-- **Code Signing**: Production releases require properly signed System Extensions
-- **System Integrity Protection**: Must be compatible with SIP settings
-- **User Approval**: Interactive approval required in System Preferences
+That is a dead end without a DriverKit entitlement — seizing the interface was measured
+and does not work, and neither unmounting nor ejecting releases a device.
+
+```
+$ usbipd bind 1-20
+Cannot share 1-20: another process has it open (AppleUSBHostFrameworkInterfaceClient).
+```
+
+That one is fixable: quit the app holding the device and bind again.
+
+To check hardware before buying or debugging, `./Scripts/validate-usb-entitlements.sh`
+reports which of your attached devices are claimable and which are owned.
 
 ### Manual Installation (Development)
 
@@ -151,30 +133,15 @@ Once installed, you can use usbip to share USB devices over the network:
 usbipd list
 
 # Share a USB device (device ID from list command)
-usbipd bind --device <device-id>
+usbipd bind <busid>
 
 # Check daemon status and shared devices
 usbipd status
 
 # Stop sharing a device
-usbipd unbind --device <device-id>
+usbipd unbind <busid>
 ```
 
-### System Extension Management
-
-```bash
-# Install and register the System Extension
-sudo usbipd install-system-extension
-
-# Run comprehensive installation diagnostics
-usbipd diagnose
-
-# Run verbose diagnostics with detailed information
-usbipd diagnose --verbose
-
-# Check System Extension status and health
-usbipd status --verbose
-```
 
 ### Client Connection
 
@@ -222,26 +189,6 @@ swift build
 xcodebuild -scheme usbipd-mac build
 ```
 
-### System Extension Development
-
-For development with System Extensions:
-
-```bash
-# Enable System Extension development mode (requires reboot)
-sudo systemextensionsctl developer on
-
-# Build the project (includes System Extension bundle creation)
-swift build
-
-# Install System Extension for development
-sudo usbipd install-system-extension
-
-# Run diagnostics to verify installation
-usbipd diagnose
-
-# Check detailed status including bundle information
-usbipd status --verbose
-```
 
 ## Running Tests
 
@@ -374,11 +321,8 @@ Validation commands:
 # Check release preparation environment
 ./Scripts/prepare-release.sh --help
 
-# Validate formula update tools
-./Scripts/update-formula.sh --help
-
-# Validate formula syntax
-./Scripts/validate-formula.sh --help
+# Formula tooling lives in the tap repository, not here:
+#   https://github.com/beriberikix/homebrew-usbipd-mac
 ```
 
 See [Release Automation Documentation](Documentation/Release-Automation.md) for complete setup instructions and troubleshooting.
@@ -392,4 +336,5 @@ Release automation is handled by maintainers. Contributors should:
 
 ## License
 
-[MIT License](LICENSE)
+Intended to be MIT. **No `LICENSE` file exists in the repository yet** — this needs to
+be added before a release, since distribution without one leaves the terms unstated.

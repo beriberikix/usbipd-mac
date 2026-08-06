@@ -1,5 +1,12 @@
 # Release System Migration and Adoption Guide
 
+> [!NOTE]
+> **Historical.** This documents a migration that has already completed, and it is not
+> maintained against the code. Several scripts it references no longer exist in this
+> repository — formula tooling lives in the
+> [tap repository](https://github.com/beriberikix/homebrew-usbipd-mac). For what the
+> project does today see [the README](../README.md).
+
 This document provides comprehensive guidance for migrating from manual release processes to the automated production release system for usbipd-mac, including adoption timeline, backwards compatibility considerations, and step-by-step migration procedures.
 
 ## Overview

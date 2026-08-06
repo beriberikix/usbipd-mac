@@ -1,5 +1,12 @@
 # Homebrew-Releaser Migration Rollback Procedures
 
+> [!NOTE]
+> **Historical.** This documents a migration that has already completed, and it is not
+> maintained against the code. Several scripts it references no longer exist in this
+> repository — formula tooling lives in the
+> [tap repository](https://github.com/beriberikix/homebrew-usbipd-mac). For what the
+> project does today see [the README](../README.md).
+
 This document provides comprehensive rollback procedures for the homebrew-releaser migration. These procedures allow reverting from homebrew-releaser back to a webhook-based system if critical issues are encountered.
 
 ## Overview

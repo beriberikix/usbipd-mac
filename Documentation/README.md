@@ -6,12 +6,16 @@ Welcome to the usbipd-mac documentation hub. This directory contains comprehensi
 
 - **[Project README](../README.md)** - Main project overview, installation, and basic usage
 - **[Protocol Reference](protocol-reference.md)** - USB/IP protocol implementation details
-- **[QEMU Test Tool](qemu-test-tool.md)** - QEMU integration testing documentation
+- **[QEMU Test Tool](qemu-test-tool.md)** - QEMU test utilities. Note these do not boot a VM or run a `usbip` client; interop is validated with Docker, see the probe-rs document below
 
 ## Developer Documentation
 
 The `development/` folder contains detailed documentation for contributors:
 
+- **[Driver-free release scope](development/driver-free-release.md)** - which devices can be shared today, measured rather than assumed
+- **[Entitlement validation](development/entitlement-validation.md)** - which entitlement actually gates USB claiming, and how to measure it
+- **[probe-rs validation](development/probe-rs-validation.md)** - end-to-end proof over USB/IP with a real tool, and what it exposed
+- **[Unwired code sweep](development/unwired-code-sweep.md)** - finding mechanisms nothing calls, and what that found
 - **[Architecture](development/architecture.md)** - System design and component overview
 - **[CI/CD](development/ci-cd.md)** - Continuous integration and deployment workflows
 - **[System Extension Development](development/system-extension-development.md)** - macOS System Extension integration
