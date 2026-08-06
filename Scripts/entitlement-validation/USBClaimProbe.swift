@@ -505,6 +505,11 @@ struct Options {
     var listOnly = false
     var includeApple = false
     var includeHubs = false
+
+    /// Restrict the run to one device, as "VID:PID" in hex. --seize can take a device
+    /// away from its driver, and without scoping it does that to everything attached —
+    /// including whatever keyboard you are typing on.
+    var onlyDevice: (vendorID: UInt16, productID: UInt16)?
     var compareInputs: [String] = []
     var markdownPath: String?
 }
@@ -528,6 +533,17 @@ private func parseOptions() -> Options {
             options.listOnly = true
         case "--include-apple":
             options.includeApple = true
+        case "--only":
+            guard let value = arguments.first,
+                  case let parts = value.split(separator: ":"),
+                  parts.count == 2,
+                  let vid = UInt16(parts[0].replacingOccurrences(of: "0x", with: ""), radix: 16),
+                  let pid = UInt16(parts[1].replacingOccurrences(of: "0x", with: ""), radix: 16) else {
+                FileHandle.standardError.write(Data("--only expects VID:PID in hex, e.g. 0930:1400\n".utf8))
+                exit(2)
+            }
+            options.onlyDevice = (vendorID: vid, productID: pid)
+            arguments.removeFirst()
         case "--include-hubs":
             options.includeHubs = true
         case "--compare":
@@ -567,6 +583,8 @@ private func printUsage() {
                         disconnect a device from its current driver — opt-in only.
       --include-apple   Include Apple-vendor (0x05ac) devices, skipped by default
       --include-hubs    Include USB hubs, skipped by default
+      --only VID:PID    Probe only this device, in hex. Strongly recommended with
+                        --seize, which otherwise targets every attached device.
       --compare         Read several JSON runs and print a cross-variant matrix
     """)
 }
@@ -717,6 +735,7 @@ for service in enumerateUSBDevices() {
     }
     let deviceClass = intProperty(service, "bDeviceClass")
 
+    if let only = options.onlyDevice, only.vendorID != vendorID || only.productID != productID { continue }
     if vendorID == 0x05ac && !options.includeApple { continue }
     if deviceClass == 9 && !options.includeHubs { continue }
 

@@ -9,6 +9,7 @@ Apple silicon:
 | --- | --- | --- | --- |
 | SEGGER J-Link `1366:0101` | none | 1/1, `kIOReturnSuccess` | usable today |
 | USB Keyboard `2109:d101` | `AppleUserHIDDevice` | 0/1, `kIOReturnExclusiveAccess` | blocked |
+| Toshiba flash drive `0930:1400` | `IOUSBMassStorageDriver` | 0/1, `kIOReturnExclusiveAccess` | blocked |
 
 The J-Link opened from an **unsigned, unentitled, non-root** process. No System
 Extension, no DriverKit, no Apple approval. The project's own `IOKitUSBInterface` was
@@ -25,15 +26,35 @@ until approved" is wrong for a meaningful slice of embedded hardware.
 | DFU / bootloader modes | Boards exposing CDC ACM (most Arduino-likes) |
 | Vendor-specific bulk interfaces generally | HID, mass storage, audio |
 
-Only the J-Link and a HID keyboard have actually been measured. The split above is
-inferred from the mechanism — whether macOS binds a driver to the interface — and
-holds for anything in the left column by that reasoning, but an FTDI adapter and a CDC
-board should be measured before the README states it as fact.
+Three devices have been measured: an unbound debug probe, a HID keyboard, and a mass
+storage drive. The first is usable and the other two are blocked, which is what the
+mechanism predicts. USB-serial specifically is still inferred rather than measured —
+no FTDI or CDC device has been available — but it is bound by the same
+`AppleUSBACMData`-style driver attachment, so there is no reason to expect a different
+outcome.
 
-**One untested escape hatch:** `USBInterfaceOpenSeize` might displace a kernel driver.
-If it works on a CDC device, the entire right-hand column moves. `--seize` exists in
-the harness for exactly this and has never been run against serial hardware. Worth ten
-minutes before accepting the split as final.
+**The escape hatch does not exist.** `USBInterfaceOpenSeize` was the hope that the
+right-hand column might move. Measured against a mass storage device on 2026-08-06, it
+returns `kIOReturnExclusiveAccess` — the identical error a plain `USBInterfaceOpen`
+returns. Seizing does not displace a kernel driver.
+
+Two weaker forms of the same idea also fail:
+
+| Attempt | Result |
+| --- | --- |
+| `USBInterfaceOpen` | `kIOReturnExclusiveAccess` |
+| `USBInterfaceOpenSeize` | `kIOReturnExclusiveAccess` — no different |
+| `diskutil unmountDisk` then open | still `kIOReturnExclusiveAccess`; the filesystem detaches but `IOUSBMassStorageDriver` stays bound |
+| `diskutil eject` then open | still `kIOReturnExclusiveAccess`; the media stack drops from 20 IOKit nodes to 7, and the interface remains owned |
+
+Worth noting the device/interface split: after unmounting, `USBDeviceOpen` **succeeds**
+(`kIOReturnSuccess`) while `USBInterfaceOpen` on the same device still fails. Opening
+the device is not the operation that matters — claiming its interface is, and that is
+what the kernel driver holds.
+
+So the split is final for the hardware available: nothing short of DriverKit rebinding
+releases an interface macOS has bound. Scope the release accordingly rather than
+waiting on a workaround.
 
 ## Work required
 

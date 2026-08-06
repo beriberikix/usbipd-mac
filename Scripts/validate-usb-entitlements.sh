@@ -69,6 +69,8 @@ usage() {
 Usage: ./Scripts/validate-usb-entitlements.sh [options]
 
 Options:
+  --only VID:PID    Probe only this device, in hex (e.g. 0930:1400). Strongly
+                    recommended with --seize, which otherwise targets everything.
   --seize           Also attempt USBDeviceOpenSeize/USBInterfaceOpenSeize when a
                     plain open is refused. This can disconnect a device from its
                     current driver — do not use on a device you are relying on.
@@ -98,6 +100,7 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --seize) SEIZE=true; shift ;;
+        --only) ONLY_DEVICE="$2"; shift 2 ;;
         --include-apple) INCLUDE_APPLE=true; shift ;;
         --include-hubs) INCLUDE_HUBS=true; shift ;;
         --list-only) LIST_ONLY=true; shift ;;
@@ -201,6 +204,7 @@ probe_args() {
     local variant="$1"
     local args=(--variant "$variant" --json -)
     [[ "$SEIZE" == true ]] && args+=(--seize)
+    [[ -n "${ONLY_DEVICE:-}" ]] && args+=(--only "$ONLY_DEVICE")
     [[ "$INCLUDE_APPLE" == true ]] && args+=(--include-apple)
     [[ "$INCLUDE_HUBS" == true ]] && args+=(--include-hubs)
     [[ "$LIST_ONLY" == true ]] && args+=(--list-only)
