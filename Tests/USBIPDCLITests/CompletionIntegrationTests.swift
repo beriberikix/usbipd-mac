@@ -175,7 +175,14 @@ extension CompletionIntegrationTests {
     func testCompletionScriptsIncludeExpectedCommands() throws {
         try completionCommand.execute(with: ["generate", "--output", tempDirectory.path])
         
-        let expectedCommands = ["help", "list", "bind", "unbind", "daemon", "install-system-extension", "diagnose", "completion"]
+        // Must match the commands the CLI actually registers. install-system-extension
+        // and diagnose were removed — the first could not succeed from a Homebrew
+        // prefix, the second did not complete.
+        let expectedCommands = ["help", "list", "bind", "unbind", "daemon", "status", "completion"]
+
+        // Removed commands must not reappear in generated completions, which is how
+        // attach and detach lingered in the fish script after being deleted.
+        let removedCommands = ["attach", "detach", "install-system-extension", "diagnose"]
         
         // Check bash completion
         let bashFile = tempDirectory.appendingPathComponent("usbipd")
@@ -187,6 +194,13 @@ extension CompletionIntegrationTests {
                 "Bash completion should include command: \(command)"
             )
         }
+
+        for command in removedCommands {
+            XCTAssertFalse(
+                bashContent.contains(command),
+                "Bash completion still advertises removed command: \(command)"
+            )
+        }
         
         // Check zsh completion
         let zshFile = tempDirectory.appendingPathComponent("_usbipd")
@@ -196,6 +210,13 @@ extension CompletionIntegrationTests {
             XCTAssertTrue(
                 zshContent.contains(command),
                 "Zsh completion should include command: \(command)"
+            )
+        }
+
+        for command in removedCommands {
+            XCTAssertFalse(
+                zshContent.contains(command),
+                "Zsh completion still advertises removed command: \(command)"
             )
         }
         

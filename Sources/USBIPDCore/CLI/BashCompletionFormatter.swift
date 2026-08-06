@@ -241,11 +241,8 @@ public class BashCompletionFormatter: ShellCompletionFormatter {
             CompletionCommand(name: "list", description: "List available USB devices"),
             CompletionCommand(name: "bind", description: "Bind a USB device to USB/IP"),
             CompletionCommand(name: "unbind", description: "Unbind a USB device from USB/IP"),
-            CompletionCommand(name: "attach", description: "Attach a remote USB device"),
-            CompletionCommand(name: "detach", description: "Detach a remote USB device"),
             CompletionCommand(name: "daemon", description: "Start USB/IP daemon"),
-            CompletionCommand(name: "install-system-extension", description: "Install and register the System Extension"),
-            CompletionCommand(name: "diagnose", description: "Run comprehensive installation and system diagnostics")
+            CompletionCommand(name: "status", description: "Show daemon status")
         ]
     }
 }

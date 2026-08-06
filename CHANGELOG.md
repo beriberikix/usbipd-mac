@@ -66,12 +66,21 @@ the opposite of the opt-in model.
 ### Removed
 
 - `attach` and `detach`, which macOS cannot implement — that is a client-side operation
+- `install-system-extension`, which could not succeed from a Homebrew prefix, and
+  `diagnose`, which did not complete in 300 seconds. Both were registered but absent
+  from `usbipd --help`
+- The `.kiro` and `.gemini` directories
 - `URBTracker`, `DeviceMonitor`, the global logging functions, and five other
   mechanisms that had tests but no production callers, dropping 42 tests that covered
   code the daemon never reached
 - Two message validators with no callers anywhere, one of which contained a check that
   could never fire (`endpoint & 0x0F > 15`)
 - ~17,800 lines of test targets that no target compiled and that had never run
+
+### Added — MIT LICENSE
+
+The README had claimed MIT while no LICENSE file existed, leaving the terms of
+distribution unstated.
 
 ### Measured
 

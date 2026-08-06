@@ -117,28 +117,6 @@ public class CompletionExtractor {
                 )
             ]
             
-        case "attach":
-            return [
-                CompletionOption(
-                    short: "h",
-                    long: "help",
-                    description: "Show help message",
-                    takesValue: false,
-                    valueType: .none
-                )
-            ]
-            
-        case "detach":
-            return [
-                CompletionOption(
-                    short: "h",
-                    long: "help",
-                    description: "Show help message",
-                    takesValue: false,
-                    valueType: .none
-                )
-            ]
-            
         case "daemon":
             return [
                 CompletionOption(
@@ -154,72 +132,6 @@ public class CompletionExtractor {
                     description: "Use alternative configuration file",
                     takesValue: true,
                     valueType: .file
-                ),
-                CompletionOption(
-                    short: "h",
-                    long: "help",
-                    description: "Show help message",
-                    takesValue: false,
-                    valueType: .none
-                )
-            ]
-            
-        case "install-system-extension":
-            return [
-                CompletionOption(
-                    short: "v",
-                    long: "verbose",
-                    description: "Show detailed installation information",
-                    takesValue: false,
-                    valueType: .none
-                ),
-                CompletionOption(
-                    long: "skip-verification",
-                    description: "Skip final installation verification",
-                    takesValue: false,
-                    valueType: .none
-                ),
-                CompletionOption(
-                    short: "h",
-                    long: "help",
-                    description: "Show help message",
-                    takesValue: false,
-                    valueType: .none
-                )
-            ]
-            
-        case "diagnose":
-            return [
-                CompletionOption(
-                    short: "v",
-                    long: "verbose",
-                    description: "Show detailed diagnostic information",
-                    takesValue: false,
-                    valueType: .none
-                ),
-                CompletionOption(
-                    long: "bundle",
-                    description: "Run only bundle detection diagnostics",
-                    takesValue: false,
-                    valueType: .none
-                ),
-                CompletionOption(
-                    long: "installation",
-                    description: "Run only installation status diagnostics",
-                    takesValue: false,
-                    valueType: .none
-                ),
-                CompletionOption(
-                    long: "service",
-                    description: "Run only service management diagnostics",
-                    takesValue: false,
-                    valueType: .none
-                ),
-                CompletionOption(
-                    long: "all",
-                    description: "Run all diagnostic modes (default)",
-                    takesValue: false,
-                    valueType: .none
                 ),
                 CompletionOption(
                     short: "h",
@@ -267,32 +179,6 @@ public class CompletionExtractor {
                     description: "The bus ID of the USB device (e.g., 1-1)",
                     required: true,
                     valueType: .busID
-                )
-            ]
-            
-        case "attach":
-            return [
-                CompletionArgument(
-                    name: "host",
-                    description: "The remote host running USB/IP server",
-                    required: true,
-                    valueType: .ipAddress
-                ),
-                CompletionArgument(
-                    name: "busid",
-                    description: "The bus ID of the USB device to attach",
-                    required: true,
-                    valueType: .busID
-                )
-            ]
-            
-        case "detach":
-            return [
-                CompletionArgument(
-                    name: "port",
-                    description: "The port number of the attached device",
-                    required: true,
-                    valueType: .port
                 )
             ]
             

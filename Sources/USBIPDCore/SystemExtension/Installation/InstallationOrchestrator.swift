@@ -485,7 +485,7 @@ public final class InstallationOrchestrator: @unchecked Sendable {
             recommendations.append("Check launchd service registration")
             
         case OrchestrationError.verificationFailed:
-            recommendations.append("Run diagnostic: usbipd diagnose --verbose")
+            recommendations.append("Inspect the daemon log for the failing step")
             recommendations.append("Check systemextensionsctl list for registration")
             recommendations.append("Restart System Extension: systemextensionsctl reset")
             

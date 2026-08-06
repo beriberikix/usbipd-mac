@@ -153,7 +153,7 @@ func main() {
         
         // Provide helpful information about installation
         if case .homebrew = detectionResult.detectionEnvironment {
-            logger.info("Homebrew environment detected - consider running: usbipd install-system-extension")
+            logger.debug("Homebrew environment detected")
         } else if case .development = detectionResult.detectionEnvironment {
             logger.info("Development environment detected - ensure swift build has been run")
         }

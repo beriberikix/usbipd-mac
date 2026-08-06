@@ -29,7 +29,17 @@ public class CompletionCommand: Command {
     ///   - completionExtractor: Service for extracting completion metadata
     ///   - completionWriter: Service for writing completion scripts
     ///   - completionInstaller: Service for managing completion installation
-    public init(completionExtractor: CompletionExtractor = CompletionExtractor(), completionWriter: CompletionWriter = CompletionWriter(), completionInstaller: CompletionInstaller = CompletionInstaller()) {
+    /// The parser owns the real command registry. Completions are generated from it so
+    /// they cannot drift from what the CLI accepts — a hardcoded mirror kept
+    /// advertising attach, detach, install-system-extension and diagnose after they
+    /// were removed, and never listed status at all.
+    private weak var parser: CommandLineParser?
+
+    public init(parser: CommandLineParser? = nil,
+                completionExtractor: CompletionExtractor = CompletionExtractor(),
+                completionWriter: CompletionWriter = CompletionWriter(),
+                completionInstaller: CompletionInstaller = CompletionInstaller()) {
+        self.parser = parser
         self.completionExtractor = completionExtractor
         self.completionWriter = completionWriter
         self.completionInstaller = completionInstaller
@@ -349,19 +359,21 @@ public class CompletionCommand: Command {
         }
     }
     
-    /// Create mock commands for testing and development
-    /// - Returns: Array of mock Command instances
+    /// The commands to generate completions for: whatever the parser actually
+    /// registers. Falls back to a minimal set only when no parser is available, which
+    /// happens when a test constructs this command directly.
     private func createMockCommands() -> [Command] {
-        // In a real implementation, this would get commands from the parser
-        // For now, we create mock commands that represent the actual CLI structure
+        if let registered = parser?.getCommands(), !registered.isEmpty {
+            return registered.sorted { $0.name < $1.name }
+        }
+
         return [
             MockCommand(name: "help", description: "Display help information"),
             MockCommand(name: "list", description: "List available USB devices"),
             MockCommand(name: "bind", description: "Bind a USB device to USB/IP"),
             MockCommand(name: "unbind", description: "Unbind a USB device from USB/IP"),
             MockCommand(name: "daemon", description: "Start USB/IP daemon"),
-            MockCommand(name: "install-system-extension", description: "Install and register the System Extension"),
-            MockCommand(name: "diagnose", description: "Run comprehensive installation and system diagnostics"),
+            MockCommand(name: "status", description: "Show daemon status"),
             MockCommand(name: "completion", description: "Generate shell completion scripts")
         ]
     }

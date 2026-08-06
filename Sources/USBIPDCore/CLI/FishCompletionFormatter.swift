@@ -224,7 +224,7 @@ public class FishCompletionFormatter: ShellCompletionFormatter {
         return """
         # Helper function to check if we're in a position to complete a subcommand
         function __fish_use_subcommand
-            not __fish_seen_subcommand_from help list bind unbind attach detach daemon install-system-extension diagnose
+            not __fish_seen_subcommand_from help list bind unbind daemon status
         end
         
         # Helper function to check if we're at the nth token position
@@ -239,11 +239,8 @@ public class FishCompletionFormatter: ShellCompletionFormatter {
             echo list
             echo bind
             echo unbind
-            echo attach
-            echo detach
             echo daemon
-            echo install-system-extension
-            echo diagnose
+            echo status
         end
         
         # Helper function to get device IDs
@@ -302,14 +299,6 @@ public class FishCompletionFormatter: ShellCompletionFormatter {
             switch $current_command
                 case bind unbind
                     __fish_usbipd_device_ids
-                case attach
-                    if test (count $cmd) -eq 3
-                        __fish_usbipd_ip_addresses
-                    else if test (count $cmd) -eq 4
-                        __fish_usbipd_device_ids
-                    end
-                case detach
-                    __fish_usbipd_ports
             end
         end
         """

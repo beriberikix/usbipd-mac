@@ -76,8 +76,8 @@ brew services info usbip
 
 #### System Extension: not required, and not installable this way
 
-Earlier versions of this document told you to run `sudo usbipd install-system-extension`
-after a Homebrew install. That command cannot succeed from a Homebrew prefix:
+There is no System Extension to install. The `install-system-extension` command was
+removed, because it could not succeed from a Homebrew prefix:
 `OSSystemExtensionRequest` resolves extensions inside the *calling app's* bundle and
 requires that bundle to live in `/Applications`, so the staged bundle is never
 consulted.
@@ -336,5 +336,4 @@ Release automation is handled by maintainers. Contributors should:
 
 ## License
 
-Intended to be MIT. **No `LICENSE` file exists in the repository yet** — this needs to
-be added before a release, since distribution without one leaves the terms unstated.
+[MIT License](LICENSE)

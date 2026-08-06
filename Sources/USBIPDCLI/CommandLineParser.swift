@@ -77,9 +77,7 @@ public class CommandLineParser {
             // commands only ever threw operationNotSupported. Listing them in --help
             // and in shell completions advertised capability that does not exist.
             DaemonCommand(server: server, serverConfig: serverConfig),
-            InstallSystemExtensionCommand(),
-            DiagnoseCommand(),
-            CompletionCommand()
+            CompletionCommand(parser: self)
         ]
         
         for command in commands {
