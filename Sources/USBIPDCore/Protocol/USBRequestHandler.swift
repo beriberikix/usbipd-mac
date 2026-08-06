@@ -46,6 +46,7 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
     public init(
         deviceDiscovery: DeviceDiscovery,
         deviceClaimManager: DeviceClaimManager,
+        config: ServerConfig? = nil,
         logger: ((String, LogLevel) -> Void)? = nil
     ) {
         self.deviceDiscovery = deviceDiscovery
@@ -53,7 +54,7 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         self.logger = logger
         
         // Initialize processors
-        self.submitProcessor = USBSubmitProcessor()
+        self.submitProcessor = USBSubmitProcessor(config: config)
         self.unlinkProcessor = USBUnlinkProcessor()
         
         // Link processors together for URB cancellation

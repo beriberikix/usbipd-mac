@@ -165,7 +165,8 @@ func main() {
     }
     
     // Create network service
-    let networkService = TCPServer()
+    let networkService = TCPServer(maxConnections: serverConfig.maxConnections,
+                                  connectionTimeout: serverConfig.connectionTimeout)
     logger.debug("Created TCPServer instance")
     
     // Create System Extension manager and device claim manager

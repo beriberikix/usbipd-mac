@@ -232,28 +232,24 @@ class MockUSBDeviceCommunicator: USBDeviceCommunicator {
 
     // Concurrency tests drive these from several tasks at once. Unsynchronized Set
     // mutation corrupts its storage, which surfaces as an unrelated-looking
-    // "unrecognized selector" crash rather than as a clean race report.
-    private let interfaceLock = NSLock()
+    // "unrecognized selector" crash rather than as a clean race report. A serial
+    // queue rather than NSLock: lock()/unlock() are unavailable from async contexts
+    // under Swift 6, and two of these three methods are async.
+    private let interfaceQueue = DispatchQueue(label: "MockUSBDeviceCommunicator.interfaces")
 
     func openUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
         let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
-        interfaceLock.lock()
-        defer { interfaceLock.unlock() }
-        openInterfaces.insert(key)
+        interfaceQueue.sync { _ = openInterfaces.insert(key) }
     }
     
     func closeUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
         let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
-        interfaceLock.lock()
-        defer { interfaceLock.unlock() }
-        openInterfaces.remove(key)
+        interfaceQueue.sync { _ = openInterfaces.remove(key) }
     }
     
     func isInterfaceOpen(device: USBDevice, interfaceNumber: UInt8) -> Bool {
         let key = "\(device.busID)-\(device.deviceID)-\(interfaceNumber)"
-        interfaceLock.lock()
-        defer { interfaceLock.unlock() }
-        return openInterfaces.contains(key)
+        return interfaceQueue.sync { openInterfaces.contains(key) }
     }
     
     // MARK: - Device Validation

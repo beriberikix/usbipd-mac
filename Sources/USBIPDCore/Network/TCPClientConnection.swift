@@ -13,6 +13,24 @@ public class TCPClientConnection: ClientConnection {
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "TCPClientConnection", qos: .userInitiated)
     private var isActive = false
+
+    /// When this connection last carried traffic, so the server can reap idle clients.
+    /// Guarded by its own lock because the reaper reads it off the connection queue.
+    private let activityLock = NSLock()
+    private var lastActivityTime = Date()
+
+    /// Seconds since this connection last sent or received anything.
+    internal var idleInterval: TimeInterval {
+        activityLock.lock()
+        defer { activityLock.unlock() }
+        return Date().timeIntervalSince(lastActivityTime)
+    }
+
+    private func recordActivity() {
+        activityLock.lock()
+        lastActivityTime = Date()
+        activityLock.unlock()
+    }
     private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "connection")
     
     /// Callback for data received events
@@ -21,6 +39,11 @@ public class TCPClientConnection: ClientConnection {
     /// Callback for error events
     public var onError: ((Error) -> Void)?
     
+    /// Set once this connection carries an attached device. An attached USB/IP session
+    /// is legitimately silent for long stretches — an idle keyboard sends nothing — so
+    /// reaping it on the idle timeout would break exactly the sessions that work.
+    public var keepAlive = false
+
     /// Internal callback for disconnection events
     internal var onDisconnected: ((UUID) -> Void)?
     
@@ -63,7 +86,9 @@ public class TCPClientConnection: ClientConnection {
             logger.error("Attempted to send data on inactive connection", context: ["connectionId": id.uuidString])
             throw NetworkError.connectionClosed
         }
-        
+
+        recordActivity()
+
         logger.debug("Sending data to client", context: [
             "connectionId": id.uuidString,
             "dataSize": data.count
@@ -113,6 +138,7 @@ public class TCPClientConnection: ClientConnection {
             }
             
             if let data = data, !data.isEmpty {
+                self.recordActivity()
                 self.logger.debug("Received data from client", context: [
                     "connectionId": self.id.uuidString,
                     "dataSize": data.count

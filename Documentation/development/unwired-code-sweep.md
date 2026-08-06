@@ -50,42 +50,46 @@ property of that name is a `LocalizedError` requirement reached through
 every hit needs checking against the conformance list before deletion. Only the static
 overload was genuinely unused.
 
-## Confirmed unwired, not yet addressed
+## Now enforced
 
-| Thing | State | Consequence |
-| --- | --- | --- |
-| `USBIPMessageValidator.validateUSBIPMessage` | zero callers, production *and* test | the buffer-size bound it contains is never applied |
-| `USBIPMessageValidator.validateSetupPacket` | zero callers | setup packets reach IOKit unvalidated |
-| `config.maxConnections` | only copied config→config by the `config` command | connection count is unbounded |
-| `config.connectionTimeout` | same | idle connections are never reaped |
-| `config.autoBindDevices` | same | setting it does nothing |
-| `config.maxTotalConcurrentRequests` | zero readers | no global request cap |
-| `config.usbOperationTimeout` | zero readers | the URB timeout is hardcoded to 5000 ms in `USBSubmitProcessor` |
-| `config.maxUSBBufferSize` | zero readers | see below |
-| `config.maxPendingURBsPerDevice` | zero readers | no per-device URB cap |
+Every row below was a setting that persisted, loaded, and validated its own range
+while nothing read it. Defaults match the constants that were previously hardcoded, so
+behaviour is unchanged for anyone who never set them.
 
-`config.*` entries are the worst of these for users: the settings are documented,
-persisted, and load cleanly, so there is nothing to suggest they are inert.
+| Setting | Where it now applies |
+| --- | --- |
+| `maxUSBBufferSize` | `USBSubmitProcessor.validateSubmitRequest` bounds the requested transfer |
+| `usbOperationTimeout` | replaces the hardcoded 5000 ms URB timeout |
+| `maxTotalConcurrentRequests` | replaces the hardcoded 64 in the concurrency check |
+| `maxPendingURBsPerDevice` | new per-device cap, so one busy device cannot consume the global budget |
+| `maxConnections` | `TCPServer` refuses connections past the limit; the accept path was unbounded |
+| `connectionTimeout` | `TCPServer` reaps idle connections |
 
-## Buffer bounds: what was and was not established
+Two consequences worth stating.
 
-`IOKitUSBInterface` guards bulk and isochronous with `bufferLength > 0` only, then
-calls `allocate(capacity: Int(bufferLength))` on a `UInt32` taken from the wire —
-up to 4 GiB. Interrupt is bounded at 8192. `config.maxUSBBufferSize` exists and is
-never read; the validator that would enforce it has no callers.
+**Reaping needed an exemption.** An attached USB/IP session is legitimately silent for
+long stretches — an idle keyboard sends nothing — so a plain idle timeout would have
+killed exactly the sessions that work. Connections are marked `keepAlive` once they
+carry an attached device, and the reaper skips them. Enforcing `maxConnections` is also
+what made `connectionTimeout` matter: with a cap of 10 and no reaping, ten silent
+clients lock everyone out.
 
-Measured against a running daemon with a 64 MiB `transfer_buffer_length`: RSS did
-not move. That is not evidence of a bound — `allocate` reserves address space and
-only faults pages in on touch, so RSS was the wrong instrument. **The size of the
-allocation is unbounded by anything in this code; whether it is exploitable was not
-established.** A test that settles it needs to watch VSZ, or request a size large
-enough to fail outright.
+**Rejections are now answered.** Validation failures used to throw, and a thrown error
+reaches `ServerCoordinator`, which logs it and sends nothing — the client waits on a
+reply that never arrives. Rejected requests now return a `RET_SUBMIT` carrying the
+error. Measured: a 64 MiB request against a running daemon returns
+`status=-22` immediately, where it previously blocked in `ReadPipe` until the client
+timed out.
 
-Separately, that request never returned: with the direction bit set, the daemon
-blocked in `ReadPipe` and the client timed out. `USBSubmitProcessor` sets a 5000 ms
-URB timeout, and the bulk path uses `ReadPipe` rather than `ReadPipeTO`, so the
-timeout is not applied. One client can hang a request indefinitely. Not investigated
-further.
+`autoBindDevices` was removed rather than implemented. Auto-binding every newly
+connected device is the opposite of the opt-in model the allow-list establishes, so
+wiring it would have undone that deliberately. Removing an unused key is safe for
+existing config files: Swift's synthesized `Codable` ignores keys it does not know.
+
+`validateUSBIPMessage` and `validateSetupPacket` were deleted rather than wired. Their
+checks now live in `validateSubmitRequest`, which is actually called, and one of the
+originals was broken anyway: `endpoint & 0x0F > 15` can never be true, since a nibble
+is at most 15.
 
 ## Reading the residue
 

@@ -454,7 +454,8 @@ public class ServerCoordinator: USBIPServer {
         self.requestProcessor.setUSBRequestHandler(
             USBRequestHandler(
                 deviceDiscovery: deviceDiscovery,
-                deviceClaimManager: self.deviceClaimManager
+                deviceClaimManager: self.deviceClaimManager,
+                config: config
             )
         )
 
@@ -516,6 +517,13 @@ public class ServerCoordinator: USBIPServer {
                         
                         // Send the response back to the client (this must be thread-safe)
                         try connection.send(data: responseData)
+
+                        // Once the socket carries an attached device it may go quiet
+                        // indefinitely, so exempt it from the idle reaper.
+                        if case .attached = connectionState.phase,
+                           let tcpConnection = connection as? TCPClientConnection {
+                            tcpConnection.keepAlive = true
+                        }
                         
                         self.logger.debug("Sent response to client", context: [
                             "connectionId": connection.id.uuidString,

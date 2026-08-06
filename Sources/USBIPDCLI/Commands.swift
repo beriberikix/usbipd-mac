@@ -614,7 +614,6 @@ public class DaemonCommand: Command {
                 serverConfig.maxConnections = loadedConfig.maxConnections
                 serverConfig.connectionTimeout = loadedConfig.connectionTimeout
                 serverConfig.allowedDevices = loadedConfig.allowedDevices
-                serverConfig.autoBindDevices = loadedConfig.autoBindDevices
                 serverConfig.logFilePath = loadedConfig.logFilePath
                 
                 logger.debug("Applied custom configuration to server")

@@ -19,7 +19,48 @@ public class TCPServer: NetworkService {
     /// Callback for client disconnection events
     public var onClientDisconnected: ((ClientConnection) -> Void)?
     
-    public init() {}
+    /// Largest number of simultaneous client connections. ServerConfig has carried a
+    /// maxConnections setting since the beginning and nothing read it, so the limit
+    /// documented to users was never applied and the accept path was unbounded.
+    private let maxConnections: Int
+
+    /// Idle connections are disconnected after this many seconds. Also a ServerConfig
+    /// setting that nothing read: with maxConnections now enforced, silent clients
+    /// would otherwise hold every slot indefinitely.
+    private let connectionTimeout: TimeInterval
+    private var idleTimer: DispatchSourceTimer?
+
+    public init(maxConnections: Int = 10, connectionTimeout: TimeInterval = 30.0) {
+        self.maxConnections = maxConnections
+        self.connectionTimeout = connectionTimeout
+    }
+
+    /// Periodically sweep for silent connections. Checked at a quarter of the timeout
+    /// so a connection is closed reasonably close to when it actually expires.
+    private func startIdleReaper() {
+        guard connectionTimeout > 0, idleTimer == nil else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let interval = max(1.0, connectionTimeout / 4)
+        timer.schedule(deadline: .now() + interval, repeating: interval)
+        timer.setEventHandler { [weak self] in
+            self?.reapIdleConnections()
+        }
+        timer.resume()
+        idleTimer = timer
+    }
+
+    /// Close connections that have been silent for longer than the configured timeout.
+    private func reapIdleConnections() {
+        let idle = connections.filter { !$0.value.keepAlive && $0.value.idleInterval > connectionTimeout }
+        for (id, connection) in idle {
+            logger.info("Disconnecting idle client", context: [
+                "connectionId": id.uuidString,
+                "idleSeconds": String(format: "%.0f", connection.idleInterval)
+            ])
+            try? connection.close()
+        }
+    }
     
     /// Start the TCP server on the specified port
     public func start(port: Int) throws {
@@ -63,6 +104,7 @@ public class TCPServer: NetworkService {
             switch state {
             case .ready:
                 self.isListening = true
+                self.startIdleReaper()
                 self.logger.info("TCP server is ready and listening")
             case .failed(let error):
                 self.isListening = false
@@ -124,6 +166,9 @@ public class TCPServer: NetworkService {
         }
         connections.removeAll()
         
+        idleTimer?.cancel()
+        idleTimer = nil
+
         // Stop the listener
         listener?.cancel()
         listener = nil
@@ -139,6 +184,15 @@ public class TCPServer: NetworkService {
     
     /// Handle new incoming connections
     private func handleNewConnection(_ nwConnection: NWConnection) {
+        guard connections.count < maxConnections else {
+            logger.warning("Refusing connection, limit reached", context: [
+                "activeConnections": String(connections.count),
+                "maxConnections": String(maxConnections)
+            ])
+            nwConnection.cancel()
+            return
+        }
+
         let clientConnection = TCPClientConnection(connection: nwConnection)
         connections[clientConnection.id] = clientConnection
         

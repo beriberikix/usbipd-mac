@@ -86,9 +86,6 @@ public class ServerConfig: Codable {
     /// Allowed device IDs (empty means all devices are allowed)
     public var allowedDevices: [String]
     
-    /// Auto-bind devices on server start
-    public var autoBindDevices: Bool
-    
     /// Log file path (nil means log to stdout only)
     public var logFilePath: String?
     
@@ -134,7 +131,6 @@ public class ServerConfig: Codable {
         maxConnections: Int = 10,
         connectionTimeout: TimeInterval = 30.0,
         allowedDevices: [String] = [],
-        autoBindDevices: Bool = false,
         logFilePath: String? = nil,
         maxConcurrentRequests: Int = 16,
         maxTotalConcurrentRequests: Int = 64,
@@ -153,7 +149,6 @@ public class ServerConfig: Codable {
         self.maxConnections = maxConnections
         self.connectionTimeout = connectionTimeout
         self.allowedDevices = allowedDevices
-        self.autoBindDevices = autoBindDevices
         self.logFilePath = logFilePath
         self.maxConcurrentRequests = maxConcurrentRequests
         self.maxTotalConcurrentRequests = maxTotalConcurrentRequests

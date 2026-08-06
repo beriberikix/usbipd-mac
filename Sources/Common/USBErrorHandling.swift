@@ -268,54 +268,6 @@ public struct USBIPErrorHandling {
         """
     }
     
-    /// Validate USB/IP protocol message parameters
-    public static func validateUSBIPMessage(
-        deviceID: UInt32,
-        endpoint: UInt8,
-        transferType: UInt8,
-        bufferLength: UInt32,
-        maxBufferSize: UInt32 = 1048576 // 1MB default limit
-    ) throws {
-        // Validate device ID (should be non-zero for valid devices)
-        if deviceID == 0 {
-            throw USBError.invalidDeviceID(deviceID)
-        }
-        
-        // Validate endpoint address (0-15 with direction bit)
-        if endpoint & 0x0F > 15 {
-            throw USBError.endpointError(endpoint, "Invalid endpoint number")
-        }
-        
-        // Validate transfer type
-        if transferType > 3 {
-            throw USBError.unsupportedTransferType(transferType)
-        }
-        
-        // Validate buffer size limits
-        if bufferLength > maxBufferSize {
-            throw USBError.bufferError("Buffer size \(bufferLength) exceeds maximum \(maxBufferSize)")
-        }
-    }
-    
-    /// Validate control transfer setup packet
-    public static func validateSetupPacket(_ setupData: Data?) throws {
-        guard let setup = setupData else {
-            throw USBError.setupPacketError("Setup packet required for control transfers")
-        }
-        
-        if setup.count != 8 {
-            throw USBError.setupPacketError("Setup packet must be exactly 8 bytes, got \(setup.count)")
-        }
-        
-        // Basic validation of setup packet structure
-        let bmRequestType = setup[0]
-        
-        // Check for reserved bits in bmRequestType
-        if (bmRequestType & 0x60) == 0x60 {
-            throw USBError.setupPacketError("Invalid bmRequestType: reserved bits set")
-        }
-    }
-    
     /// Check if an error is recoverable (should retry) or fatal (abort operation)
     public static func isRecoverableError(_ error: Error) -> Bool {
         switch error {

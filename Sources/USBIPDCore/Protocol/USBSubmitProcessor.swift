@@ -20,14 +20,31 @@ public class USBSubmitProcessor {
     /// Logger for error and diagnostic information
     private let logger = Logger(config: LoggerConfig(level: .info), subsystem: "com.usbipd.mac", category: "usb-submit-processor")
     
-    /// Maximum concurrent USB requests
-    private let maxConcurrentRequests: Int = 64
-    
+    /// Limits applied to client-supplied request parameters. These were configurable
+    /// and unread: the caps below were hardcoded here while ServerConfig persisted its
+    /// own values that nothing consulted. Defaults match the previous constants, so
+    /// behaviour is unchanged for anyone who never set them.
+    private let config: ServerConfig?
+
+    /// Maximum concurrent USB requests across all devices
+    private var maxConcurrentRequests: Int { config?.maxTotalConcurrentRequests ?? 64 }
+
+    /// Maximum in-flight URBs for any single device
+    private var maxPendingURBsPerDevice: Int { config?.maxPendingURBsPerDevice ?? 32 }
+
+    /// Largest transfer buffer a client may ask for
+    private var maxUSBBufferSize: UInt32 { config?.maxUSBBufferSize ?? 1_048_576 }
+
+    /// Per-operation USB timeout in milliseconds
+    private var usbOperationTimeout: UInt32 { config?.usbOperationTimeout ?? 5000 }
+
     /// Initialize with device communicator
     public init(deviceCommunicator: USBDeviceCommunicator? = nil,
-                deviceDiscovery: DeviceDiscovery? = nil) {
+                deviceDiscovery: DeviceDiscovery? = nil,
+                config: ServerConfig? = nil) {
         self.deviceCommunicator = deviceCommunicator
         self.deviceDiscovery = deviceDiscovery
+        self.config = config
     }
     
     /// Set the device communicator
@@ -56,11 +73,31 @@ public class USBSubmitProcessor {
             "endpoint": String(format: "0x%02x", request.ep)
         ])
         
-        // Validate request parameters
-        try validateSubmitRequest(request)
-        
-        // Check concurrent request limit
-        try await checkConcurrentRequestLimit()
+        // Answer rejected requests with a RET_SUBMIT carrying the error, rather than
+        // throwing. A thrown error reaches ServerCoordinator, which logs it and sends
+        // nothing, leaving the client waiting on a reply that never comes.
+        do {
+            try validateSubmitRequest(request)
+            try await checkConcurrentRequestLimit(devid: request.devid)
+        } catch {
+            logger.warning("Rejected SUBMIT request", context: [
+                "seqnum": String(request.seqnum),
+                "error": error.localizedDescription
+            ])
+            let errorResponse = createErrorResponse(from: request, error: error)
+            return try USBIPMessageEncoder.encodeUSBSubmitResponse(
+                seqnum: errorResponse.seqnum,
+                devid: errorResponse.devid,
+                direction: errorResponse.direction,
+                ep: errorResponse.ep,
+                status: errorResponse.status,
+                actualLength: errorResponse.actualLength,
+                startFrame: errorResponse.startFrame,
+                numberOfPackets: errorResponse.numberOfPackets,
+                errorCount: errorResponse.errorCount,
+                transferBuffer: errorResponse.transferBuffer
+            )
+        }
         
         // Create URB for tracking
         let urb = USBRequestBlock(
@@ -73,7 +110,7 @@ public class USBSubmitProcessor {
             bufferLength: request.transferBufferLength,
             setupPacket: request.setup.isEmpty ? nil : request.setup,
             transferBuffer: request.transferBuffer,
-            timeout: 5000,
+            timeout: usbOperationTimeout,
             startFrame: request.startFrame,
             numberOfPackets: request.numberOfPackets,
             interval: request.interval
@@ -146,6 +183,17 @@ public class USBSubmitProcessor {
             throw USBIPProtocolError.invalidMessageFormat
         }
         
+        // Bound the requested transfer size. IOKitUSBInterface allocates
+        // Int(bufferLength) directly from this value, so an unbounded UInt32 from the
+        // wire becomes an allocation of up to 4 GiB requested by a remote client.
+        guard request.transferBufferLength <= maxUSBBufferSize else {
+            logger.warning("Rejected oversized transfer", context: [
+                "requested": String(request.transferBufferLength),
+                "maximum": String(maxUSBBufferSize)
+            ])
+            throw USBRequestError.invalidParameters
+        }
+
         // Validate transfer buffer length for OUT transfers
         if request.direction == 0 { // OUT
             if let buffer = request.transferBuffer {
@@ -164,13 +212,26 @@ public class USBSubmitProcessor {
     }
     
     /// Check concurrent request limit
-    private func checkConcurrentRequestLimit() async throws {
-        let activeCount = urbQueue.sync { activeURBs.count }
-        
+    private func checkConcurrentRequestLimit(devid: UInt32) async throws {
+        let (activeCount, deviceCount) = urbQueue.sync {
+            (activeURBs.count, activeURBs.values.filter { $0.urb.devid == devid }.count)
+        }
+
         guard activeCount < maxConcurrentRequests else {
             logger.warning("Concurrent request limit reached", context: [
                 "activeRequests": String(activeCount),
                 "maxRequests": String(maxConcurrentRequests)
+            ])
+            throw USBRequestError.tooManyRequests
+        }
+
+        // Without a per-device cap one busy device can consume the whole global
+        // budget and starve every other bound device.
+        guard deviceCount < maxPendingURBsPerDevice else {
+            logger.warning("Per-device URB limit reached", context: [
+                "devid": String(devid),
+                "devicePending": String(deviceCount),
+                "maxPerDevice": String(maxPendingURBsPerDevice)
             ])
             throw USBRequestError.tooManyRequests
         }

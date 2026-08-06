@@ -33,7 +33,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(config.maxConnections, 10)
         XCTAssertEqual(config.connectionTimeout, 30.0)
         XCTAssertTrue(config.allowedDevices.isEmpty)
-        XCTAssertFalse(config.autoBindDevices)
         XCTAssertNil(config.logFilePath)
     }
     
@@ -45,7 +44,6 @@ final class ServerConfigTests: XCTestCase {
             maxConnections: 5,
             connectionTimeout: 60.0,
             allowedDevices: ["device1", "device2"],
-            autoBindDevices: true,
             logFilePath: "/tmp/usbipd.log"
         )
         
@@ -55,7 +53,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(config.maxConnections, 5)
         XCTAssertEqual(config.connectionTimeout, 60.0)
         XCTAssertEqual(config.allowedDevices, ["device1", "device2"])
-        XCTAssertTrue(config.autoBindDevices)
         XCTAssertEqual(config.logFilePath, "/tmp/usbipd.log")
     }
     
@@ -70,7 +67,6 @@ final class ServerConfigTests: XCTestCase {
             maxConnections: 15,
             connectionTimeout: 45.0,
             allowedDevices: ["test-device-1", "test-device-2"],
-            autoBindDevices: true,
             logFilePath: "/tmp/test-log.log"
         )
         
@@ -87,7 +83,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(loadedConfig.maxConnections, originalConfig.maxConnections)
         XCTAssertEqual(loadedConfig.connectionTimeout, originalConfig.connectionTimeout)
         XCTAssertEqual(loadedConfig.allowedDevices, originalConfig.allowedDevices)
-        XCTAssertEqual(loadedConfig.autoBindDevices, originalConfig.autoBindDevices)
         XCTAssertEqual(loadedConfig.logFilePath, originalConfig.logFilePath)
     }
     
