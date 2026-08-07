@@ -213,6 +213,23 @@ swift build --build-tests -Xswiftc -warnings-as-errors
 
 ### Hardware validation
 
+**Validate release builds, not debug.** `swift test` and `swift build` are debug, and
+the verification scripts talk to a daemon over TCP so they cannot tell which binary is
+behind the socket. v0.5.0 shipped with control transfers broken for exactly this reason:
+`performControlTransfer` read a pointer that escaped a `withUnsafeBytes` closure, which
+debug builds tolerated and optimised builds did not.
+
+```bash
+./Scripts/verify-hardware.sh                      # builds release, binds, runs the checks
+./Scripts/verify-hardware.sh --configuration debug
+./Scripts/verify-hardware.sh --busid 1-17
+```
+
+It picks the first bindable non-hub device, polls until the daemon listens, runs a
+control transfer and — for a J-Link — a bulk exchange, then unbinds and stops the
+daemon. It exits non-zero when a transfer fails, verified by reintroducing the v0.5.0
+bug and confirming it is caught.
+
 Unit tests cannot reach the IOKit transfer path, and mocks of it have been wrong in
 ways the suite could not detect. Three scripts exercise real hardware:
 
@@ -243,6 +260,8 @@ existed in the repository.
   attached. See `Documentation/development/entitlement-validation.md`
 - `entitlement-validation/USBClaimProbe.swift`: the probe the above compiles and signs
 - `verify-jlink-bulk.py`: J-Link protocol exchange over USB/IP, proving bulk transfers
+- `verify-hardware.sh`: builds a chosen configuration, binds a device and runs the
+  checks below against it. Defaults to release, which is the point
 - `verify-usb-transfer.py`: raw USB/IP control transfer, bypassing kernel enumeration
 - `verify-adb-protocol.py`: sends an ADB CNXN to an Android device and reads its reply,
   which tests the transport without depending on adb's connection state machine
