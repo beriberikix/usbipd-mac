@@ -10,5 +10,5 @@ import Foundation
 /// was built from. Keeping it in one place is what makes `usbipd --version` mean
 /// something.
 public enum USBIPDVersion {
-    public static let current = "0.5.1"
+    public static let current = "0.5.2"
 }

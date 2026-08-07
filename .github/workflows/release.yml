@@ -163,16 +163,54 @@ jobs:
           
           echo "🏗️ Building release artifacts for $VERSION..."
           
-          # Build optimized release binaries
+          # Build optimized release binaries.
+          #
+          # usbipd is built for both architectures and then split, rather than shipped
+          # as one universal binary. Releases through v0.5.1 were arm64 only, because
+          # this ran a plain `swift build` on an Apple silicon runner, so Intel Macs got
+          # "Bad CPU type in executable" (#32). A universal binary fixes that but doubles
+          # the download for everyone; splitting gives each user one ~5.4 MB artifact,
+          # slightly smaller than the arm64-only build was.
+          swift build --configuration release --arch arm64 --arch x86_64 --product usbipd
+
+          UNIVERSAL="$(swift build --configuration release --arch arm64 --arch x86_64 --product usbipd --show-bin-path 2>/dev/null)/usbipd"
+          if [ ! -f "$UNIVERSAL" ]; then
+            UNIVERSAL=".build/apple/Products/Release/usbipd"
+          fi
+          if [ ! -f "$UNIVERSAL" ]; then
+            echo "::error title=Build Missing::No universal usbipd binary was produced"
+            exit 1
+          fi
+
+          echo "🔍 Universal binary: $(lipo -archs "$UNIVERSAL")"
+
+          # The rest of the build stays host-architecture: only the CLI is distributed
+          # to end users, and the system extension is inert (see the formula).
           swift build --configuration release
-          
-          # Build system extension explicitly
           echo "🏗️ Building system extension bundle..."
           swift build --configuration release --product USBIPDSystemExtension
-          
-          # Package main executable
+
+          # Split into per-architecture artifacts. lipo -thin drops the code signature,
+          # so each slice is signed separately further down — signing before this point
+          # would be wasted.
+          USBIPD_ARM64="$ARTIFACTS_DIR/usbipd-$VERSION-macos-arm64"
+          USBIPD_X86_64="$ARTIFACTS_DIR/usbipd-$VERSION-macos-x86_64"
+          lipo "$UNIVERSAL" -thin arm64  -output "$USBIPD_ARM64"
+          lipo "$UNIVERSAL" -thin x86_64 -output "$USBIPD_X86_64"
+
+          for slice in "$USBIPD_ARM64:arm64" "$USBIPD_X86_64:x86_64"; do
+            path="${slice%:*}"; want="${slice##*:}"
+            got=$(lipo -archs "$path")
+            if [ "$got" != "$want" ]; then
+              echo "::error title=Wrong Architecture::$path is $got, expected $want"
+              exit 1
+            fi
+            echo "   $(basename "$path"): $got, $(stat -f%z "$path") bytes"
+          done
+
+          # Kept so existing references and the checksums glob still see a usbipd binary.
           USBIPD_PATH="$ARTIFACTS_DIR/usbipd-$VERSION-macos"
-          cp .build/release/usbipd "$USBIPD_PATH"
+          cp "$USBIPD_ARM64" "$USBIPD_PATH"
           
           # Package system extension bundle
           echo "📦 Packaging system extension bundle..."
@@ -254,12 +292,19 @@ jobs:
             # So the entitlements are only applied when a profile is present. Without
             # one, sign exactly as before: hardened runtime for notarization, no
             # entitlements, and a daemon that actually starts.
-            if [ -n "$DRIVERKIT_PROVISIONING_PROFILE" ]; then
-              echo "   signing usbipd with entitlements (provisioning profile present)"
-              codesign --sign "Developer ID Application" --entitlements "$ARTIFACTS_DIR/usbipd.entitlements" --options runtime --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
-            else
-              echo "   signing usbipd without entitlements (no provisioning profile)"
-              codesign --sign "Developer ID Application" --options runtime --timestamp "$USBIPD_PATH" || echo "::warning::Code signing failed for usbipd"
+            # Every usbipd artifact is signed, including both architecture slices:
+            # lipo -thin strips the signature, so an unsigned slice would ship.
+            for target in "$USBIPD_PATH" "$USBIPD_ARM64" "$USBIPD_X86_64"; do
+              [ -f "$target" ] || continue
+              if [ -n "$DRIVERKIT_PROVISIONING_PROFILE" ]; then
+                echo "   signing $(basename "$target") with entitlements (provisioning profile present)"
+                codesign --sign "Developer ID Application" --entitlements "$ARTIFACTS_DIR/usbipd.entitlements" --options runtime --timestamp "$target" || echo "::warning::Code signing failed for $(basename "$target")"
+              else
+                echo "   signing $(basename "$target") without entitlements (no provisioning profile)"
+                codesign --sign "Developer ID Application" --options runtime --timestamp "$target" || echo "::warning::Code signing failed for $(basename "$target")"
+              fi
+            done
+            if [ -z "$DRIVERKIT_PROVISIONING_PROFILE" ]; then
               echo "::warning::usbipd signed without entitlements. It cannot install the System Extension, but it will launch. Set DRIVERKIT_PROVISIONING_PROFILE to enable them."
             fi
 

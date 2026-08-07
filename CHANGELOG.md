@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.2] - 2026-08-07
+
+### Added — Intel Macs are supported again
+
+Releases through v0.5.1 shipped an arm64-only binary, because the release workflow ran
+a plain `swift build` on an Apple silicon runner. Installing on an Intel Mac succeeded
+and then failed with `Bad CPU type in executable` (#32).
+
+The build now produces both architectures and splits them with `lipo`, publishing
+`usbipd-<version>-macos-arm64` and `usbipd-<version>-macos-x86_64`. The formula selects
+with `on_arm`/`on_intel`, so each user downloads one artifact of about 5.4 MB — slightly
+smaller than the arm64-only build, rather than the 10.8 MB a universal binary would
+cost everyone. Each slice is signed separately, since `lipo -thin` strips the signature.
+
 ## [v0.5.1] - 2026-08-07
 
 ### Fixed — control transfers were broken in release builds only
