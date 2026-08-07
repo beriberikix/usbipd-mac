@@ -63,9 +63,18 @@ The easiest way to install usbipd-mac is through Homebrew:
 # Add the usbip tap
 brew tap beriberikix/usbipd-mac
 
+# Trust the tap. Homebrew 6 refuses to load formulae from untrusted third-party taps,
+# and there is nothing a tap author can do about it — trust is a per-user decision, and
+# only official Homebrew taps are trusted automatically.
+brew trust beriberikix/usbipd-mac
+
 # Install usbip
 brew install usbip
 ```
+
+Without the trust step: `Refusing to load formula beriberikix/usbipd-mac/usbip from
+untrusted tap`. Trusting a single formula rather than the whole tap also works:
+`brew trust --formula beriberikix/usbipd-mac/usbip`.
 
 #### Service Management
 
@@ -307,6 +316,7 @@ The release workflow uses homebrew-releaser for direct formula updates:
 brew uninstall usbip || true
 brew untap beriberikix/usbipd-mac || true
 brew tap beriberikix/usbipd-mac
+brew trust beriberikix/usbipd-mac
 brew install usbip
 ```
 
