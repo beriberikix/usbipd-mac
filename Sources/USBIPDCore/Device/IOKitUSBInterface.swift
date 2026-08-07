@@ -573,10 +573,15 @@ public final class IOKitUSBInterface: @unchecked Sendable {
             throw USBRequestError.setupPacketInvalid
         }
         
-        // Extract setup packet components
-        let setupBytes = setupPacket.withUnsafeBytes { bytes in
-            bytes.bindMemory(to: UInt8.self)
-        }
+        // Extract setup packet components.
+        //
+        // This used to return `bytes.bindMemory(to:)` out of `setupPacket.withUnsafeBytes`.
+        // That pointer is only valid inside the closure, so every read below was of freed
+        // memory. Debug builds happened to leave the bytes intact and worked; optimised
+        // builds did not, so bmRequestType, bRequest, wValue, wIndex and wLength became
+        // garbage, the device received a malformed request and stalled the pipe —
+        // kIOUSBPipeStalled, surfacing to clients as EPROTO. Copying is cheap: eight bytes.
+        let setupBytes = [UInt8](setupPacket)
         
         let bmRequestType = setupBytes[0]
         let bRequest = setupBytes[1]

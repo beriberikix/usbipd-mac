@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — control transfers were broken in release builds only
+
+`performControlTransfer` returned a pointer out of `setupPacket.withUnsafeBytes`,
+which only guarantees it inside the closure. Every subsequent read was of freed
+memory. Debug builds happened to leave the bytes intact, so all prior validation
+passed; optimised builds did not, so `bmRequestType`, `bRequest`, `wValue`, `wIndex`
+and `wLength` became garbage, the device received a malformed request, and the pipe
+stalled — `kIOUSBPipeStalled`, reaching clients as EPROTO.
+
+This affected **v0.5.0 as shipped**: control transfers are how a client enumerates a
+device, so attaching from Linux would fail against the released binary even though bulk
+transfers worked. Found by testing the Homebrew-installed artifact rather than a local
+debug build.
+
 ## [v0.5.0] - 2026-08-06
 
 First release in which the software does what it claims. Every prior release shipped a
