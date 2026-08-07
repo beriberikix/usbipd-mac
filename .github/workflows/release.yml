@@ -362,7 +362,15 @@ jobs:
           
           echo "📊 Generating checksums..."
           # Only checksum files, not directories
-          find . -maxdepth 1 -type f \( -name "*.macos" -o -name "*.tar.gz" \) -exec shasum -a 256 {} \; > "$CHECKSUMS_FILE"
+          # The binaries are named usbipd-vX.Y.Z-macos, so they end in "-macos" and the
+          # old "*.macos" glob never matched one. checksums-v0.5.0.sha256 shipped
+          # covering only the tarballs, with no hash for the binary anyone downloads.
+          find . -maxdepth 1 -type f \( -name "*-macos" -o -name "*.tar.gz" \) -exec shasum -a 256 {} \; > "$CHECKSUMS_FILE"
+
+          if ! grep -q -- "-macos" "$CHECKSUMS_FILE"; then
+            echo "::error title=Checksums Incomplete::No binary checksum was recorded"
+            exit 1
+          fi
           
           # Extract specific checksums for metadata generation
           CLI_SHA256=$(shasum -a 256 usbipd-${{ needs.release-validation.outputs.version }}-macos | cut -d' ' -f1)
@@ -788,8 +796,18 @@ jobs:
           echo "   • Event: formula_update"
           echo "   • Version: $VERSION"
           
-          # Send repository dispatch event using curl for better JSON handling
-          curl -X POST \
+          # The token is a PAT with access to the tap repository. GITHUB_TOKEN cannot
+          # write to another repository, so an absent secret means the dispatch silently
+          # 401s — which is exactly what happened for v0.5.0.
+          if [ -z "${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}" ]; then
+            echo "::error title=Missing Token::HOMEBREW_TAP_DISPATCH_TOKEN is not set; the tap cannot be updated"
+            exit 1
+          fi
+
+          # Capture the status. Without this the step reported success on a 401 and the
+          # formula sat pointing at a deleted release.
+          HTTP_STATUS=$(curl -sS -o /tmp/dispatch-response.json -w '%{http_code}' \
+            -X POST \
             -H "Authorization: token ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Content-Type: application/json" \
@@ -806,9 +824,20 @@ jobs:
                 "triggered_by": "automated-release",
                 "prerelease": '"$PRERELEASE"'
               }
-            }'
-          
-          echo "::notice title=Dispatch Sent::Repository dispatch event sent successfully"
+            }')
+
+          # A successful dispatch is 204 No Content.
+          if [ "$HTTP_STATUS" != "204" ]; then
+            echo "::error title=Dispatch Failed::Tap dispatch returned HTTP $HTTP_STATUS"
+            cat /tmp/dispatch-response.json 2>/dev/null || true
+            echo ""
+            echo "401 or 404 means HOMEBREW_TAP_DISPATCH_TOKEN is missing, expired, or"
+            echo "lacks access to beriberikix/homebrew-usbipd-mac."
+            echo "The formula will keep pointing at the previous release until this is fixed."
+            exit 1
+          fi
+
+          echo "::notice title=Dispatch Sent::Repository dispatch accepted (HTTP 204)"
           echo "✅ Formula update event dispatched to tap repository"
           echo "🔗 Monitor tap repository: https://github.com/beriberikix/homebrew-usbipd-mac/actions"
           echo "::endgroup::"
