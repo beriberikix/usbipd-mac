@@ -136,9 +136,14 @@ extensions inside the *calling app's* bundle and requires that bundle to live in
 `/Applications`, so a Homebrew prefix is never consulted. See
 `Sources/USBIPDCore/SystemExtension/README.md`.
 
-The `install-system-extension` command has since been removed from the CLI, so the
-formula's `post_install` instruction to run it now names a command that does not exist.
-Removing that instruction and the staged sysext resource is what remains. That is a change in the tap repository, not here.
+Done: the system extension resource, its staging, and the `post_install` instruction
+were removed from the tap on 2026-08-06.
+
+The formula is now kept current by `formula-sync.yml` in the tap, which polls this
+repository's latest release every six hours and commits with its own `GITHUB_TOKEN`.
+That replaced a `repository_dispatch` which needed a personal access token here — the
+token expired after a year, the dispatch returned 401, and the sending step reported
+success anyway, so v0.5.0 shipped with the formula pointing at a deleted release. That is a change in the tap repository, not here.
 
 A cask is **not** needed for this release. It becomes the right vehicle only if a real
 DriverKit extension appears, since a dext must live in an app bundle in `/Applications`.
