@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.3] - 2026-08-08
+
+### Fixed — the CLI was unusable to read
+
+A plain `usbipd list` printed roughly forty lines of debug logging around three lines
+of output. Every component constructs its own `Logger` with a hardcoded level — 27 at
+`.info`, 3 at `.debug` — so `ServerConfig.logLevel` governed nothing. `Logger` now has a
+process-wide floor defaulting to `.warning`, which wins where it is stricter. The daemon
+raises it to `.info`, since its output goes to a log file, and `USBIPD_LOG_LEVEL`
+overrides both.
+
+### Fixed — `usbipd -v` reported the wrong build
+
+A Homebrew-installed release binary printed `Build: Development`, because `main.swift`
+emitted that literal. A correct implementation existed in `CommandLineParser` but was
+never reached, since `main.swift` intercepts `-v` first. Both now read one value.
+
+### Fixed — the CLI hunted for a System Extension on every command
+
+The bundle detector walked the filesystem on every invocation, including the
+developer's own `.build` directory: an installed binary was scanning a source tree it
+found there and adopting a debug bundle from it. The manager was also started each
+time, restoring claim state for a subsystem that cannot be activated from a Homebrew
+prefix. Neither now happens, and `usbipd status` no longer instructs users to install a
+System Extension they cannot install.
+
+### Fixed — `usbipd completion` wrote files when given no verb
+
+The action defaulted to `generate`, whose output directory defaults to the working
+directory, so a bare `usbipd completion` silently wrote three completion scripts
+wherever the user was standing. It now prints usage.
+
 ## [v0.5.2] - 2026-08-07
 
 ### Added — Intel Macs are supported again
