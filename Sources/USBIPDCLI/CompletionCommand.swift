@@ -61,9 +61,14 @@ public class CompletionCommand: Command {
         
         // Validate options
         try validateOptions(options)
-        
+
+        guard let action = options.action else {
+            printHelp()
+            return
+        }
+
         // Execute the requested action
-        switch options.action {
+        switch action {
         case .generate:
             try executeGenerate(options: options)
         case .test:
@@ -742,7 +747,11 @@ private enum CompletionAction: String {
 
 /// Completion command options
 private struct CompletionOptions {
-    var action: CompletionAction = .generate
+    // No default action. This used to default to .generate, so a bare
+    // `usbipd completion` silently wrote three completion scripts into whatever
+    // directory the user happened to be in — a command with no verb should not have a
+    // filesystem side effect.
+    var action: CompletionAction?
     var outputDirectory: String?
     var shells: [String] = []
     var verbose: Bool = false
