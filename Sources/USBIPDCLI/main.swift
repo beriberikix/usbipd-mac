@@ -82,7 +82,7 @@ private func handleEarlyExit(_ arguments: [String]) {
     if args[0] == "--version" || args[0] == "-v" {
         print("USB/IP Daemon for macOS")
         print("Version: \(USBIPDVersion.current)")
-        print("Build: Development")
+        print("Build: \(USBIPDVersion.build)")
         return
     }
 }
@@ -120,68 +120,40 @@ func main() {
         logger.info("Using default server configuration")
     }
     
-    // Detect System Extension bundle if available (using enhanced detection)
-    logger.debug("Attempting enhanced System Extension bundle detection")
-    let bundleDetector = SystemExtensionBundleDetector()
-    let detectionResult = bundleDetector.detectBundle()
-    
-    if detectionResult.found {
-        logger.info("System Extension bundle detected", context: [
-            "bundlePath": detectionResult.bundlePath ?? "unknown",
-            "bundleIdentifier": detectionResult.bundleIdentifier ?? "unknown",
-            "environment": "\(detectionResult.detectionEnvironment)"
-        ])
-        
-        // Log Homebrew metadata if available
-        if let homebrewMetadata = detectionResult.homebrewMetadata {
-            logger.info("Homebrew metadata detected", context: [
-                "version": homebrewMetadata.version ?? "unknown",
-                "installationDate": homebrewMetadata.installationDate?.description ?? "unknown"
-            ])
-        }
-        
-        // Update server configuration with detected bundle
-        if let bundleConfig = SystemExtensionBundleConfig.from(detectionResult: detectionResult) {
-            serverConfig.updateSystemExtensionBundleConfig(bundleConfig)
-            logger.debug("Updated server configuration with enhanced System Extension bundle detection")
-        }
-    } else {
-        logger.info("No System Extension bundle detected", context: [
-            "issues": detectionResult.issues.joined(separator: ", "),
-            "environment": "\(detectionResult.detectionEnvironment)"
-        ])
-        
-        // Provide helpful information about installation
-        if case .homebrew = detectionResult.detectionEnvironment {
-            logger.debug("Homebrew environment detected")
-        } else if case .development = detectionResult.detectionEnvironment {
-            logger.info("Development environment detected - ensure swift build has been run")
-        }
-        
-        // Disable auto-installation if no bundle is available
-        if !detectionResult.issues.isEmpty {
-            logger.debug("Disabling System Extension auto-installation due to bundle detection issues")
-        }
+    // The System Extension bundle detector is not run.
+    //
+    // It walked the filesystem on every invocation looking for a bundle, including the
+    // developer's own .build directory — a Homebrew-installed binary was scanning
+    // /Users/<someone>/code/usbipd-mac/.build and adopting a debug bundle it found
+    // there. That work is pointless: no shipping path can activate a System Extension,
+    // because OSSystemExtensionRequest resolves extensions inside the calling app's
+    // bundle and requires that bundle to live in /Applications.
+    //
+    // See Sources/USBIPDCore/SystemExtension/README.md.
+
+    // The daemon's output goes to a log file, where detail is wanted; a CLI command's
+    // goes to someone's terminal, where it is noise. Raise the floor for the daemon
+    // only — an earlier attempt raised it here unconditionally, which put every INFO
+    // line back into `usbipd list`. An explicit USBIPD_LOG_LEVEL always wins.
+    if ProcessInfo.processInfo.environment["USBIPD_LOG_LEVEL"] == nil,
+       CommandLine.arguments.dropFirst().first == "daemon" {
+        Logger.globalLevel = .info
     }
-    
+
     // Create network service
     let networkService = TCPServer(maxConnections: serverConfig.maxConnections,
                                   connectionTimeout: serverConfig.connectionTimeout)
     logger.debug("Created TCPServer instance")
     
-    // Create System Extension manager and device claim manager
+    // The System Extension manager is still constructed because the claim manager and
+    // several commands are typed against it, but it is no longer started here.
+    //
+    // Starting it restored persisted claim state and spun up health checking on every
+    // invocation of every command, including `usbipd list`. None of that can lead
+    // anywhere: the extension cannot be activated from a Homebrew install, so the
+    // claims it restores are bookkeeping over a subsystem that never runs.
     let systemExtensionManager = USBIPDCore.SystemExtensionManager()
     let deviceClaimManager = SystemExtensionClaimAdapter(systemExtensionManager: systemExtensionManager)
-    logger.debug("Created SystemExtensionManager and DeviceClaimManager")
-    
-    // Start System Extension manager for device claiming operations
-    do {
-        try systemExtensionManager.start()
-        logger.debug("SystemExtensionManager started successfully")
-    } catch {
-        logger.warning("Failed to start SystemExtensionManager", context: ["error": error.localizedDescription])
-        // Continue without System Extension support for now
-    }
     
     // Create server coordinator with System Extension parameters if available
     let server = ServerCoordinator(

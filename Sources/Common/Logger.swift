@@ -122,6 +122,31 @@ public final class Logger {
     
     /// Shared logger instance
     public static let shared = Logger()
+
+    /// Process-wide floor on what gets emitted.
+    ///
+    /// Every component constructs its own `Logger` with a hardcoded level — 27 at
+    /// `.info` and 3 at `.debug` — so `ServerConfig.logLevel` controlled nothing and a
+    /// plain `usbipd list` printed dozens of DEBUG lines around its output. Rather than
+    /// chase every call site, the stricter of the two levels wins, so this single value
+    /// governs verbosity.
+    ///
+    /// Defaults to `.warning`: a CLI should print its results, not its reasoning. The
+    /// daemon raises it, since its output goes to a log file where detail is wanted.
+    /// `USBIPD_LOG_LEVEL=debug|info|warning|error|critical` overrides it.
+    public static var globalLevel: LogLevel = {
+        if let raw = ProcessInfo.processInfo.environment["USBIPD_LOG_LEVEL"]?.lowercased() {
+            switch raw {
+            case "debug": return .debug
+            case "info": return .info
+            case "warning", "warn": return .warning
+            case "error": return .error
+            case "critical": return .critical
+            default: break
+            }
+        }
+        return .warning
+    }()
     
     /// Initialize logger with configuration
     /// - Parameters:
@@ -154,7 +179,8 @@ public final class Logger {
         line: Int = #line
     ) {
         // Check if we should log at this level
-        guard level >= config.level else { return }
+        // The stricter of the instance level and the process-wide floor.
+        guard level >= config.level, level >= Logger.globalLevel else { return }
         
         queue.async { [weak self] in
             self?.performLog(level, message, context: context, file: file, function: function, line: line)

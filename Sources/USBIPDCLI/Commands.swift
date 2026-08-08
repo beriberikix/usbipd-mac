@@ -135,8 +135,9 @@ public class ListCommand: Command {
             print(formattedOutput)
             
             if devices.isEmpty {
+                // The formatter already emits this line; printing it here too showed it
+                // twice.
                 logger.info("No USB devices found")
-                print("No USB devices found.")
             }
             
             logger.debug("List command executed successfully")

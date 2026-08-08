@@ -136,10 +136,6 @@ public class CommandLineParser {
     
     /// Get build information
     private func getBuildInfo() -> String {
-        #if DEBUG
-        return "debug"
-        #else
-        return "release"
-        #endif
+        return USBIPDVersion.build
     }
 }

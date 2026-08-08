@@ -11,4 +11,18 @@ import Foundation
 /// something.
 public enum USBIPDVersion {
     public static let current = "0.5.2"
+
+    /// Whether this binary was built with optimisations.
+    ///
+    /// `usbipd -v` printed the literal "Build: Development" from main.swift, so a
+    /// Homebrew-installed release binary claimed to be a development build. A correct
+    /// implementation already existed in CommandLineParser, but main.swift intercepts
+    /// -v before the parser is reached, so the wrong one always won.
+    public static var build: String {
+        #if DEBUG
+        return "debug"
+        #else
+        return "release"
+        #endif
+    }
 }

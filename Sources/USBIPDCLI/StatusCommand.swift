@@ -50,17 +50,21 @@ public class StatusCommand: Command {
         }
         
         guard let claimManager = deviceClaimManager else {
-            logger.warning("System Extension not available")
-            print("System Extension Status: Not Available")
+            // This used to tell people to install and approve a System Extension. They
+            // cannot: OSSystemExtensionRequest resolves extensions inside the calling
+            // app's bundle and requires that bundle to live in /Applications, so a
+            // Homebrew install is never consulted. It is also unnecessary — nothing
+            // usbipd can serve needs one.
+            logger.debug("No System Extension claim manager; reporting userspace mode")
+            print("Device access: userspace (IOKit), no System Extension")
             print("")
-            print("⚠ System Extension integration is not active")
-            print("The USB/IP daemon is running without System Extension support.")
-            print("Device claiming through System Extension is disabled.")
+            print("Devices macOS has not bound a driver to can be shared: debug probes,")
+            print("boards in DFU or bootloader mode, Android in ADB mode, and other")
+            print("vendor-specific interfaces. No entitlement is required for these.")
             print("")
-            print("To enable System Extension functionality:")
-            print("1. Ensure macOS System Extension requirements are met")
-            print("2. Install and activate the USB/IP System Extension")
-            print("3. Grant necessary permissions in System Preferences")
+            print("Devices macOS claims — USB-serial, HID, mass storage, audio, cameras —")
+            print("cannot be shared. 'usbipd bind' refuses them and names the owner.")
+            print("Releasing them needs a DriverKit entitlement Apple must grant.")
             return
         }
         
