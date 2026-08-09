@@ -303,9 +303,6 @@ public class ServerConfig: Codable {
     
 }
 
-// MARK: - System Extension Bundle Configuration Models
-// Note: These types are referenced from SystemExtensionBundleDetector
-
 /// Extension to add configuration error to ServerError
 extension ServerError {
     public static func configurationError(_ message: String) -> ServerError {

@@ -96,17 +96,21 @@ sudo brew services restart usbip
 brew services info usbip
 ```
 
-#### System Extension: not required, and not installable this way
+#### There is no System Extension
 
-There is no System Extension to install. The `install-system-extension` command was
-removed, because it could not succeed from a Homebrew prefix:
-`OSSystemExtensionRequest` resolves extensions inside the *calling app's* bundle and
-requires that bundle to live in `/Applications`, so the staged bundle is never
-consulted.
+usbipd serves devices from userspace through IOKit. It needs no System Extension, no
+DriverKit extension and no entitlement to do it.
 
-It is also unnecessary. Devices macOS has not bound a driver to are served without any
-System Extension, and devices it has bound are not reachable with one either — that
-needs a DriverKit entitlement Apple must grant. See
+The subsystem that once claimed otherwise was removed in 0.7.0 — some 24,000 lines that
+no shipping path could reach. It could not have worked: `OSSystemExtensionRequest`
+resolves extensions inside the *calling process's own* bundle and requires that bundle
+to live in `/Applications`, which a Homebrew-installed binary is not. Its device-claiming
+strategy was also measured not to unbind anything.
+
+What that leaves is honest and unchanged in practice: devices macOS has not bound a
+driver to are served, and devices whose interfaces it holds are refused by `bind`, which
+names the owner. Changing the second group needs a DriverKit entitlement Apple must
+grant, and an app bundle to activate it from. See
 [Documentation/development/driver-free-release.md](Documentation/development/driver-free-release.md).
 
 
@@ -229,7 +233,6 @@ For detailed information about development, architecture, and troubleshooting, s
 ### Development Documentation
 - [**Architecture**](Documentation/development/architecture.md) - System design and component overview
 - [**CI/CD Pipeline**](Documentation/development/ci-cd.md) - Continuous integration and branch protection
-- [**System Extension Development**](Documentation/development/system-extension-development.md) - System Extension setup and development
 - [**Testing Strategy**](Documentation/development/testing-strategy.md) - Test environments and validation approaches
 
 ### API and Protocol Documentation
@@ -239,8 +242,6 @@ For detailed information about development, architecture, and troubleshooting, s
 
 ### Troubleshooting Guides
 - [**Build Troubleshooting**](Documentation/troubleshooting/build-troubleshooting.md) - Common build and setup issues
-- [**System Extension Troubleshooting**](Documentation/troubleshooting/system-extension-troubleshooting.md) - System Extension specific problems
-- [**Homebrew Troubleshooting**](Documentation/homebrew-troubleshooting.md) - Homebrew installation and service issues
 - [**QEMU Troubleshooting**](Documentation/troubleshooting/qemu-troubleshooting.md) - QEMU test server issues
 
 ## Release Automation

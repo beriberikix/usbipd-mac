@@ -91,10 +91,14 @@ Isochronous is not merely untested but structurally incomplete: alternate settin
 never selected and pipes are discovered once at open, so a UVC device's isochronous
 endpoints would never appear. See `Documentation/development/probe-rs-validation.md`.
 
-The **SystemExtension** target is quarantined — roughly 20,000 lines that no shipping
-path uses. `OSSystemExtensionRequest` resolves extensions inside the calling app's
-bundle and requires that bundle to live in `/Applications`, so a Homebrew install
-never consults it. See `Sources/USBIPDCore/SystemExtension/README.md`.
+The **SystemExtension subsystem was removed in 0.7.0** — some 24,000 lines that no
+shipping path could reach. `OSSystemExtensionRequest` resolves extensions inside the
+calling process's own bundle and requires that bundle to live in `/Applications`, so a
+Homebrew install could never activate one; the claiming strategy underneath was measured
+not to unbind anything either. `DeviceClaimManager` survives as the seam a real
+implementation would slot into, satisfied by `UserspaceDeviceClaimManager`, which tracks
+intent and says so. See
+`Documentation/development/system-extension-archive/why-it-was-removed.md`.
 
 ## Architecture
 
@@ -107,7 +111,6 @@ The project is structured as a multi-target Swift package:
   - `Protocol/`: USB/IP message encoding/decoding and request processing
 - **USBIPDCLI**: Command-line interface executable (`usbipd` binary)
 - **Common**: Shared utilities (logging, error handling)
-- **SystemExtension**: quarantined; no shipping path activates it (see above)
 - **QEMUTestServer**: QEMU validation test server
 
 ### Test Structure
@@ -117,7 +120,10 @@ The project is structured as a multi-target Swift package:
 - **Tests/USBIPDCoreTests/** — core protocol, device, and network tests
 - **Tests/USBIPDCLITests/** — CLI behaviour
 
-Both also compile **Tests/SharedUtilities/** via their `sources:` list.
+Both list **Tests/SharedUtilities/** in their `sources:`, but SwiftPM silently ignores
+source paths outside the target directory, so it is **not compiled**. Proof beyond the
+build plan: `AssertionHelpers.swift` references `config.autoBindDevices`, which no
+longer exists. Do not add tests there expecting them to run.
 
 Three further targets are declared but commented out as "temporarily disabled":
 `IntegrationTests`, `SystemExtensionTests`, `QEMUIntegrationTests`. Alongside them
@@ -251,7 +257,7 @@ The project uses a comprehensive SwiftLint configuration (`.swiftlint.yml`) with
 
 ## Testing Strategy
 
-`swift test --parallel` is the whole suite — 397 tests across `USBIPDCoreTests` and
+`swift test --parallel` is the whole suite — 429 tests across `USBIPDCoreTests` and
 `USBIPDCLITests`. There is no development/CI/production tier system; the scripts that
 claimed to provide one filtered on target names that were never declared, matched
 nothing, and exited 0. See `Documentation/development/testing-strategy.md`.

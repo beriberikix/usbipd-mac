@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — the System Extension subsystem
+
+Some 24,000 lines that no shipping path could reach, and a release artifact no
+installed component could locate.
+
+Activation was never attempted: both `OSSystemExtensionManager.submitRequest` call
+sites were unreachable, gated on a configuration value nothing ever set. The whole of
+`Sources/SystemExtension/` was unreachable even from its own executable, its types
+shadowed by same-named stubs. `usbipd status` had 600 lines of reporting behind a guard
+that always took the early return.
+
+None of it could have worked. `OSSystemExtensionRequest` resolves extensions inside the
+calling process's own bundle and requires that bundle to live in `/Applications`; a
+Homebrew-installed binary is neither. The claiming strategy underneath — setting
+`IOMatchCategory` and `IOProbeScore` from userspace — was measured not to unbind
+anything, and is not how a DriverKit extension matches in any case.
+
+Nothing that worked has changed. Devices macOS has not bound a driver to are served
+exactly as before; devices whose interfaces it holds are refused by `bind`, which names
+the owner. Those decisions were always made by `DeviceOwnershipInspector` and by IOKit
+refusing `USBInterfaceOpen`, not by the extension.
+
+**User-visible changes:**
+
+- `USBIPDSystemExtension.systemextension.tar.gz` is no longer published. It was signed,
+  notarized and stapled every release, and was not a System Extension bundle by
+  structure — no `NSExtension` dict, no `IOKitPersonalities`, and an empty
+  `embedded.provisionprofile`.
+- `systemextension_url` and `systemextension_sha256` are gone from the Homebrew
+  metadata. Nothing consumed them.
+- `usbipd status` reports how devices are accessed and which are shared, and no longer
+  claims to report on an extension. `--health` is still accepted and says plainly that
+  there is nothing further to check.
+- `bind` and `unbind` no longer print "Checking System Extension status..." or branch
+  their success message on whether a manager existed.
+- `~/Library/Application Support/usbipd-mac/cli-claimed-devices.json` is no longer read
+  or written. It recorded claims that were never taken; any existing file is inert and
+  can be deleted.
+- `usbipd.entitlements` is gone. The binary carried
+  `com.apple.developer.system-extension.install`, a restricted entitlement AMFI kills
+  without an authorising profile, so release signing had to withhold it — which it
+  always did. With nothing to install, signing has one path.
+
+`Sources/SystemExtension/Info.plist`, its entitlements and the README explaining the
+failure are preserved under `Documentation/development/system-extension-archive/`. They
+record the identifier and entitlement decisions a future DriverKit extension needs.
+
+Also corrected: `CLAUDE.md` claimed `Tests/SharedUtilities/` was compiled by both test
+targets. SwiftPM ignores `sources:` paths outside the target directory, so it never was.
+
 ## [v0.6.0] - 2026-08-09
 
 This release makes usbipd usable on a machine with a USB hub, which in practice means

@@ -22,7 +22,6 @@ sudo systemextensionsctl developer on
 
 # Build and install for development
 swift build
-sudo usbipd daemon --install-extension
 
 # Verify installation
 usbipd status
@@ -188,7 +187,6 @@ If build execution is slow:
 
 If these solutions don't resolve your issue:
 
-1. Check the [System Extension troubleshooting guide](system-extension-troubleshooting.md)
 2. Review build logs for detailed error messages
 3. Reproduce the issue with verbose output: `swift build --verbose`
 4. Check [GitHub Actions status](https://www.githubstatus.com/) for platform issues
@@ -196,6 +194,5 @@ If these solutions don't resolve your issue:
 
 ## See Also
 
-- [System Extension Troubleshooting](system-extension-troubleshooting.md)
 - [CI/CD Documentation](../development/ci-cd.md)
 - [Architecture Documentation](../development/architecture.md)

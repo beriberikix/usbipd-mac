@@ -202,7 +202,6 @@ For System Extension issues:
 sudo systemextensionsctl uninstall [team-id] [bundle-id]
 
 # 2. Install previous version
-sudo usbipd daemon --install-extension --version v1.2.3
 
 # 3. Verify rollback
 usbipd status

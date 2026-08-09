@@ -414,7 +414,6 @@ which jq curl shasum
 
 After deployment, ensure these documents are updated:
 - [ ] **README.md**: Installation instructions point to tap repository
-- [ ] **Documentation/homebrew-troubleshooting.md**: Includes tap-specific troubleshooting
 - [ ] **CLAUDE.md**: Reflects new development workflows
 - [ ] **Release notes**: Document the architecture change for users
 

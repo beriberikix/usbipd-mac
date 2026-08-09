@@ -85,7 +85,6 @@ System Extensions are installed automatically when the USB/IP daemon starts:
 
 ```bash
 # Install and activate System Extension
-sudo usbipd daemon --install-extension
 
 # Check System Extension status
 usbipd status
@@ -138,7 +137,6 @@ sudo systemextensionsctl developer on
 
 # Build and install for development
 swift build
-sudo usbipd daemon --install-extension
 
 # Verify installation
 usbipd status
