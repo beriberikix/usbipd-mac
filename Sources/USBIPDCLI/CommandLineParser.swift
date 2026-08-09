@@ -50,9 +50,6 @@ public class CommandLineParser {
     /// Server instance
     private let server: USBIPServer
     
-    /// System Extension manager for device claiming operations
-    private let systemExtensionManager: SystemExtensionManager?
-
     /// Which devices are bound for sharing. Separate from `serverConfig` because bind
     /// and unbind write it, while the configuration is only ever read.
     private let boundDevices: BoundDeviceStore
@@ -61,12 +58,10 @@ public class CommandLineParser {
     public init(deviceDiscovery: DeviceDiscovery,
                 serverConfig: ServerConfig,
                 server: USBIPServer,
-                systemExtensionManager: SystemExtensionManager? = nil,
                 boundDevices: BoundDeviceStore = BoundDeviceStore()) {
         self.deviceDiscovery = deviceDiscovery
         self.serverConfig = serverConfig
         self.server = server
-        self.systemExtensionManager = systemExtensionManager
         self.boundDevices = boundDevices
         registerCommands()
     }
@@ -78,8 +73,8 @@ public class CommandLineParser {
         let commands: [Command] = [
             HelpCommand(parser: self),
             ListCommand(deviceDiscovery: deviceDiscovery, outputFormatter: outputFormatter),
-            BindCommand(deviceDiscovery: deviceDiscovery, boundDevices: boundDevices, systemExtensionManager: systemExtensionManager),
-            UnbindCommand(deviceDiscovery: deviceDiscovery, boundDevices: boundDevices, systemExtensionManager: systemExtensionManager),
+            BindCommand(deviceDiscovery: deviceDiscovery, boundDevices: boundDevices),
+            UnbindCommand(deviceDiscovery: deviceDiscovery, boundDevices: boundDevices),
             StatusCommand(deviceClaimManager: nil, outputFormatter: outputFormatter),
             // attach/detach are deliberately not registered. usbipd is a USB/IP
             // *server*; attaching a remote device is the client's job, and both

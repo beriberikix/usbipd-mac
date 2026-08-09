@@ -120,17 +120,6 @@ func main() {
         logger.info("Using default server configuration")
     }
     
-    // The System Extension bundle detector is not run.
-    //
-    // It walked the filesystem on every invocation looking for a bundle, including the
-    // developer's own .build directory — a Homebrew-installed binary was scanning
-    // /Users/<someone>/code/usbipd-mac/.build and adopting a debug bundle it found
-    // there. That work is pointless: no shipping path can activate a System Extension,
-    // because OSSystemExtensionRequest resolves extensions inside the calling app's
-    // bundle and requires that bundle to live in /Applications.
-    //
-    // See Sources/USBIPDCore/SystemExtension/README.md.
-
     // The daemon's output goes to a log file, where detail is wanted; a CLI command's
     // goes to someone's terminal, where it is noise. Raise the floor for the daemon
     // only — an earlier attempt raised it here unconditionally, which put every INFO
@@ -145,24 +134,15 @@ func main() {
                                   connectionTimeout: serverConfig.connectionTimeout)
     logger.debug("Created TCPServer instance")
     
-    // The System Extension manager is still constructed because the claim manager and
-    // several commands are typed against it, but it is no longer started here.
-    //
-    // Starting it restored persisted claim state and spun up health checking on every
-    // invocation of every command, including `usbipd list`. None of that can lead
-    // anywhere: the extension cannot be activated from a Homebrew install, so the
-    // claims it restores are bookkeeping over a subsystem that never runs.
-    let systemExtensionManager = USBIPDCore.SystemExtensionManager()
-    let deviceClaimManager = SystemExtensionClaimAdapter(systemExtensionManager: systemExtensionManager)
-    
-    // Create server coordinator with System Extension parameters if available
+    // Devices are served from userspace through IOKit; nothing is claimed from macOS.
+    // See UserspaceDeviceClaimManager for what this does and does not track.
+    let deviceClaimManager = UserspaceDeviceClaimManager()
+
     let server = ServerCoordinator(
         networkService: networkService,
         deviceDiscovery: deviceDiscovery,
         deviceClaimManager: deviceClaimManager,
-        config: serverConfig,
-        systemExtensionBundlePath: serverConfig.getSystemExtensionBundlePath(),
-        systemExtensionBundleIdentifier: serverConfig.getSystemExtensionBundleIdentifier()
+        config: serverConfig
     )
     logger.debug("Created ServerCoordinator instance with DeviceClaimManager")
     
@@ -185,10 +165,9 @@ func main() {
     let parser = CommandLineParser(
         deviceDiscovery: deviceDiscovery,
         serverConfig: serverConfig,
-        server: server,
-        systemExtensionManager: systemExtensionManager
+        server: server
     )
-    logger.debug("Created CommandLineParser with System Extension Manager integration")
+    logger.debug("Created CommandLineParser")
     
     do {
         logger.debug("Parsing command line arguments")
