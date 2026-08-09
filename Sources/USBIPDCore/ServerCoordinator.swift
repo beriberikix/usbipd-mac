@@ -515,8 +515,14 @@ public class ServerCoordinator: USBIPServer {
                         let responseData = try self.requestProcessor.processRequest(
                             data, connectionState: connectionState)
                         
-                        // Send the response back to the client (this must be thread-safe)
-                        try connection.send(data: responseData)
+                        // An empty response means the processor deliberately has nothing
+                        // to say — a request the client withdrew, which is answered by
+                        // its RET_UNLINK and must not also draw a RET_SUBMIT. Writing
+                        // zero bytes would be harmless but the intent is worth stating.
+                        if !responseData.isEmpty {
+                            // Send the response back to the client (this must be thread-safe)
+                            try connection.send(data: responseData)
+                        }
 
                         // Once the socket carries an attached device it may go quiet
                         // indefinitely, so exempt it from the idle reaper.

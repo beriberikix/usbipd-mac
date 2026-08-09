@@ -162,46 +162,18 @@ public class USBUnlinkProcessor {
         // Attempt to cancel the URB at the protocol level first
         let urbCancelSuccess = await processor.cancelURB(request.unlinkSeqnum)
         
-        // If we have a device communicator, also attempt IOKit-level cancellation
-        var ioKitCancelSuccess = false
-        if let communicator = deviceCommunicator {
-            do {
-                // Create device from request info for cancellation
-                let device = createUSBDeviceFromRequest(request)
-                
-                // Determine interface number (defaulting to 0, would be improved with proper tracking)
-                let interfaceNumber: UInt8 = 0
-                
-                // Cancel transfers on the specific endpoint
-                try await communicator.cancelTransfers(
-                    device: device,
-                    interfaceNumber: interfaceNumber,
-                    endpoint: UInt8(request.ep & 0xFF)
-                )
-                
-                ioKitCancelSuccess = true
-                logger.debug("IOKit-level transfer cancellation successful", context: [
-                    "unlinkSeqnum": String(request.unlinkSeqnum),
-                    "endpoint": String(format: "0x%02x", request.ep)
-                ])
-            } catch {
-                logger.warning("IOKit-level transfer cancellation failed", context: [
-                    "unlinkSeqnum": String(request.unlinkSeqnum),
-                    "error": error.localizedDescription
-                ])
-            }
-        }
-        
-        // Consider cancellation successful if either method succeeded
-        let overallSuccess = urbCancelSuccess || ioKitCancelSuccess
+        // Aborting the pipe belongs to the submit processor, which is the only place
+        // that knows what a sequence number was submitted against.
+        //
+        // This used to be attempted here as well, from the UNLINK message's own ep and
+        // direction fields. Both are zero: the Linux client leaves them unset because
+        // the sequence number identifies the request by itself. So the abort was aimed
+        // at endpoint 0 and hit the control pipe, while the transfer it was meant to
+        // stop carried on running.
+        let overallSuccess = urbCancelSuccess
         
         if overallSuccess {
-            let methods = [
-                urbCancelSuccess ? "URB tracking" : nil,
-                ioKitCancelSuccess ? "IOKit cancellation" : nil
-            ].compactMap { $0 }.joined(separator: ", ")
-            
-            logger.debug("URB cancellation successful via: \(methods)", context: [
+            logger.debug("URB cancellation successful", context: [
                 "unlinkSeqnum": String(request.unlinkSeqnum)
             ])
             return (success: true, reason: nil)
@@ -215,7 +187,18 @@ public class USBUnlinkProcessor {
     
     /// Create successful UNLINK response
     private func createUnlinkResponse(from request: USBIPUnlinkRequest, success: Bool) -> USBIPUnlinkResponse {
-        let status: Int32 = success ? 0 : -2 // 0 = success, -2 = ENOENT (not found)
+        // These are the URB's completion status, not a verdict on the UNLINK message,
+        // and the client copies the value straight onto the cancelled transfer.
+        //
+        // A cancelled URB completes with -ECONNRESET, which is what libusb turns into
+        // "cancelled" and, for a read it timed out, into a timeout. Reporting 0 instead
+        // told the client the read had succeeded with no data.
+        //
+        // Nothing to cancel means the URB already finished and already sent its
+        // RET_SUBMIT, so this is a bare acknowledgement and the status is 0. The -2 that
+        // used to be sent here is ENOENT, which the client would have stamped onto a
+        // transfer that had in fact completed normally.
+        let status: Int32 = success ? -104 : 0 // -104 = ECONNRESET
         
         return USBIPUnlinkResponse(
             seqnum: request.seqnum,

@@ -397,8 +397,59 @@ final class USBRequestProcessorTests: XCTestCase {
         // Decode and validate response
         let response = try USBIPUnlinkResponse.decode(from: unlinkResponseData)
         XCTAssertEqual(response.seqnum, 999)
-        // Status should indicate request not found or already completed
-        XCTAssertNotEqual(response.status, 0)
+
+        // Nothing to cancel means the URB had already completed, and completing is
+        // exactly what it did — it sent its own RET_SUBMIT. So this is a bare
+        // acknowledgement carrying 0, not an error.
+        //
+        // The status is the URB's completion status and the client copies it onto the
+        // transfer. The -2 (ENOENT) asserted here before would have been stamped onto a
+        // transfer that had in fact succeeded.
+        XCTAssertEqual(response.status, 0)
+    }
+
+    /// The failure this whole path exists to prevent. probe-rs posts a read on the
+    /// CMSIS-DAP IN endpoint, cancels it a millisecond later, and then sends its first
+    /// command. The cancelled read used to keep running, collect the reply meant for the
+    /// command, and deliver it under a sequence number the client had already retired —
+    /// which the client reports as "Error in the USB access".
+    func testCancelledRequestDrawsNoSubmitReply() async throws {
+        // Hold the transfer open long enough to cancel it while it is running.
+        mockDeviceCommunicator.setOperationLatency(300)
+
+        let seqnum: UInt32 = 4242
+        let requestData = try createUSBSubmitRequestData(
+            seqnum: seqnum,
+            direction: 1, // IN
+            endpoint: 0x81,
+            bufferLength: 64
+        )
+
+        let submission = Task { try await self.submitProcessor.processSubmitRequest(requestData) }
+
+        // Poll rather than sleep a fixed amount: what matters is that the sequence
+        // number becomes cancellable at all, which is the race the reservation fixes.
+        var didCancel = false
+        for _ in 0..<100 where !didCancel {
+            try await Task.sleep(nanoseconds: 5_000_000)
+            didCancel = await submitProcessor.cancelURB(seqnum)
+        }
+        XCTAssertTrue(didCancel, "a request that is still running should be cancellable")
+
+        let response = try await submission.value
+        XCTAssertTrue(response.isEmpty, "a cancelled request must not also send a RET_SUBMIT")
+    }
+
+    /// The converse, so the check above cannot pass by suppressing everything.
+    func testUncancelledRequestStillReplies() async throws {
+        let requestData = try createUSBSubmitRequestData(seqnum: 4243, direction: 1, endpoint: 0x81)
+        let response = try await submitProcessor.processSubmitRequest(requestData)
+        XCTAssertFalse(response.isEmpty, "an ordinary request must still be answered")
+    }
+
+    func testUnknownSequenceNumberIsNotCancellable() async throws {
+        let cancelled = await submitProcessor.cancelURB(999_999)
+        XCTAssertFalse(cancelled, "a sequence number never submitted should not be cancellable")
     }
     
     func testProcessUnlinkRequestInvalidMessage() async throws {

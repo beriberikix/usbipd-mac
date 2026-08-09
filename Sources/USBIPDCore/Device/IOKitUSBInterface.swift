@@ -1118,8 +1118,17 @@ public final class IOKitUSBInterface: @unchecked Sendable {
     
     /// Internal method to cancel transfers on a specific interface reference
     private func cancelTransfersOnInterface(_ interface: USBInterfaceHandle, endpoint: UInt8) throws {
-        let pipeRef = endpoint & 0x7F  // Remove direction bit
-        
+        // IOKit addresses a pipe by a 1-based index into the interface, not by endpoint
+        // number. Masking the direction bit off the address produced the endpoint number
+        // and passed that, so AbortPipe either aborted an unrelated pipe or failed —
+        // which is why a cancelled transfer kept running and later delivered data for a
+        // request the client had already given up on. The same mistake was fixed for the
+        // transfer path when pipe discovery was introduced; this call was missed.
+        guard let pipeRef = pipeReference(for: endpoint) else {
+            logger.warning("No pipe discovered for endpoint 0x\(String(endpoint, radix: 16)); nothing to abort")
+            return
+        }
+
         // Abort transfers on the specific pipe
         let result = interface.vtable.AbortPipe(interface, pipeRef)
         

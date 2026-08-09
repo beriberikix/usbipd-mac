@@ -13,10 +13,18 @@ usbipd-mac is a macOS USB/IP protocol implementation for sharing USB devices ove
 
 **Works, verified against hardware.** Devices macOS has *not* bound a driver to are
 served end to end: enumeration, string descriptors, control transfers, and
-bidirectional bulk transfers. Two device classes have been driven: a SEGGER J-Link with
-probe-rs, which read the probe's VTref over the wire and behaved exactly as it does
-connected directly, and a Pixel 10a in ADB mode, which answered a CNXN with its AUTH
-challenge. No System Extension and no entitlement are involved.
+bidirectional bulk transfers. Three device classes have been driven: a SEGGER J-Link
+with probe-rs, which read the probe's VTref over the wire and behaved exactly as it does
+connected directly; a Pixel 10a in ADB mode, which answered a CNXN with its AUTH
+challenge; and a Raspberry Pi Debug Probe, where probe-rs ran ~930 CMSIS-DAP bulk
+exchanges and stopped only at chip detection — the same error it gives with the probe
+plugged straight into the Mac, because no target is wired to its SWD pins. No System
+Extension and no entitlement are involved.
+
+Clients that cancel a transfer are supported, which matters more than it sounds:
+libusb cancels any read it has timed out, and probe-rs drains the IN endpoint that way
+before its first command. A cancelled request is aborted at the pipe and answered by
+its RET_UNLINK alone.
 
 **A caveat that is not about claiming.** A client whose protocol keys off USB
 connection or reset events may not work even on a claimable device. `adb` reports a

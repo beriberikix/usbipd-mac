@@ -68,6 +68,13 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         self.deviceCommunicator = communicator
         self.submitProcessor.setDeviceCommunicator(communicator)
         self.submitProcessor.setDeviceDiscovery(deviceDiscovery)
+
+        // The same omission, one processor over: the unlink path has IOKit-level
+        // cancellation and nothing ever gave it a communicator, so every UNLINK fell
+        // back to marking a flag while the transfer carried on running. A client that
+        // times out a read — which libusb does routinely — then received a reply to a
+        // request it had abandoned.
+        self.unlinkProcessor.setDeviceCommunicator(communicator)
     }
     
     // MARK: - USBRequestHandlerProtocol Implementation
