@@ -158,6 +158,46 @@ public class ListCommand: Command {
     }
 }
 
+/// How a bind or unbind was carried out.
+private enum BindOutcome {
+    /// A running daemon applied it and confirmed. `changed` is false when the device
+    /// was already in that state.
+    case daemon(changed: Bool)
+    /// No daemon was listening, so the state file was written directly. It will be read
+    /// when a daemon next starts.
+    case directly(changed: Bool)
+}
+
+/// Apply a change to the bound-device list, preferring a running daemon.
+///
+/// Asking the daemon is what lets these commands report what actually happened. Writing
+/// the file and leaving the daemon to notice meant `bind` could only report that it had
+/// written a file — and for a long time it did not even mean that much, because the
+/// daemon read the file once at startup and never again.
+///
+/// Falling back to a direct write keeps the first run working: binding a device before
+/// the daemon has ever been started is ordinary, and refusing it would be worse than
+/// doing it quietly.
+private func applyBinding(_ command: ControlRequest.Command,
+                          busid: String,
+                          store: BoundDeviceStore) throws -> BindOutcome {
+    if let response = ControlSocketClient.send(ControlRequest(command: command, busid: busid)) {
+        guard response.ok else {
+            throw CommandHandlerError.deviceBindingFailed(response.error ?? "the daemon refused the request")
+        }
+        return .daemon(changed: response.changed)
+    }
+
+    let changed: Bool
+    switch command {
+    case .bind:
+        changed = try store.bind(busid)
+    case .unbind:
+        changed = try store.unbind(busid)
+    }
+    return .directly(changed: changed)
+}
+
 /// Bind command implementation
 public class BindCommand: Command {
     public let name = "bind"
@@ -313,7 +353,7 @@ public class BindCommand: Command {
                     print("Device \(busid) is already claimed by System Extension")
                     
                     // Record it even if already claimed, so the two agree.
-                    try boundDevices.bind(deviceIdentifier)
+                    _ = try applyBinding(.bind, busid: deviceIdentifier, store: boundDevices)
                     
                     print("Device \(busid) successfully bound: \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
                     return
@@ -362,7 +402,10 @@ public class BindCommand: Command {
             // rewrote the port, the log level and every tuning value along with it —
             // and reset them outright whenever the configuration had failed to parse.
             logger.debug("Recording the device as bound", context: ["deviceIdentifier": deviceIdentifier])
-            try boundDevices.bind(deviceIdentifier)
+            let outcome = try applyBinding(.bind, busid: deviceIdentifier, store: boundDevices)
+            if case .directly = outcome {
+                print("Note: no daemon is running, so this was recorded for the next start.")
+            }
             
             logger.info("Successfully bound device", context: ["busid": busid])
             print("✓ Device \(busid) added to server configuration")
@@ -557,7 +600,17 @@ public class UnbindCommand: Command {
             
             // Step 3: Forget the device.
             logger.debug("Removing the device from the bound list", context: ["busid": busid])
-            let removed = try boundDevices.unbind(busid)
+            let unbindOutcome = try applyBinding(.unbind, busid: busid, store: boundDevices)
+            let removed: Bool
+            switch unbindOutcome {
+            case .daemon(let changed):
+                removed = changed
+            case .directly(let changed):
+                removed = changed
+                if changed {
+                    print("Note: no daemon is running; the change takes effect at the next start.")
+                }
+            }
             
             if removed {
                 logger.info("Successfully unbound device", context: ["busid": busid])
@@ -644,10 +697,47 @@ public class DaemonCommand: Command {
     
     private let server: USBIPServer
     private let serverConfig: ServerConfig
-    
-    public init(server: USBIPServer, serverConfig: ServerConfig) {
+    private let boundDevices: BoundDeviceStore
+
+    /// Held for the daemon's lifetime; dropping it would close the socket.
+    private var controlSocket: ControlSocketServer?
+
+    public init(server: USBIPServer,
+                serverConfig: ServerConfig,
+                boundDevices: BoundDeviceStore = BoundDeviceStore()) {
         self.server = server
         self.serverConfig = serverConfig
+        self.boundDevices = boundDevices
+    }
+
+    /// Serve bind and unbind requests from the CLI.
+    ///
+    /// Failing to open the socket is reported and then ignored. The daemon's job is
+    /// serving USB devices, and it can still do that: `bind` falls back to writing the
+    /// state file directly, which is how it worked before this existed.
+    private func startControlSocket() {
+        let socket = ControlSocketServer { [boundDevices] request in
+            do {
+                let changed: Bool
+                switch request.command {
+                case .bind:
+                    changed = try boundDevices.bind(request.busid)
+                case .unbind:
+                    changed = try boundDevices.unbind(request.busid)
+                }
+                return ControlResponse(ok: true, changed: changed)
+            } catch {
+                return ControlResponse(ok: false, changed: false, error: error.localizedDescription)
+            }
+        }
+
+        do {
+            try socket.start()
+            controlSocket = socket
+        } catch {
+            logger.warning("Control socket unavailable; bind will write the state file directly",
+                           context: ["error": error.localizedDescription])
+        }
     }
     
     public func execute(with arguments: [String]) throws {
@@ -716,6 +806,7 @@ public class DaemonCommand: Command {
             logger.info("Starting USB/IP server", context: ["port": serverConfig.port])
             try server.start()
             DaemonRuntime.markServerStarted()
+            startControlSocket()
 
             logger.info("USB/IP server started successfully", context: ["port": serverConfig.port])
             print("USB/IP daemon started on port \(serverConfig.port)")

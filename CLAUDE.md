@@ -21,11 +21,20 @@ exchanges and stopped only at chip detection — the same error it gives with th
 plugged straight into the Mac, because no target is wired to its SWD pins. No System
 Extension and no entitlement are involved.
 
-`bind` and `unbind` take effect on a running daemon. They are separate processes that
-write `~/.usbipd/bound-devices.json`; the daemon notices the file has changed and
-re-reads it. It used to read that state only at startup, so a device bound while the
-daemon was running stayed unimportable — `usbip attach` answered "Request Failed" — and
-nothing said a restart was needed.
+`bind` and `unbind` take effect on a running daemon. They ask it directly, over a Unix
+socket at `~/.usbipd/control.sock`, so the command reports what the daemon actually did
+rather than what it hoped would happen. When no daemon is listening they write
+`~/.usbipd/bound-devices.json` themselves and say so; the daemon reads it at startup.
+
+The control channel is deliberately not a command on port 3240. That port is exposed to
+the network, so a bind reachable there would let any host that can open a TCP connection
+share any USB device on this machine. The socket is mode 0600 in the user's own
+directory.
+
+The daemon still checks the file's timestamp when it consults the list. That is not
+redundant: it is how a change made over the control socket, or by a CLI that ran while
+no daemon was up, reaches the request path — the file stays the single source of
+truth.
 
 State and configuration are separate files, and only state is ever written by the tool.
 `~/.usbipd/usbipd-config.json` holds the port, log level and tuning; it is read at
