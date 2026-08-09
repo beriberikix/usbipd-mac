@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.4] - 2026-08-08
+
+### Fixed — v0.5.3 could not serve any device
+
+v0.5.3 stopped starting the System Extension manager at launch, which was correct: it
+cannot be activated from a shipping install and it was scanning the filesystem on every
+command. But three separate code paths still required a successful claim from it, so
+with the manager unstarted they all failed:
+
+- `bind` refused every device with "System Extension failed to claim device"
+- the import handler refused every attach with "Failed to claim exclusive access"
+- every transfer failed with "Device not claimed for USB operations"
+
+None of those claims did anything real. Devices are served through IOKit from userspace,
+and what actually gates access is the bind allow-list and IOKit's own exclusive-access
+rules. All three now proceed when no claim is recorded.
+
+This was shipped, and would have been caught before tagging by running
+`Scripts/verify-hardware.sh` — which could not run, because no device was attached.
+
+### Fixed — composite debug probes were refused
+
+Ownership was decided for the device as a whole, so any interface held by a driver
+refused the entire device. A Raspberry Pi Debug Probe pairs a free CMSIS-DAP interface
+with a CDC serial port that macOS claims, and was rejected despite the debug interface
+being usable — as are most composite probes, including ST-Link with VCP.
+
+Ownership is now per interface. A device with at least one free interface can be bound,
+and `bind` says which interfaces are served and which macOS holds.
+
+### Known limitation — CMSIS-DAP probes enumerate but do not fully drive
+
+`probe-rs list` finds a Raspberry Pi Debug Probe over USB/IP and reads its serial, and
+control transfers return its real descriptor. `probe-rs info` fails: the CMSIS-DAP
+exchange on endpoints 0x04/0x05 writes successfully but some reads return EPROTO or time
+out. Not yet diagnosed.
+
 ## [v0.5.3] - 2026-08-08
 
 ### Fixed — the CLI was unusable to read

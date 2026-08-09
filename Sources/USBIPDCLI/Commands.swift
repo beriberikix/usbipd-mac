@@ -234,9 +234,25 @@ public class BindCommand: Command {
             // Refuse devices something else already owns, before promising to share
             // them. This used to allow-list anything and only surface the problem when
             // a transfer failed, on a machine the user was no longer looking at.
-            switch ownershipInspector.ownership(vendorID: device.vendorID, productID: device.productID) {
+            let ownership = ownershipInspector.ownership(vendorID: device.vendorID, productID: device.productID)
+            switch ownership {
             case .unbound:
                 break
+
+            case .partiallyClaimed(let free, let claimedBy):
+                // Some interfaces are owned and some are not. A composite debug probe
+                // looks like this: CMSIS-DAP free, the CDC serial port taken by macOS.
+                // Refusing the whole device here rejected hardware that works.
+                let names = claimedBy.joined(separator: ", ")
+                let list = free.map(String.init).joined(separator: ", ")
+                logger.info("Binding a partially claimed device", context: [
+                    "busid": busid,
+                    "freeInterfaces": list,
+                    "claimedBy": names
+                ])
+                print("Note: macOS holds some interfaces of \(busid) (\(names)).")
+                print("Interface \(list) is free and will be served — for a debug probe")
+                print("that is the debug interface; the serial port stays with macOS.")
 
             case .kernelDriver(let drivers):
                 let names = drivers.joined(separator: ", ")
@@ -309,14 +325,16 @@ public class BindCommand: Command {
                     print("  Claim method: \(claimedDevice.claimMethod.rawValue)")
                     print("  Claimed at: \(DateFormatter.localizedString(from: claimedDevice.claimTime, dateStyle: .medium, timeStyle: .medium))")
                 } catch {
-                    logger.error("System Extension device claiming failed", context: [
+                    // A failed System Extension claim is not a reason to refuse the
+                    // bind. The extension cannot be activated from a Homebrew install
+                    // at all, and devices are served through IOKit from userspace
+                    // without it — the claim adds nothing but a record. Treating this
+                    // as fatal broke bind entirely once the manager stopped being
+                    // started at launch.
+                    logger.debug("System Extension claim unavailable; proceeding", context: [
                         "deviceID": deviceIdentifier,
                         "error": error.localizedDescription
                     ])
-                    
-                    let errorMsg = "System Extension failed to claim device \(busid): \(error.localizedDescription)"
-                    print("✗ \(errorMsg)")
-                    throw CommandHandlerError.deviceBindingFailed(errorMsg)
                 }
             } else {
                 logger.warning("System Extension Manager not available; device allow-listed without an exclusive claim")
@@ -354,7 +372,13 @@ public class BindCommand: Command {
                 // bind now refuses driver-bound and process-held devices up front, so
                 // reaching this point means nothing else owns the interface. The old
                 // hedge about transfers possibly failing later no longer applies.
-                print("Registered for USB/IP sharing. No driver or process holds this device.")
+                // Do not claim the whole device is free when only some of it is.
+                if case .partiallyClaimed = ownership {
+                    print("Registered for USB/IP sharing. The free interface is served;")
+                    print("the interfaces macOS holds are not.")
+                } else {
+                    print("Registered for USB/IP sharing. No driver or process holds this device.")
+                }
             } else {
                 print("Allow-listed device \(identity)")
                 print("Not claimed: the System Extension is not active. See the warning above.")

@@ -143,12 +143,21 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     
     public func validateDeviceClaim(device: USBDevice) throws -> Bool {
         let deviceID = deviceIdentifier(for: device)
-        
-        guard deviceClaimManager.isDeviceClaimed(deviceID: deviceID) else {
-            logger.error("Device \(deviceID) is not claimed for USB operations")
-            throw USBRequestError.deviceNotClaimed(deviceID)
+
+        // Not being "claimed" does not stop a transfer.
+        //
+        // The claim is recorded by the System Extension manager, which cannot be
+        // activated on a shipping install. Gating transfers on it meant that once the
+        // manager stopped being started at launch, every transfer failed with
+        // "Device not claimed for USB operations" — the third place a fictional claim
+        // blocked real work, after bind and import.
+        //
+        // What actually gates access is real: the allow-list decides which devices are
+        // offered at all, and IOKit refuses to open an interface another driver owns.
+        if !deviceClaimManager.isDeviceClaimed(deviceID: deviceID) {
+            logger.debug("Device \(deviceID) has no recorded claim; proceeding via IOKit")
         }
-        
+
         return true
     }
     

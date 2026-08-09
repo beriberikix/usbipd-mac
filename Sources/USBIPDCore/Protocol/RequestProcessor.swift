@@ -349,6 +349,17 @@ public class RequestProcessor {
                     "device": device.deviceID
                 ])
                 
+                // A failed claim must not refuse the import.
+                //
+                // The claim goes through the System Extension, which cannot be
+                // activated from a shipping install, and devices are served through
+                // IOKit from userspace without it. When the manager stopped being
+                // started at launch, this threw for every device and the daemon could
+                // serve nothing at all — bind succeeded and attach then failed, which
+                // shipped in v0.5.3.
+                //
+                // Whether a device can actually be claimed is decided by `bind`, which
+                // reads real ownership from the IORegistry.
                 do {
                     let success = try deviceClaimManager.claimDevice(device)
                     if success {
@@ -356,18 +367,19 @@ public class RequestProcessor {
                             "deviceID": deviceIdentifier
                         ])
                     } else {
-                        log("Failed to claim device", .error, [
+                        log("Claim reported failure; serving through IOKit regardless", .debug, [
                             "deviceID": deviceIdentifier
                         ])
-                        throw DeviceError.deviceNotFound("Cannot import device: Failed to claim exclusive access")
                     }
                 } catch {
-                    log("Failed to claim device", .error, [
+                    // Same reasoning as above: the claim is bookkeeping over a
+                    // subsystem that never runs, so its failure is not the client's
+                    // problem. Throwing here made every import fail with
+                    // "Failed to claim exclusive access".
+                    log("Claim unavailable; serving through IOKit regardless", .debug, [
                         "deviceID": deviceIdentifier,
                         "error": error.localizedDescription
                     ])
-                    
-                    throw DeviceError.deviceNotFound("Cannot import device: Failed to claim exclusive access - \(error.localizedDescription)")
                 }
             }
             

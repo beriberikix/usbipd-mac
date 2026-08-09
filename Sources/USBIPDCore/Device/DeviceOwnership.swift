@@ -20,9 +20,22 @@ public enum DeviceOwnership: Equatable {
     /// alike — one is a dead end, the other is a thing the user can act on.
     case userspaceProcess(clients: [String])
 
+    /// Some interfaces are free and others are owned. Common on debug probes, which
+    /// pair a vendor-specific debug interface with a CDC serial port that macOS claims:
+    /// a Raspberry Pi Debug Probe has CMSIS-DAP free on interface 0 while
+    /// AppleUSBACMControl holds the serial interfaces. Treating that as fully owned
+    /// refused hardware that works, which is most of what this project is for.
+    case partiallyClaimed(freeInterfaces: [Int], claimedBy: [String])
+
+    /// Whether anything can be served. A device with one free interface is usable —
+    /// the debug half of a composite probe is exactly the part anyone wants.
     public var isServable: Bool {
-        if case .unbound = self { return true }
-        return false
+        switch self {
+        case .unbound, .partiallyClaimed:
+            return true
+        case .kernelDriver, .userspaceProcess:
+            return false
+        }
     }
 }
 
@@ -104,13 +117,13 @@ public struct DeviceOwnershipInspector {
     /// can be opened while its interface is held by someone else, and it is the
     /// interface that a transfer needs. Collecting every class in the subtree instead
     /// swept up unrelated nodes and reported servable hardware as owned.
-    private func collectClaimants(of deviceEntry: io_registry_entry_t) -> [String] {
-        var claimants: [String] = []
+    private func collectClaimants(of deviceEntry: io_registry_entry_t) -> [[String]] {
+        var perInterface: [[String]] = []
         for interfaceEntry in interfaceNodes(under: deviceEntry) {
             defer { _ = ioKit.objectRelease(interfaceEntry) }
-            claimants.append(contentsOf: immediateDrivers(of: interfaceEntry))
+            perInterface.append(immediateDrivers(of: interfaceEntry))
         }
-        return claimants
+        return perInterface
     }
 
     /// Interface nodes below a device, wherever the composite driver put them.
@@ -160,15 +173,27 @@ public struct DeviceOwnershipInspector {
         return drivers
     }
 
-    private func classify(_ claimants: [String]) -> DeviceOwnership {
-        guard !claimants.isEmpty else { return .unbound }
+    private func classify(_ perInterface: [[String]]) -> DeviceOwnership {
+        let all = perInterface.flatMap { $0 }
+        guard !all.isEmpty else { return .unbound }
 
-        let unique = Array(Set(claimants)).sorted()
+        let free = perInterface.enumerated().filter { $0.element.isEmpty }.map { $0.offset }
+
+        let unique = Array(Set(all)).sorted()
         let kernelDrivers = unique.filter { !userspaceClientClasses.contains($0) }
 
-        // A device can have both — a webcam's audio control interface is kernel-owned
-        // while its video interfaces are held by the camera framework. A kernel driver
-        // is the harder blocker, so it decides the verdict.
+        // At least one interface is unclaimed, so there is something to serve. This is
+        // the ordinary shape of a debug probe: a free vendor-specific interface next to
+        // a CDC serial port macOS has taken.
+        if !free.isEmpty {
+            return .partiallyClaimed(freeInterfaces: free,
+                                     claimedBy: kernelDrivers.isEmpty ? unique : kernelDrivers)
+        }
+
+        // Every interface is spoken for. A device can be claimed by both kinds — a
+        // webcam's audio control interface is kernel-owned while its video interfaces
+        // are held by the camera framework. A kernel driver is the harder blocker, so
+        // it decides the verdict.
         if kernelDrivers.isEmpty {
             return .userspaceProcess(clients: unique)
         }
