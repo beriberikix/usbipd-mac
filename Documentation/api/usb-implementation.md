@@ -272,7 +272,7 @@ Use `usbipd status --detailed` to get comprehensive information:
 #### System Logs
 Monitor system logs for detailed error information:
 ```bash
-log show --predicate 'subsystem == "com.github.usbipd-mac"' --last 1h
+log show --predicate 'subsystem == "com.usbipd.mac"' --last 1h
 ```
 
 #### Performance Monitoring
