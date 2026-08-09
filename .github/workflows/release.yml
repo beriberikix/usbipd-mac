@@ -406,11 +406,31 @@ jobs:
           CHECKSUMS_FILE="checksums-${{ needs.release-validation.outputs.version }}.sha256"
           
           echo "📊 Generating checksums..."
-          # Only checksum files, not directories
-          # The binaries are named usbipd-vX.Y.Z-macos, so they end in "-macos" and the
-          # old "*.macos" glob never matched one. checksums-v0.5.0.sha256 shipped
-          # covering only the tarballs, with no hash for the binary anyone downloads.
-          find . -maxdepth 1 -type f \( -name "*-macos" -o -name "*.tar.gz" \) -exec shasum -a 256 {} \; > "$CHECKSUMS_FILE"
+          # Checksum every artifact, rather than the ones a pattern happens to name.
+          #
+          # This glob has been wrong twice, each time because the artifacts were renamed
+          # and it was not. First it matched "*.macos" while binaries ended in "-macos",
+          # so checksums-v0.5.0.sha256 covered only the tarballs. Then per-architecture
+          # builds arrived ending in "-arm64" and "-x86_64", which "*-macos" does not
+          # match either, so v0.6.0 shipped without a hash for the two binaries most
+          # people download. Listing everything cannot drift out of step with the names.
+          find . -maxdepth 1 -type f ! -name "$CHECKSUMS_FILE" -exec shasum -a 256 {} \; > "$CHECKSUMS_FILE"
+
+          # And check the binaries by name, so a missing artifact fails here rather than
+          # at somebody's `shasum -c`.
+          MISSING=""
+          for EXPECTED in \
+            "usbipd-${{ needs.release-validation.outputs.version }}-macos" \
+            "usbipd-${{ needs.release-validation.outputs.version }}-macos-arm64" \
+            "usbipd-${{ needs.release-validation.outputs.version }}-macos-x86_64"; do
+            if [ -f "$EXPECTED" ] && ! grep -q -- " ./$EXPECTED\$" "$CHECKSUMS_FILE"; then
+              MISSING="$MISSING $EXPECTED"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error title=Checksums Incomplete::No checksum recorded for:$MISSING"
+            exit 1
+          fi
 
           if ! grep -q -- "-macos" "$CHECKSUMS_FILE"; then
             echo "::error title=Checksums Incomplete::No binary checksum was recorded"

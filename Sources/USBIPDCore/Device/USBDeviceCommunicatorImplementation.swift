@@ -192,12 +192,14 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         logger.debug("Executing control transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
         
         // Execute control transfer through IOKit interface
-        return try await interface.executeControlTransfer(
+        let result = try await interface.executeControlTransfer(
             endpoint: request.endpoint,
             setupPacket: request.setupPacket ?? Data(),
             transferBuffer: request.transferBuffer,
             timeout: request.timeout
         )
+        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
+        return result
     }
     
     // Compose the USB endpoint address IOKit expects.
@@ -226,12 +228,14 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         logger.debug("Executing bulk transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
         
         // Execute bulk transfer through IOKit interface
-        return try await interface.executeBulkTransfer(
+        let result = try await interface.executeBulkTransfer(
             endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             timeout: request.timeout
         )
+        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
+        return result
     }
     
     public func executeInterruptTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
@@ -245,12 +249,14 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         logger.debug("Executing interrupt transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
         
         // Execute interrupt transfer through IOKit interface
-        return try await interface.executeInterruptTransfer(
+        let result = try await interface.executeInterruptTransfer(
             endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             timeout: request.timeout
         )
+        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
+        return result
     }
     
     public func executeIsochronousTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
@@ -264,13 +270,15 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         logger.debug("Executing isochronous transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
         
         // Execute isochronous transfer through IOKit interface
-        return try await interface.executeIsochronousTransfer(
+        let result = try await interface.executeIsochronousTransfer(
             endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             startFrame: request.startFrame,
             numberOfPackets: max(request.numberOfPackets, 1)
         )
+        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
+        return result
     }
     
     // MARK: - Helper Methods
@@ -354,6 +362,55 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         return interface
     }
     
+    /// Whether a transfer result means the cached interface can no longer be used.
+    ///
+    /// `deviceGone` is what both `kIOReturnNoDevice` and `kIOReturnNotResponding` map
+    /// to. Either way the IOKit interface behind the handle is finished, and every
+    /// transfer through it will keep failing.
+    static func shouldDiscardInterface(after status: USBStatus) -> Bool {
+        return status == .deviceGone
+    }
+
+    /// Drop a cached interface whose device has gone, so the next request opens a new
+    /// one instead of reusing a handle that can only fail.
+    ///
+    /// Interfaces are opened once and kept. That is right while a device stays put, and
+    /// wrong the moment it does not: a device that disappears briefly — re-enumerating,
+    /// or an Android phone changing its USB configuration — left the daemon holding a
+    /// dead handle, and every subsequent transfer returned "no device" until the daemon
+    /// was restarted. Observed with a Pixel, where a fresh daemon worked immediately
+    /// while the running one never recovered.
+    private func discardInterfaceIfDeviceGone(
+        _ result: USBTransferResult,
+        device: USBDevice,
+        interfaceNumber: UInt8
+    ) {
+        guard USBDeviceCommunicatorImplementation.shouldDiscardInterface(after: result.status) else {
+            return
+        }
+
+        let deviceKey = deviceIdentifier(for: device)
+
+        // Held only long enough to take the interface out of the table. Letting it
+        // deallocate inside the lock would run its deinit — and so `close()`, and so
+        // IOKit calls — while every other transfer waited on that lock.
+        var discarded: IOKitUSBInterface?
+        interfaceLock.lock()
+        discarded = activeInterfaces[deviceKey]?.removeValue(forKey: interfaceNumber)
+        if activeInterfaces[deviceKey]?.isEmpty == true {
+            activeInterfaces.removeValue(forKey: deviceKey)
+        }
+        interfaceLock.unlock()
+
+        guard discarded != nil else { return }
+        discarded = nil
+
+        logger.warning("Device reported gone; discarding the cached interface so it is reopened", context: [
+            "device": deviceKey,
+            "interface": String(interfaceNumber)
+        ])
+    }
+
     // MARK: - Transfer Cancellation
     
     public func cancelAllTransfers(device: USBDevice, interfaceNumber: UInt8) async throws {
