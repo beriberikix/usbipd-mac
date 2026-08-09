@@ -432,7 +432,7 @@ final class USBRequestProcessorTests: XCTestCase {
         var didCancel = false
         for _ in 0..<100 where !didCancel {
             try await Task.sleep(nanoseconds: 5_000_000)
-            didCancel = await submitProcessor.cancelURB(seqnum)
+            didCancel = await submitProcessor.cancelURB(devid: USBRequestProcessorTests.testDevid, seqnum: seqnum)
         }
         XCTAssertTrue(didCancel, "a request that is still running should be cancellable")
 
@@ -448,7 +448,7 @@ final class USBRequestProcessorTests: XCTestCase {
     }
 
     func testUnknownSequenceNumberIsNotCancellable() async throws {
-        let cancelled = await submitProcessor.cancelURB(999_999)
+        let cancelled = await submitProcessor.cancelURB(devid: USBRequestProcessorTests.testDevid, seqnum: 999_999)
         XCTAssertFalse(cancelled, "a sequence number never submitted should not be cancellable")
     }
     
@@ -704,21 +704,85 @@ final class USBRequestProcessorTests: XCTestCase {
         XCTAssertEqual(finalResponse.status, 0)
         XCTAssertEqual(finalResponse.actualLength, 16)
     }
+
+    // MARK: - Two clients do not share a sequence-number space
+
+    /// USB/IP numbers requests per connection, and the Linux client opens one connection
+    /// per attached device — so every client starts again at 1. Tracking by bare
+    /// sequence number put them all in one namespace, and a second client's first
+    /// request was rejected as a duplicate of the first client's. Attaching two devices
+    /// from a single machine was enough to trigger it: five of ten concurrent transfers
+    /// failed against real hardware.
+    func testTwoDevicesMayUseTheSameSequenceNumber() async throws {
+        // Two attached devices, so both devids resolve to something real.
+        let other = USBDevice(
+            busID: "2", deviceID: "3",
+            vendorID: 0x4321, productID: 0x8765,
+            deviceClass: 0x00, deviceSubClass: 0x00, deviceProtocol: 0x00,
+            speed: .high,
+            manufacturerString: nil, productString: nil, serialNumberString: nil
+        )
+        let processor = USBSubmitProcessor(
+            deviceCommunicator: mockDeviceCommunicator,
+            deviceDiscovery: StubDeviceDiscovery(devices: [testDevice, other])
+        )
+
+        let first = USBRequestProcessorTests.testDevid
+        let second = (2 << 16) | UInt32(0x3)
+
+        let firstRequest = try createUSBSubmitRequestData(seqnum: 1, devid: first, endpoint: 0x00)
+        let secondRequest = try createUSBSubmitRequestData(seqnum: 1, devid: second, endpoint: 0x00)
+
+        let firstResponse = try USBIPSubmitResponse.decode(
+            from: try await processor.processSubmitRequest(firstRequest))
+        let secondResponse = try USBIPSubmitResponse.decode(
+            from: try await processor.processSubmitRequest(secondRequest))
+
+        XCTAssertEqual(firstResponse.status, 0)
+        XCTAssertEqual(secondResponse.status, 0, "a second device reusing seqnum 1 must not look like a duplicate")
+    }
+
+    /// A genuine duplicate — same device, same sequence number, still outstanding — is
+    /// still refused. And it is refused with a reply: the rejection used to be thrown
+    /// past the error-response path, so ServerCoordinator logged it, sent nothing, and
+    /// the client waited forever for an answer that was never coming.
+    func testDuplicateOnOneDeviceIsRefusedWithAReply() async throws {
+        mockDeviceCommunicator.setOperationLatency(300)
+
+        let requestData = try createUSBSubmitRequestData(seqnum: 77, endpoint: 0x00)
+        let inFlight = Task { try await self.submitProcessor.processSubmitRequest(requestData) }
+
+        // Let the first request claim the sequence number before repeating it.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let duplicate = try await submitProcessor.processSubmitRequest(requestData)
+        XCTAssertFalse(duplicate.isEmpty, "a duplicate must be answered, not met with silence")
+
+        let response = try USBIPSubmitResponse.decode(from: duplicate)
+        XCTAssertEqual(response.seqnum, 77)
+        XCTAssertNotEqual(response.status, 0, "a duplicate must report an error")
+
+        _ = try await inFlight.value
+    }
 }
 
-/// Returns a single device for any lookup, so submitted URBs resolve to test hardware.
 private final class StubDeviceDiscovery: DeviceDiscovery {
-    private let device: USBDevice
+    private let devices: [USBDevice]
+    private var device: USBDevice { devices[0] }
 
     var onDeviceConnected: ((USBDevice) -> Void)?
     var onDeviceDisconnected: ((USBDevice) -> Void)?
 
     init(device: USBDevice) {
-        self.device = device
+        self.devices = [device]
+    }
+
+    init(devices: [USBDevice]) {
+        self.devices = devices
     }
 
     func discoverDevices() throws -> [USBDevice] {
-        return [device]
+        return devices
     }
 
     func getDevice(busID: String, deviceID: String) throws -> USBDevice? {

@@ -165,7 +165,7 @@ public class USBUnlinkProcessor {
         ])
         
         // Attempt to cancel the URB at the protocol level first
-        let urbCancelSuccess = await processor.cancelURB(request.unlinkSeqnum)
+        let urbCancelSuccess = await processor.cancelURB(devid: request.devid, seqnum: request.unlinkSeqnum)
         
         // Aborting the pipe belongs to the submit processor, which is the only place
         // that knows what a sequence number was submitted against.

@@ -25,16 +25,29 @@ public class USBSubmitProcessor {
         let device: USBDevice?
     }
 
-    private var activeURBs: [UInt32: TrackedURB] = [:]
+    /// Identifies a request. A sequence number alone does not.
+    ///
+    /// USB/IP numbers requests per connection, and the Linux client opens one connection
+    /// per attached device, so every client starts again at 1. Tracking by bare sequence
+    /// number put all of them in one namespace: a second client's first request looked
+    /// like a duplicate of the first client's, and attaching two devices from a single
+    /// machine was enough to trigger it. Devid distinguishes them, since a connection
+    /// carries exactly one imported device.
+    private struct URBKey: Hashable {
+        let devid: UInt32
+        let seqnum: UInt32
+    }
 
-    /// Sequence numbers accepted and not yet answered, claimed before the URB exists so
-    /// that an UNLINK arriving during setup has something to find.
-    private var reservedSeqnums: Set<UInt32> = []
+    private var activeURBs: [URBKey: TrackedURB] = [:]
 
-    /// Sequence numbers the client withdrew. A transfer already in IOKit's hands may
-    /// still complete after the abort, and its result must be dropped rather than sent:
-    /// the client has been told the request is dead and is not expecting a reply.
-    private var cancelledSeqnums: Set<UInt32> = []
+    /// Requests accepted and not yet answered, claimed before the URB exists so that an
+    /// UNLINK arriving during setup has something to find.
+    private var reserved: Set<URBKey> = []
+
+    /// Requests the client withdrew. A transfer already in IOKit's hands may still
+    /// complete after the abort, and its result must be dropped rather than sent: the
+    /// client has been told the request is dead and is not expecting a reply.
+    private var cancelled: Set<URBKey> = []
     private let urbQueue = DispatchQueue(label: "com.usbipd.mac.urb", attributes: .concurrent)
     
     /// Device communicator for executing USB transfers
@@ -106,6 +119,20 @@ public class USBSubmitProcessor {
         do {
             try validateSubmitRequest(request)
             try await checkConcurrentRequestLimit(devid: request.devid)
+
+            // Claim the request before doing anything that can block.
+            //
+            // Registration used to happen after the device had been resolved, which
+            // means after an IOKit enumeration. A client that submits a read and cancels
+            // it a millisecond later — probe-rs drains the IN endpoint exactly that way
+            // before its first command — sent the UNLINK into that window, found no such
+            // URB, and was told the request had already completed. It had not: it went
+            // on to run, and later returned data for a request the client had abandoned.
+            //
+            // This sits inside the block above so that a rejected claim is answered.
+            // Thrown from outside it, a duplicate reached ServerCoordinator, which logs
+            // and sends nothing, and the client waited for a reply that never came.
+            try await reserveSequenceNumber(devid: request.devid, seqnum: request.seqnum)
         } catch {
             logger.warning("Rejected SUBMIT request", context: [
                 "seqnum": String(request.seqnum),
@@ -126,19 +153,6 @@ public class USBSubmitProcessor {
             )
         }
         
-        // Claim the sequence number before doing anything that can block.
-        //
-        // Registration used to happen after the device had been resolved, which means
-        // after an IOKit enumeration. A client that submits a read and cancels it a
-        // millisecond later — probe-rs drains the IN endpoint exactly that way before
-        // its first command — sent the UNLINK into that window, found no such URB, and
-        // was told the request had already completed. It had not: it went on to run,
-        // and later returned data for a request the client had abandoned.
-        //
-        // Only the sequence number is known this early, which is all the cancel path
-        // needs to reserve the slot; the full URB replaces this entry below.
-        try await reserveSequenceNumber(request.seqnum)
-
         // Prefer the device's own description of the endpoint. CMD_SUBMIT has no
         // transfer-type field, so anything derived from the request alone is a guess —
         // and the interval-based guess below misreads every bulk endpoint that
@@ -194,17 +208,17 @@ public class USBSubmitProcessor {
             // The data is dropped with it. That is the honest outcome: it belongs to a
             // transfer the client cancelled, and handing it to the next read would put
             // one command's answer in front of another's.
-            if await wasCancelled(request.seqnum) {
+            if await wasCancelled(devid: request.devid, seqnum: request.seqnum) {
                 logger.info("Discarding result of a cancelled request", context: [
                     "seqnum": String(request.seqnum),
                     "actualLength": String(result.actualLength)
                 ])
-                await removeActiveURB(request.seqnum)
+                await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
                 return Data()
             }
 
             // Remove URB from tracking
-            await removeActiveURB(request.seqnum)
+            await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
 
             return try USBIPMessageEncoder.encodeUSBSubmitResponse(
                 seqnum: response.seqnum,
@@ -221,11 +235,11 @@ public class USBSubmitProcessor {
         } catch {
             // Aborting a pipe makes the transfer in flight fail, so a cancelled request
             // usually arrives here rather than above. It is silent for the same reason.
-            if await wasCancelled(request.seqnum) {
+            if await wasCancelled(devid: request.devid, seqnum: request.seqnum) {
                 logger.info("Cancelled request ended without a reply", context: [
                     "seqnum": String(request.seqnum)
                 ])
-                await removeActiveURB(request.seqnum)
+                await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
                 return Data()
             }
 
@@ -238,7 +252,7 @@ public class USBSubmitProcessor {
             let errorResponse = createErrorResponse(from: request, error: error)
             
             // Remove URB from tracking
-            await removeActiveURB(request.seqnum)
+            await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
             
             return try USBIPMessageEncoder.encodeUSBSubmitResponse(
                 seqnum: errorResponse.seqnum,
@@ -324,12 +338,13 @@ public class USBSubmitProcessor {
     /// carries the duplicate check that used to live in `addActiveURB`, which is the
     /// right place for it: a repeat of a sequence number is a client error whether or
     /// not the first one has finished being prepared.
-    private func reserveSequenceNumber(_ seqnum: UInt32) async throws {
+    private func reserveSequenceNumber(devid: UInt32, seqnum: UInt32) async throws {
         try urbQueue.sync(flags: .barrier) {
-            guard !reservedSeqnums.contains(seqnum) else {
+            let key = URBKey(devid: devid, seqnum: seqnum)
+            guard !reserved.contains(key) else {
                 throw USBRequestError.duplicateRequest
             }
-            reservedSeqnums.insert(seqnum)
+            reserved.insert(key)
         }
     }
 
@@ -338,34 +353,37 @@ public class USBSubmitProcessor {
         // Barrier: this mutates shared state on a concurrent queue. Plain .sync
         // lets writers run simultaneously and corrupts the dictionary.
         urbQueue.sync(flags: .barrier) {
-            activeURBs[urb.seqnum] = TrackedURB(urb: urb, status: .pending, device: device)
+            activeURBs[URBKey(devid: urb.devid, seqnum: urb.seqnum)] =
+                TrackedURB(urb: urb, status: .pending, device: device)
         }
     }
 
     /// Whether the client withdrew this request while it was running.
-    func wasCancelled(_ seqnum: UInt32) async -> Bool {
-        return urbQueue.sync { cancelledSeqnums.contains(seqnum) }
+    func wasCancelled(devid: UInt32, seqnum: UInt32) async -> Bool {
+        return urbQueue.sync { cancelled.contains(URBKey(devid: devid, seqnum: seqnum)) }
     }
 
     /// Remove URB from active tracking
-    private func removeActiveURB(_ seqnum: UInt32) async {
+    private func removeActiveURB(devid: UInt32, seqnum: UInt32) async {
         // Barrier: this mutates shared state on a concurrent queue. Plain .sync
         // lets writers run simultaneously and corrupts the dictionary.
         urbQueue.sync(flags: .barrier) {
-            activeURBs.removeValue(forKey: seqnum)
-            reservedSeqnums.remove(seqnum)
-            cancelledSeqnums.remove(seqnum)
+            let key = URBKey(devid: devid, seqnum: seqnum)
+            activeURBs.removeValue(forKey: key)
+            reserved.remove(key)
+            cancelled.remove(key)
         }
     }
     
     /// Update URB status
-    private func updateURBStatus(_ seqnum: UInt32, status: URBStatus) async {
+    private func updateURBStatus(devid: UInt32, seqnum: UInt32, status: URBStatus) async {
         // Barrier: this mutates shared state on a concurrent queue. Plain .sync
         // lets writers run simultaneously and corrupts the dictionary.
         urbQueue.sync(flags: .barrier) {
-            if var entry = activeURBs[seqnum] {
+            let key = URBKey(devid: devid, seqnum: seqnum)
+            if var entry = activeURBs[key] {
                 entry.status = status
-                activeURBs[seqnum] = entry
+                activeURBs[key] = entry
             }
         }
     }
@@ -377,7 +395,7 @@ public class USBSubmitProcessor {
         }
         
         // Update URB status
-        await updateURBStatus(urb.seqnum, status: .inProgress)
+        await updateURBStatus(devid: urb.devid, seqnum: urb.seqnum, status: .inProgress)
         
         // Execute based on transfer type
         switch urb.transferType {
@@ -567,23 +585,27 @@ public class USBSubmitProcessor {
         return urbQueue.sync { activeURBs.count }
     }
     
-    /// Cancel URB by sequence number (for UNLINK support)
-    public func cancelURB(_ seqnum: UInt32) async -> Bool {
+    /// Cancel a request (for UNLINK support).
+    ///
+    /// Takes the devid as well as the sequence number: numbering restarts per
+    /// connection, so a sequence number on its own could name another client's request.
+    public func cancelURB(devid: UInt32, seqnum: UInt32) async -> Bool {
         // Barrier: this mutates shared state on a concurrent queue. Plain .sync
         // lets writers run simultaneously and corrupts the dictionary.
         let claimed: CancelClaim = urbQueue.sync(flags: .barrier) {
             // A reservation is enough. Requiring an entry in activeURBs meant a request
             // still being set up could not be cancelled, and the client was told its URB
             // had already completed when in fact it had not started.
-            guard reservedSeqnums.contains(seqnum) else {
+            let key = URBKey(devid: devid, seqnum: seqnum)
+            guard reserved.contains(key) else {
                 return CancelClaim(reserved: false, urb: nil, device: nil)
             }
-            cancelledSeqnums.insert(seqnum)
-            guard var entry = activeURBs[seqnum] else {
+            cancelled.insert(key)
+            guard var entry = activeURBs[key] else {
                 return CancelClaim(reserved: true, urb: nil, device: nil)
             }
             entry.status = .cancelled
-            activeURBs[seqnum] = entry
+            activeURBs[key] = entry
             return CancelClaim(reserved: true, urb: entry.urb, device: entry.device)
         }
 
