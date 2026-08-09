@@ -620,13 +620,22 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
                          "Busid should match CLI format: \(busid)")
             
             // Bus ID components should be reasonable values (not empty or extremely large)
-            let busIDInt = Int(device.busID)!
-            let deviceIDInt = Int(device.deviceID)!
-            
+            guard let busIDInt = Int(device.busID) else {
+                return XCTFail("Bus ID should be a number: \(device.busID)")
+            }
             XCTAssertGreaterThanOrEqual(busIDInt, 0, "Bus ID should be non-negative")
-            XCTAssertGreaterThanOrEqual(deviceIDInt, 0, "Device ID should be non-negative")
             XCTAssertLessThan(busIDInt, 1000, "Bus ID should be reasonable (< 1000)")
-            XCTAssertLessThan(deviceIDInt, 1000, "Device ID should be reasonable (< 1000)")
+
+            // The device ID is a hub port path, not a single number: a device two tiers
+            // down reads "2.1.3". Forcing an Int over the whole string crashed this test
+            // on any machine with a device behind a hub, which CI never has.
+            for component in device.deviceID.split(separator: ".") {
+                guard let port = Int(component) else {
+                    return XCTFail("Port path component should be a number: \(device.deviceID)")
+                }
+                XCTAssertGreaterThanOrEqual(port, 0, "Port should be non-negative")
+                XCTAssertLessThan(port, 1000, "Port should be reasonable (< 1000)")
+            }
         }
     }
     

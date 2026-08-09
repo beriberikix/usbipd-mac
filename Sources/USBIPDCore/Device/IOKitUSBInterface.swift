@@ -82,8 +82,9 @@ public final class IOKitUSBInterface: @unchecked Sendable {
     /// IOKit interface wrapper for testing
     private let ioKit: IOKitInterface
     
-    /// Synchronization queue for IOKit operations
-    private let ioQueue: DispatchQueue
+    /// One serial queue per endpoint, so that a blocking transfer on one endpoint does
+    /// not hold up transfers on another. See `EndpointQueues` for why that matters.
+    private let endpointQueues = EndpointQueues()
     
     // MARK: - Initialization
     
@@ -92,7 +93,8 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         self.interfaceNumber = interfaceNumber
         self.ioKit = ioKit
         self.logger = Logger(subsystem: "com.usbipd.core", category: "IOKitUSBInterface")
-        self.ioQueue = DispatchQueue(label: "com.usbipd.iokit-interface", qos: .userInitiated)
+        // Endpoint queues are created lazily; the set of endpoints is not known until
+        // the interface is open and its pipes discovered.
         
         try initializeIOKitReferences()
     }
@@ -197,7 +199,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         }
         
         return try await withCheckedThrowingContinuation { continuation in
-            ioQueue.async {
+            transferQueue(for: endpoint).async {
                 do {
                     let result = try self.performControlTransfer(
                         endpoint: endpoint,
@@ -213,6 +215,11 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         }
     }
     
+    /// The serial queue owning transfers on one endpoint.
+    private func transferQueue(for endpoint: UInt8) -> DispatchQueue {
+        return endpointQueues.queue(for: endpoint)
+    }
+
     /// Execute a bulk transfer
     public func executeBulkTransfer(
         endpoint: UInt8,
@@ -225,7 +232,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         }
         
         return try await withCheckedThrowingContinuation { continuation in
-            ioQueue.async {
+            transferQueue(for: endpoint).async {
                 do {
                     let result = try self.performBulkTransfer(
                         endpoint: endpoint,
@@ -253,7 +260,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         }
         
         return try await withCheckedThrowingContinuation { continuation in
-            ioQueue.async {
+            transferQueue(for: endpoint).async {
                 do {
                     let result = try self.performInterruptTransfer(
                         endpoint: endpoint,
@@ -282,7 +289,7 @@ public final class IOKitUSBInterface: @unchecked Sendable {
         }
         
         return try await withCheckedThrowingContinuation { continuation in
-            ioQueue.async {
+            transferQueue(for: endpoint).async {
                 do {
                     let result = try self.performIsochronousTransfer(
                         endpoint: endpoint,
