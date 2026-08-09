@@ -20,6 +20,15 @@ public enum DeviceOwnership: Equatable {
     /// alike — one is a dead end, the other is a thing the user can act on.
     case userspaceProcess(clients: [String])
 
+    /// The device exposes no interfaces at all, so there is nothing to open.
+    ///
+    /// Usually this means macOS has not configured it — no configuration is selected,
+    /// so no interface nodes exist — which is common for devices another process is
+    /// driving directly, such as a WebUSB page in a browser. Reporting it as free was
+    /// worse than useless: `bind` accepted the device, announced that nothing held it,
+    /// and then every transfer failed with "Interface 0 not found".
+    case noInterfaces
+
     /// Some interfaces are free and others are owned. Common on debug probes, which
     /// pair a vendor-specific debug interface with a CDC serial port that macOS claims:
     /// a Raspberry Pi Debug Probe has CMSIS-DAP free on interface 0 while
@@ -33,7 +42,7 @@ public enum DeviceOwnership: Equatable {
         switch self {
         case .unbound, .partiallyClaimed:
             return true
-        case .kernelDriver, .userspaceProcess:
+        case .kernelDriver, .userspaceProcess, .noInterfaces:
             return false
         }
     }
@@ -182,6 +191,11 @@ public struct DeviceOwnershipInspector {
     }
 
     private func classify(_ perInterface: [(drivers: [String], opens: Bool)]) -> DeviceOwnership {
+        // Distinguish "no interfaces exist" from "interfaces exist and nothing has
+        // claimed them". Both used to arrive here with no driver names and both were
+        // called unbound, so a device with nothing to open was offered for sharing.
+        guard !perInterface.isEmpty else { return .noInterfaces }
+
         let all = perInterface.flatMap { $0.drivers }
         guard !all.isEmpty else { return .unbound }
 

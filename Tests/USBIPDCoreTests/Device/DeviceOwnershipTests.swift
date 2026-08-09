@@ -115,4 +115,33 @@ extension DeviceOwnershipTests {
         XCTAssertEqual(ownership, .kernelDriver(drivers: ["AppleUserHIDDevice"]))
         XCTAssertFalse(ownership.isServable)
     }
+
+    /// A device with no interface nodes has nothing to open, so it cannot be served.
+    ///
+    /// This reported as unbound, because "no drivers attached" and "no interfaces at
+    /// all" both arrived at the classifier as an empty list. `bind` accepted a VIA Labs
+    /// device that macOS had never configured — its only registry child was the user
+    /// client of a browser driving it over WebUSB — announced that nothing held it, and
+    /// then every transfer failed with "Interface 0 not found".
+    func testDeviceWithNoInterfacesIsNotServable() {
+        let ioKit = MockIOKitInterface()
+        ioKit.mockDevices = [MockUSBDevice(vendorID: 0x2109, productID: 0x8887)]
+        ioKit.classNamesByEntry[deviceEntry] = "IOUSBHostDevice"
+        // No interface children at all.
+        ioKit.childrenByEntry[deviceEntry] = []
+
+        let ownership = DeviceOwnershipInspector(ioKit: ioKit)
+            .ownership(vendorID: 0x2109, productID: 0x8887)
+
+        XCTAssertEqual(ownership, .noInterfaces)
+        XCTAssertFalse(ownership.isServable)
+    }
+
+    /// The distinction that makes the check above meaningful: an interface that exists
+    /// and has no driver is still the servable case.
+    func testInterfaceWithNoDriverIsStillServable() {
+        let ownership = inspector(interfaceDrivers: []).ownership(vendorID: 0x1366, productID: 0x0101)
+        XCTAssertEqual(ownership, .unbound)
+        XCTAssertTrue(ownership.isServable)
+    }
 }

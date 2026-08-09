@@ -239,6 +239,17 @@ public class BindCommand: Command {
             case .unbound:
                 break
 
+            case .noInterfaces:
+                // Nothing to open, so nothing can be served. Accepting the bind here
+                // produced a device that looked shared and failed every transfer with
+                // "Interface 0 not found".
+                logger.info("Refusing to bind a device with no interfaces", context: ["busid": busid])
+                print("Cannot share \(busid): the device exposes no USB interfaces.")
+                print("macOS has not configured it, which usually means another process is")
+                print("driving it directly — a browser tab using WebUSB, for instance. Quit")
+                print("that program and try again.")
+                throw CommandLineError.invalidArguments("Device \(busid) exposes no USB interfaces")
+
             case .partiallyClaimed(let free, let claimedBy):
                 // Some interfaces are owned and some are not. A composite debug probe
                 // looks like this: CMSIS-DAP free, the CDC serial port taken by macOS.
