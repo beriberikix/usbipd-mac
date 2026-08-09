@@ -329,6 +329,7 @@ public class ServerCoordinator: USBIPServer {
                deviceDiscovery: DeviceDiscovery, 
                deviceClaimManager: DeviceClaimManager? = nil, 
                config: ServerConfig = ServerConfig(),
+               boundDevices: BoundDeviceStore = BoundDeviceStore(),
                systemExtensionBundlePath: String? = nil,
                systemExtensionBundleIdentifier: String? = nil) {
         self.networkService = networkService
@@ -388,7 +389,7 @@ public class ServerCoordinator: USBIPServer {
         self.requestProcessor = RequestProcessor(
             deviceDiscovery: deviceDiscovery, 
             deviceClaimManager: self.deviceClaimManager,
-            config: config
+            boundDevices: boundDevices
         ) { [weak config] message, processorLevel in
             guard let config = config else { return }
             

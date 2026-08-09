@@ -12,6 +12,8 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
     var mockDeviceDiscovery: MockDeviceDiscovery!
     var ioKitDeviceDiscovery: IOKitDeviceDiscovery!
     var serverConfig: ServerConfig!
+    var boundDevices: BoundDeviceStore!
+    private var boundDevicesPath: String!
     
     override func setUp() {
         super.setUp()
@@ -24,6 +26,9 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         
         // Set up server config
         serverConfig = ServerConfig()
+        // The bound list is its own file now, so give each test one of its own.
+        boundDevicesPath = NSTemporaryDirectory() + "usbipd-bound-\(UUID().uuidString).json"
+        boundDevices = BoundDeviceStore(path: boundDevicesPath)
         
         // Set up standard test devices that match IOKit device discovery format
         // These devices simulate realistic IOKit-generated bus/device IDs and properties
@@ -86,6 +91,10 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
     override func tearDown() {
         mockDeviceDiscovery = nil
         ioKitDeviceDiscovery = nil
+        try? FileManager.default.removeItem(atPath: boundDevicesPath)
+        try? FileManager.default.removeItem(atPath: boundDevicesPath + ".lock")
+        boundDevices = nil
+        boundDevicesPath = nil
         serverConfig = nil
         super.tearDown()
     }
@@ -283,7 +292,7 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
     
     func testBindCommandWithDeviceDiscovery() throws {
         // Given: BindCommand with device discovery
-        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Get expected device for binding (Apple Magic Mouse from fixtures)
         let devices = try mockDeviceDiscovery.discoverDevices()
@@ -298,13 +307,13 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         XCTAssertNoThrow(try bindCommand.execute(with: [busid]), "Bind command should execute without throwing")
         
         // Then: Device should be added to allowed devices
-        XCTAssertTrue(serverConfig.allowedDevices.contains(busid), 
+        XCTAssertTrue(boundDevices.isBound(busid), 
                      "Device should be added to allowed devices")
     }
     
     func testBindCommandWithNonexistentDevice() {
         // Given: BindCommand with device discovery
-        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // When/Then: Binding nonexistent device should throw error
         XCTAssertThrowsError(try bindCommand.execute(with: ["999-999"])) { error in
@@ -322,13 +331,13 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         }
         
         // Verify device was not added to allowed devices
-        XCTAssertFalse(serverConfig.allowedDevices.contains("999-999"), 
+        XCTAssertFalse(boundDevices.isBound("999-999"), 
                       "Nonexistent device should not be added to allowed devices")
     }
     
     func testBindCommandDeviceLookupFunctionality() throws {
         // Given: Multiple devices and BindCommand
-        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Get all devices to test lookup functionality
         let devices = try mockDeviceDiscovery.discoverDevices()
@@ -343,11 +352,11 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         
         // Then: Only the target device should be bound
         let deviceIdentifier = "\(targetDevice.busID)-\(targetDevice.deviceID)"
-        XCTAssertTrue(serverConfig.allowedDevices.contains(deviceIdentifier), 
+        XCTAssertTrue(boundDevices.isBound(deviceIdentifier), 
                      "Target device should be bound")
         
         // Verify only one device is bound
-        XCTAssertEqual(serverConfig.allowedDevices.count, 1, 
+        XCTAssertEqual(boundDevices.boundDevices().count, 1, 
                       "Only one device should be bound")
     }
     
@@ -362,28 +371,28 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         }
         
         let busid = "\(firstDevice.busID)-\(firstDevice.deviceID)"
-        serverConfig.allowDevice(busid)
+        try boundDevices.bind(busid)
         
         // Verify device is initially bound
-        XCTAssertTrue(serverConfig.allowedDevices.contains(busid), 
+        XCTAssertTrue(boundDevices.isBound(busid), 
                      "Device should be initially bound")
         
-        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Execute unbind command
         XCTAssertNoThrow(try unbindCommand.execute(with: [busid]), "Unbind command should execute without throwing")
         
         // Then: Device should be removed from allowed devices
-        XCTAssertFalse(serverConfig.allowedDevices.contains(busid), 
+        XCTAssertFalse(boundDevices.isBound(busid), 
                       "Device should be removed from allowed devices")
     }
     
     func testUnbindCommandWithNonboundDevice() throws {
         // Given: Device is not bound
-        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Verify device is not initially bound
-        XCTAssertFalse(serverConfig.allowedDevices.contains("20-0"), 
+        XCTAssertFalse(boundDevices.isBound("20-0"), 
                       "Device should not be initially bound")
         
         // Execute unbind command
@@ -391,7 +400,7 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         
         // Then: Should complete without error (graceful handling)
         // Device should still not be bound
-        XCTAssertFalse(serverConfig.allowedDevices.contains("20-0"), 
+        XCTAssertFalse(boundDevices.isBound("20-0"), 
                       "Device should still not be bound")
     }
     
@@ -518,7 +527,7 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
     
     func testIOKitDeviceDiscoveryWithBindCommand() throws {
         // Given: Real IOKit device discovery and bind command
-        let bindCommand = BindCommand(deviceDiscovery: ioKitDeviceDiscovery, serverConfig: serverConfig)
+        let bindCommand = BindCommand(deviceDiscovery: ioKitDeviceDiscovery, boundDevices: boundDevices)
         
         // Get available devices
         let devices = try ioKitDeviceDiscovery.discoverDevices()
@@ -540,19 +549,19 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         if ownership.isServable {
             XCTAssertNoThrow(try bindCommand.execute(with: [busid]),
                              "An unowned device should bind")
-            XCTAssertTrue(serverConfig.allowedDevices.contains(busid),
+            XCTAssertTrue(boundDevices.isBound(busid),
                           "Device should be added to allowed devices")
         } else {
             XCTAssertThrowsError(try bindCommand.execute(with: [busid]),
                                  "A device another driver or process owns must be refused")
-            XCTAssertFalse(serverConfig.allowedDevices.contains(busid),
+            XCTAssertFalse(boundDevices.isBound(busid),
                            "A refused device must not be added to allowed devices")
         }
     }
     
     func testIOKitDeviceDiscoveryWithUnbindCommand() throws {
         // Given: Real IOKit device discovery and unbind command
-        let unbindCommand = UnbindCommand(deviceDiscovery: ioKitDeviceDiscovery, serverConfig: serverConfig)
+        let unbindCommand = UnbindCommand(deviceDiscovery: ioKitDeviceDiscovery, boundDevices: boundDevices)
         
         // Get available devices
         let devices = try ioKitDeviceDiscovery.discoverDevices()
@@ -565,14 +574,14 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         let busid = "\(firstDevice.busID)-\(firstDevice.deviceID)"
         
         // Pre-bind the device
-        serverConfig.allowDevice(busid)
-        XCTAssertTrue(serverConfig.allowedDevices.contains(busid), "Device should be initially bound")
+        try boundDevices.bind(busid)
+        XCTAssertTrue(boundDevices.isBound(busid), "Device should be initially bound")
         
         // When: Unbinding device using IOKit device discovery
         XCTAssertNoThrow(try unbindCommand.execute(with: [busid]), "Unbind command should execute without throwing")
         
         // Then: Device should be successfully unbound
-        XCTAssertFalse(serverConfig.allowedDevices.contains(busid), 
+        XCTAssertFalse(boundDevices.isBound(busid), 
                       "Device should be removed from allowed devices")
     }
     

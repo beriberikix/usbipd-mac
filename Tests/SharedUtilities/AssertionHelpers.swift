@@ -275,7 +275,6 @@ public struct ServerConfigAssertions {
         XCTAssertEqual(config1.debugMode, config2.debugMode, "Debug modes should match", file: file, line: line)
         XCTAssertEqual(config1.maxConnections, config2.maxConnections, "Max connections should match", file: file, line: line)
         XCTAssertEqual(config1.connectionTimeout, config2.connectionTimeout, "Connection timeouts should match", file: file, line: line)
-        XCTAssertEqual(config1.allowedDevices, config2.allowedDevices, "Allowed devices should match", file: file, line: line)
         XCTAssertEqual(config1.autoBindDevices, config2.autoBindDevices, "Auto bind devices should match", file: file, line: line)
         XCTAssertEqual(config1.logFilePath, config2.logFilePath, "Log file paths should match", file: file, line: line)
     }

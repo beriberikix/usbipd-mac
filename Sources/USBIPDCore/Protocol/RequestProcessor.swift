@@ -60,26 +60,24 @@ public class RequestProcessor {
     /// Device claim manager for device claiming
     private let deviceClaimManager: DeviceClaimManager
 
-    /// Bind allow-list. When nil no filtering is applied, which is the behaviour direct
-    /// unit-test construction relies on; the daemon always supplies it.
-    private let config: ServerConfig?
-    
-    /// Where the allow-list is persisted, watched for edits made by another process.
+    /// Which devices have been bound for sharing. When nil no filtering is applied,
+    /// which is the behaviour direct unit-test construction relies on; the daemon
+    /// always supplies a store.
     ///
-    /// `usbipd bind` runs as a separate process: it writes this file and exits. The
-    /// daemon read the file once at startup and never again, so a device bound while
-    /// the daemon was running stayed unimportable — `usbip attach` failed with "Request
-    /// Failed" — until someone restarted the daemon. Nothing in bind's output said so.
-    private let allowListPath: String
+    /// `usbipd bind` runs as a separate process: it writes the store's file and exits.
+    /// The daemon used to read that state once at startup and never again, so a device
+    /// bound while it was running stayed unimportable — `usbip attach` failed with
+    /// "Request Failed" — until someone restarted the daemon, which nothing said to do.
+    private let boundDevices: BoundDeviceStore?
 
-    /// The allow-list file's modification time as of the last check, so an edit can be
-    /// noticed without re-reading and re-decoding the file on every request.
-    private var allowListModified: Date?
+    /// The bound list as of the last read, with the file timestamp it came from, so a
+    /// request does not re-read and re-decode the file when nothing has changed.
+    private var cachedBoundDevices: Set<String> = []
+    private var cachedAt: Date?
+    private var haveRead = false
 
-    /// Guards `allowListModified` and the allow-list read it protects. Requests are
-    /// served from several connection threads at once, and a reload writes to the
-    /// config those threads are reading.
-    private let allowListLock = NSLock()
+    /// Guards the cache. Requests are served from several connection threads at once.
+    private let boundDevicesLock = NSLock()
 
     /// USB request handler for SUBMIT/UNLINK operations (will be injected later)
     private var usbRequestHandler: USBRequestHandlerProtocol?
@@ -99,23 +97,13 @@ public class RequestProcessor {
     public init(
         deviceDiscovery: DeviceDiscovery,
         deviceClaimManager: DeviceClaimManager,
-        config: ServerConfig? = nil,
-        configPath: String? = nil,
+        boundDevices: BoundDeviceStore? = nil,
         logger: ((String, LogLevel) -> Void)? = nil
     ) {
-        self.config = config
         self.deviceDiscovery = deviceDiscovery
         self.deviceClaimManager = deviceClaimManager
+        self.boundDevices = boundDevices
         self.logger = logger
-        self.allowListPath = configPath ?? ServerConfig.defaultConfigPath()
-
-        // Record the file's state now, so that a bind creating it for the first time
-        // registers as a change rather than as the baseline.
-        self.allowListModified = RequestProcessor.modificationDate(of: self.allowListPath)
-    }
-
-    private static func modificationDate(of path: String) -> Date? {
-        return try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
     }
     
     /// Set the USB request handler for processing SUBMIT/UNLINK requests
@@ -217,32 +205,25 @@ public class RequestProcessor {
     /// Handle a device list request
     /// Whether a device has been bound for sharing. Absent config means no filtering.
     private func isDeviceShared(busID: String, deviceID: String) -> Bool {
-        guard let config = config else { return true }
+        guard let boundDevices = boundDevices else { return true }
 
-        allowListLock.lock()
-        defer { allowListLock.unlock() }
+        boundDevicesLock.lock()
+        defer { boundDevicesLock.unlock() }
 
-        // Pick up an edit made by `bind` or `unbind` since the last request. Checking a
-        // timestamp costs a stat, and these requests arrive at human pace, so this is
-        // not worth caching more cleverly.
-        //
-        // A missing file is left alone rather than treated as an empty allow-list: the
-        // daemon can be handed a configuration directly, and a config file that has not
-        // been written yet must not silently unshare everything.
-        if let modified = RequestProcessor.modificationDate(of: allowListPath),
-           modified != allowListModified {
-            allowListModified = modified
-            if let reloaded = try? ServerConfig.load(from: allowListPath) {
-                config.allowedDevices = reloaded.allowedDevices
-                log("Reloaded the device allow-list after \(allowListPath) changed", .info)
-            } else {
-                // Keep serving the list already in hand. A half-written or invalid file
-                // is a worse answer than a stale one, and bind writes atomically.
-                log("Could not reload \(allowListPath); keeping the allow-list in memory", .warning)
-            }
+        // Pick up a bind or unbind performed since the last request. Comparing the
+        // file's timestamp costs a stat, and these requests arrive at human pace, so
+        // this is not worth caching more cleverly.
+        let modified = boundDevices.modificationDate()
+        if !haveRead || modified != cachedAt {
+            cachedBoundDevices = Set(boundDevices.boundDevices())
+            cachedAt = modified
+            haveRead = true
+            log("Read the bound-device list: \(cachedBoundDevices.sorted().joined(separator: ", "))", .info)
         }
 
-        return config.isDeviceAllowed("\(busID)-\(deviceID)")
+        // Sharing is opt-in: `usbipd bind` is the act of offering a device, so a device
+        // absent from the list is not shared.
+        return cachedBoundDevices.contains("\(busID)-\(deviceID)")
     }
 
     private func handleDeviceListRequest(_ data: Data) throws -> Data {

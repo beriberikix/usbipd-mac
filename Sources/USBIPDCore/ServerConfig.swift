@@ -83,9 +83,6 @@ public class ServerConfig: Codable {
     /// Connection timeout in seconds
     public var connectionTimeout: TimeInterval
     
-    /// Allowed device IDs (empty means all devices are allowed)
-    public var allowedDevices: [String]
-    
     /// Log file path (nil means log to stdout only)
     public var logFilePath: String?
     
@@ -141,7 +138,6 @@ public class ServerConfig: Codable {
         debugMode: Bool = false,
         maxConnections: Int = 10,
         connectionTimeout: TimeInterval = 30.0,
-        allowedDevices: [String] = [],
         logFilePath: String? = nil,
         maxConcurrentRequests: Int = 16,
         maxTotalConcurrentRequests: Int = 64,
@@ -159,7 +155,6 @@ public class ServerConfig: Codable {
         self.debugMode = debugMode
         self.maxConnections = maxConnections
         self.connectionTimeout = connectionTimeout
-        self.allowedDevices = allowedDevices
         self.logFilePath = logFilePath
         self.maxConcurrentRequests = maxConcurrentRequests
         self.maxTotalConcurrentRequests = maxTotalConcurrentRequests
@@ -324,37 +319,16 @@ public class ServerConfig: Codable {
         }
     }
     
-    /// Check if a device is allowed based on configuration
-    /// - Parameter deviceID: Device ID to check
-    /// - Returns: True if device is allowed
-    public func isDeviceAllowed(_ deviceID: String) -> Bool {
-        // Sharing is opt-in: `usbipd bind` is the act of offering a device, so a device
-        // absent from the list is not shared. This used to return true for an empty
-        // list, which meant a fresh install with nothing bound offered every USB device
-        // on the machine to any host that could reach the port.
-        return allowedDevices.contains(deviceID)
-    }
-    
-    /// Add a device to the allowed devices list
-    /// - Parameter deviceID: Device ID to add
-    public func allowDevice(_ deviceID: String) {
-        if !allowedDevices.contains(deviceID) {
-            allowedDevices.append(deviceID)
-        }
-    }
-    
-    /// Remove a device from the allowed devices list
-    /// - Parameter deviceID: Device ID to remove
-    /// - Returns: True if device was removed, false if it wasn't in the list
-    @discardableResult
-    public func disallowDevice(_ deviceID: String) -> Bool {
-        if let index = allowedDevices.firstIndex(of: deviceID) {
-            allowedDevices.remove(at: index)
-            return true
-        }
-        return false
-    }
-    
+    // The bind list used to live here, as `allowedDevices` with methods to add to and
+    // remove from it. It now lives in BoundDeviceStore, on its own, because it is state
+    // rather than configuration: it is written by `bind` and read by the daemon, while
+    // everything in this file is chosen by a person and read at startup.
+    //
+    // Keeping them together meant `bind` rewrote this whole file to append one string.
+    // Since the CLI falls back to a default configuration when this file will not
+    // parse, one malformed character turned the next `bind` into a silent reset of the
+    // port and the log level.
+
     // MARK: - System Extension Bundle Configuration
     
     /// Update the System Extension bundle configuration

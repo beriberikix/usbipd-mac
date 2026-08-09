@@ -122,13 +122,10 @@ class RequestProcessorTests: XCTestCase {
         let device = createSampleDevice()
         deviceDiscovery.devices = [device]
 
-        let config = ServerConfig()
-        config.allowedDevices = []
-
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
             deviceClaimManager: MockDeviceClaimManager(),
-            config: config
+            boundDevices: temporaryStore(binding: [])
         )
 
         let responseData = try processor.processRequest(createDeviceListRequest())
@@ -143,13 +140,10 @@ class RequestProcessorTests: XCTestCase {
         let device = createSampleDevice()
         deviceDiscovery.devices = [device]
 
-        let config = ServerConfig()
-        config.allowedDevices = ["\(device.busID)-\(device.deviceID)"]
-
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
             deviceClaimManager: MockDeviceClaimManager(),
-            config: config
+            boundDevices: temporaryStore(binding: ["\(device.busID)-\(device.deviceID)"])
         )
 
         let responseData = try processor.processRequest(createDeviceListRequest())
@@ -163,13 +157,10 @@ class RequestProcessorTests: XCTestCase {
         let device = createSampleDevice()
         deviceDiscovery.devices = [device]
 
-        let config = ServerConfig()
-        config.allowedDevices = []
-
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
             deviceClaimManager: MockDeviceClaimManager(),
-            config: config
+            boundDevices: temporaryStore(binding: [])
         )
 
         // Absent from the list, so a client that guesses the busid must still be refused.
@@ -278,10 +269,24 @@ class RequestProcessorTests: XCTestCase {
         XCTAssertThrowsError(try processor.processRequest(data), "Processing unsupported command should throw an error")
     }
 
-    // MARK: - The allow-list is edited by another process
+    // MARK: - The bound list is written by another process
 
-    /// `usbipd bind` writes the configuration file and exits; the daemon is a separate,
-    /// long-running process. It read that file once at startup and never again, so a
+    /// A store backed by a file of its own, removed when the test ends.
+    private func temporaryStore(binding devices: [String]) -> BoundDeviceStore {
+        let path = NSTemporaryDirectory() + "usbipd-bound-\(UUID().uuidString).json"
+        addTeardownBlock {
+            try? FileManager.default.removeItem(atPath: path)
+            try? FileManager.default.removeItem(atPath: path + ".lock")
+        }
+        let store = BoundDeviceStore(path: path)
+        for device in devices {
+            _ = try? store.bind(device)
+        }
+        return store
+    }
+
+    /// `usbipd bind` writes the bound-device list and exits; the daemon is a separate,
+    /// long-running process. It read that state once at startup and never again, so a
     /// device bound while the daemon was running stayed unimportable — `usbip attach`
     /// answered "Request Failed" — until the daemon was restarted, which nothing told
     /// the user to do.
@@ -291,22 +296,11 @@ class RequestProcessorTests: XCTestCase {
         deviceDiscovery.devices = [device]
         let busid = "\(device.busID)-\(device.deviceID)"
 
-        let configPath = NSTemporaryDirectory() + "usbipd-reload-\(UUID().uuidString).json"
-        defer { try? FileManager.default.removeItem(atPath: configPath) }
-
-        // The daemon's view: started with nothing bound, matching the file on disk.
-        let onDisk = ServerConfig()
-        onDisk.allowedDevices = []
-        try onDisk.save(to: configPath)
-
-        let daemonConfig = ServerConfig()
-        daemonConfig.allowedDevices = []
-
+        let store = temporaryStore(binding: [])
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
             deviceClaimManager: MockDeviceClaimManager(),
-            config: daemonConfig,
-            configPath: configPath
+            boundDevices: store
         )
 
         var response = try USBIPMessageDecoder.decodeDeviceListResponse(
@@ -314,14 +308,8 @@ class RequestProcessorTests: XCTestCase {
         XCTAssertEqual(response.deviceCount, 0, "nothing is bound yet")
 
         // What `bind` does, from its own process.
-        let boundByCLI = ServerConfig()
-        boundByCLI.allowedDevices = [busid]
-        try boundByCLI.save(to: configPath)
-
-        // Modification times have to differ for the change to be noticed, and a test
-        // can write both files inside one filesystem timestamp tick.
-        try FileManager.default.setAttributes(
-            [.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: configPath)
+        try store.bind(busid)
+        try touch(store)
 
         response = try USBIPMessageDecoder.decodeDeviceListResponse(
             from: try processor.processRequest(createDeviceListRequest()))
@@ -335,57 +323,29 @@ class RequestProcessorTests: XCTestCase {
         deviceDiscovery.devices = [device]
         let busid = "\(device.busID)-\(device.deviceID)"
 
-        let configPath = NSTemporaryDirectory() + "usbipd-reload-\(UUID().uuidString).json"
-        defer { try? FileManager.default.removeItem(atPath: configPath) }
-
-        let onDisk = ServerConfig()
-        onDisk.allowedDevices = [busid]
-        try onDisk.save(to: configPath)
-
-        let daemonConfig = ServerConfig()
-        daemonConfig.allowedDevices = [busid]
-
+        let store = temporaryStore(binding: [busid])
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
             deviceClaimManager: MockDeviceClaimManager(),
-            config: daemonConfig,
-            configPath: configPath
+            boundDevices: store
         )
 
         var response = try USBIPMessageDecoder.decodeDeviceListResponse(
             from: try processor.processRequest(createDeviceListRequest()))
         XCTAssertEqual(response.deviceCount, 1, "bound at startup")
 
-        let unboundByCLI = ServerConfig()
-        unboundByCLI.allowedDevices = []
-        try unboundByCLI.save(to: configPath)
-        try FileManager.default.setAttributes(
-            [.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: configPath)
+        try store.unbind(busid)
+        try touch(store)
 
         response = try USBIPMessageDecoder.decodeDeviceListResponse(
             from: try processor.processRequest(createDeviceListRequest()))
         XCTAssertEqual(response.deviceCount, 0, "an unbound device should stop being served")
     }
 
-    /// A daemon handed a configuration directly, with no file behind it, must keep
-    /// serving what it was given rather than reading a missing file as "nothing bound".
-    func testMissingConfigFileLeavesTheAllowListAlone() throws {
-        let deviceDiscovery = MockDeviceDiscovery()
-        let device = createSampleDevice()
-        deviceDiscovery.devices = [device]
-
-        let config = ServerConfig()
-        config.allowedDevices = ["\(device.busID)-\(device.deviceID)"]
-
-        let processor = RequestProcessor(
-            deviceDiscovery: deviceDiscovery,
-            deviceClaimManager: MockDeviceClaimManager(),
-            config: config,
-            configPath: NSTemporaryDirectory() + "usbipd-absent-\(UUID().uuidString).json"
-        )
-
-        let response = try USBIPMessageDecoder.decodeDeviceListResponse(
-            from: try processor.processRequest(createDeviceListRequest()))
-        XCTAssertEqual(response.deviceCount, 1, "an in-memory allow-list must survive a missing file")
+    /// Modification times have to differ for a change to be noticed, and a test can
+    /// write twice inside one filesystem timestamp tick.
+    private func touch(_ store: BoundDeviceStore) throws {
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(1)], ofItemAtPath: store.filePath)
     }
 }

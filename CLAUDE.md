@@ -22,11 +22,19 @@ plugged straight into the Mac, because no target is wired to its SWD pins. No Sy
 Extension and no entitlement are involved.
 
 `bind` and `unbind` take effect on a running daemon. They are separate processes that
-write `~/.usbipd/usbipd-config.json`; the daemon notices the file has changed and
-re-reads the allow-list. It used to read that file only at startup, so a device bound
-while the daemon was running stayed unimportable — `usbip attach` answered "Request
-Failed" — and nothing said a restart was needed. Only the allow-list is re-read; port
-and log level still need a restart.
+write `~/.usbipd/bound-devices.json`; the daemon notices the file has changed and
+re-reads it. It used to read that state only at startup, so a device bound while the
+daemon was running stayed unimportable — `usbip attach` answered "Request Failed" — and
+nothing said a restart was needed.
+
+State and configuration are separate files, and only state is ever written by the tool.
+`~/.usbipd/usbipd-config.json` holds the port, log level and tuning; it is read at
+startup and needs a restart to change. `~/.usbipd/bound-devices.json` holds the bind
+list, guarded by a lock file so two `bind` commands cannot lose each other's device.
+The two used to share one file, so `bind` rewrote the whole configuration to append a
+busid — and because the CLI falls back to defaults when that file will not parse, one
+malformed character turned the next `bind` into a silent reset of the port and log
+level. A `allowedDevices` key left in an old config is migrated once and then ignored.
 
 Clients that cancel a transfer are supported, which matters more than it sounds:
 libusb cancels any read it has timed out, and probe-rs drains the IN endpoint that way

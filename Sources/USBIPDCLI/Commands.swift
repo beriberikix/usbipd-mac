@@ -164,16 +164,16 @@ public class BindCommand: Command {
     public let description = "Bind a USB device to USB/IP through System Extension"
     
     private let deviceDiscovery: DeviceDiscovery
-    private let serverConfig: ServerConfig
+    private let boundDevices: BoundDeviceStore
     private let systemExtensionManager: SystemExtensionManager?
     private let ownershipInspector: DeviceOwnershipInspector
 
     public init(deviceDiscovery: DeviceDiscovery,
-                serverConfig: ServerConfig,
+                boundDevices: BoundDeviceStore = BoundDeviceStore(),
                 systemExtensionManager: SystemExtensionManager? = nil,
                 ownershipInspector: DeviceOwnershipInspector = DeviceOwnershipInspector()) {
         self.deviceDiscovery = deviceDiscovery
-        self.serverConfig = serverConfig
+        self.boundDevices = boundDevices
         self.systemExtensionManager = systemExtensionManager
         self.ownershipInspector = ownershipInspector
     }
@@ -301,9 +301,8 @@ public class BindCommand: Command {
                     logger.info("Device already claimed by System Extension", context: ["deviceID": deviceIdentifier])
                     print("Device \(busid) is already claimed by System Extension")
                     
-                    // Add to config even if already claimed to ensure consistency
-                    serverConfig.allowDevice(deviceIdentifier)
-                    try serverConfig.save()
+                    // Record it even if already claimed, so the two agree.
+                    try boundDevices.bind(deviceIdentifier)
                     
                     print("Device \(busid) successfully bound: \(String(format: "%04x", device.vendorID)):\(String(format: "%04x", device.productID)) (\(device.productString ?? "Unknown"))")
                     return
@@ -345,13 +344,14 @@ public class BindCommand: Command {
                 print("  work from userspace and need no claim.")
             }
             
-            // Step 3: Add device to allowed devices in config
-            logger.debug("Adding device to allowed devices list", context: ["deviceIdentifier": deviceIdentifier])
-            serverConfig.allowDevice(deviceIdentifier)
-            
-            // Step 4: Save the updated configuration
-            logger.debug("Saving updated configuration")
-            try serverConfig.save()
+            // Step 3: Record the device as bound.
+            //
+            // This writes only the bound-device list. It used to append to the server
+            // configuration and write that whole file back, so sharing a USB device
+            // rewrote the port, the log level and every tuning value along with it —
+            // and reset them outright whenever the configuration had failed to parse.
+            logger.debug("Recording the device as bound", context: ["deviceIdentifier": deviceIdentifier])
+            try boundDevices.bind(deviceIdentifier)
             
             logger.info("Successfully bound device", context: ["busid": busid])
             print("✓ Device \(busid) added to server configuration")
@@ -427,12 +427,14 @@ public class UnbindCommand: Command {
     public let description = "Unbind a USB device from USB/IP and release System Extension claim"
     
     private let deviceDiscovery: DeviceDiscovery
-    private let serverConfig: ServerConfig
+    private let boundDevices: BoundDeviceStore
     private let systemExtensionManager: SystemExtensionManager?
     
-    public init(deviceDiscovery: DeviceDiscovery, serverConfig: ServerConfig, systemExtensionManager: SystemExtensionManager? = nil) {
+    public init(deviceDiscovery: DeviceDiscovery,
+                boundDevices: BoundDeviceStore = BoundDeviceStore(),
+                systemExtensionManager: SystemExtensionManager? = nil) {
         self.deviceDiscovery = deviceDiscovery
-        self.serverConfig = serverConfig
+        self.boundDevices = boundDevices
         self.systemExtensionManager = systemExtensionManager
     }
     
@@ -474,7 +476,7 @@ public class UnbindCommand: Command {
             logger.debug("Looking for device", context: ["busID": busPart, "deviceID": devicePart])
             
             // Step 1: Check if device is currently bound in config
-            let wasBound = serverConfig.allowedDevices.contains(busid)
+            let wasBound = boundDevices.isBound(busid)
             logger.debug("Device binding status in config", context: ["busid": busid, "wasBound": wasBound])
             
             // Step 2: Attempt to release device through System Extension if available
@@ -542,15 +544,12 @@ public class UnbindCommand: Command {
                 print("Note: Device claiming through System Extension is not active")
             }
             
-            // Step 3: Remove device from allowed devices in config
-            logger.debug("Removing device from allowed devices list", context: ["busid": busid])
-            let removed = serverConfig.disallowDevice(busid)
+            // Step 3: Forget the device.
+            logger.debug("Removing the device from the bound list", context: ["busid": busid])
+            let removed = try boundDevices.unbind(busid)
             
             if removed {
-                // Step 4: Save the updated configuration
-                logger.debug("Saving updated configuration")
-                try serverConfig.save()
-                logger.info("Successfully unbound device from configuration", context: ["busid": busid])
+                logger.info("Successfully unbound device", context: ["busid": busid])
                 print("✓ Device \(busid) removed from server configuration")
                 
                 if systemExtensionManager != nil {
@@ -692,7 +691,6 @@ public class DaemonCommand: Command {
                 serverConfig.debugMode = loadedConfig.debugMode
                 serverConfig.maxConnections = loadedConfig.maxConnections
                 serverConfig.connectionTimeout = loadedConfig.connectionTimeout
-                serverConfig.allowedDevices = loadedConfig.allowedDevices
                 serverConfig.logFilePath = loadedConfig.logFilePath
                 
                 logger.debug("Applied custom configuration to server")

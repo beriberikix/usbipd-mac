@@ -197,7 +197,6 @@ public struct ServerConfigTestFixtures {
         debugMode: true,
         maxConnections: 5,
         connectionTimeout: 15.0,
-        allowedDevices: [],
         autoBindDevices: false,
         logFilePath: nil
     )
@@ -209,7 +208,6 @@ public struct ServerConfigTestFixtures {
         debugMode: false,
         maxConnections: 20,
         connectionTimeout: 60.0,
-        allowedDevices: ["1-1", "1-2"],
         autoBindDevices: true,
         logFilePath: "/var/log/usbipd.log"
     )
@@ -221,7 +219,6 @@ public struct ServerConfigTestFixtures {
         debugMode: false,
         maxConnections: 10,
         connectionTimeout: 30.0,
-        allowedDevices: [],
         autoBindDevices: false,
         logFilePath: nil
     )
@@ -233,7 +230,6 @@ public struct ServerConfigTestFixtures {
         debugMode: true,
         maxConnections: 15,
         connectionTimeout: 45.0,
-        allowedDevices: ["test-device-1", "test-device-2"],
         autoBindDevices: true,
         logFilePath: "/tmp/test-log.log"
     )

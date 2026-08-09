@@ -13,6 +13,8 @@ class CommandHandlersTests: XCTestCase {
     var mockDeviceDiscovery: MockDeviceDiscovery!
     var mockServer: MockUSBIPServer!
     var serverConfig: ServerConfig!
+    var boundDevices: BoundDeviceStore!
+    private var boundDevicesPath: String!
     var mockOutputFormatter: MockOutputFormatter!
     
     override func setUp() {
@@ -20,6 +22,9 @@ class CommandHandlersTests: XCTestCase {
         mockDeviceDiscovery = MockDeviceDiscovery()
         mockServer = MockUSBIPServer()
         serverConfig = ServerConfig()
+        // The bound list is its own file now, so give each test one of its own.
+        boundDevicesPath = NSTemporaryDirectory() + "usbipd-bound-\(UUID().uuidString).json"
+        boundDevices = BoundDeviceStore(path: boundDevicesPath)
         mockOutputFormatter = MockOutputFormatter()
         
         // Set up mock devices
@@ -56,6 +61,10 @@ class CommandHandlersTests: XCTestCase {
     override func tearDown() {
         mockDeviceDiscovery = nil
         mockServer = nil
+        try? FileManager.default.removeItem(atPath: boundDevicesPath)
+        try? FileManager.default.removeItem(atPath: boundDevicesPath + ".lock")
+        boundDevices = nil
+        boundDevicesPath = nil
         serverConfig = nil
         mockOutputFormatter = nil
         super.tearDown()
@@ -88,17 +97,17 @@ class CommandHandlersTests: XCTestCase {
     // MARK: - Bind Command Tests
     
     func testBindCommand() throws {
-        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Test successful execution
         try bindCommand.execute(with: ["1-2"])
         
         // Check that device was added to allowed devices
-        XCTAssertTrue(serverConfig.allowedDevices.contains("1-2"), "Device should be added to allowed devices")
+        XCTAssertTrue(boundDevices.isBound("1-2"), "Device should be added to allowed devices")
     }
     
     func testBindCommandWithInvalidBusID() {
-        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Test invalid busid format
         XCTAssertThrowsError(try bindCommand.execute(with: ["invalid"])) { error in
@@ -107,7 +116,7 @@ class CommandHandlersTests: XCTestCase {
     }
     
     func testBindCommandWithNonexistentDevice() {
-        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let bindCommand = BindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Test nonexistent device
         XCTAssertThrowsError(try bindCommand.execute(with: ["2-1"])) { error in
@@ -118,20 +127,20 @@ class CommandHandlersTests: XCTestCase {
     // MARK: - Unbind Command Tests
     
     func testUnbindCommand() throws {
-        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Add device to allowed devices first
-        serverConfig.allowDevice("1-2")
+        try boundDevices.bind("1-2")
         
         // Test successful execution
         try unbindCommand.execute(with: ["1-2"])
         
         // Check that device was removed from allowed devices
-        XCTAssertFalse(serverConfig.allowedDevices.contains("1-2"), "Device should be removed from allowed devices")
+        XCTAssertFalse(boundDevices.isBound("1-2"), "Device should be removed from allowed devices")
     }
     
     func testUnbindCommandWithInvalidBusID() {
-        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, serverConfig: serverConfig)
+        let unbindCommand = UnbindCommand(deviceDiscovery: mockDeviceDiscovery, boundDevices: boundDevices)
         
         // Test invalid busid format
         XCTAssertThrowsError(try unbindCommand.execute(with: ["invalid"])) { error in

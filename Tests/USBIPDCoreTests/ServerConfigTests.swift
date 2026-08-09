@@ -32,7 +32,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertFalse(config.debugMode)
         XCTAssertEqual(config.maxConnections, 10)
         XCTAssertEqual(config.connectionTimeout, 30.0)
-        XCTAssertTrue(config.allowedDevices.isEmpty)
         XCTAssertNil(config.logFilePath)
     }
     
@@ -43,7 +42,6 @@ final class ServerConfigTests: XCTestCase {
             debugMode: true,
             maxConnections: 5,
             connectionTimeout: 60.0,
-            allowedDevices: ["device1", "device2"],
             logFilePath: "/tmp/usbipd.log"
         )
         
@@ -52,7 +50,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertTrue(config.debugMode)
         XCTAssertEqual(config.maxConnections, 5)
         XCTAssertEqual(config.connectionTimeout, 60.0)
-        XCTAssertEqual(config.allowedDevices, ["device1", "device2"])
         XCTAssertEqual(config.logFilePath, "/tmp/usbipd.log")
     }
     
@@ -66,7 +63,6 @@ final class ServerConfigTests: XCTestCase {
             debugMode: true,
             maxConnections: 15,
             connectionTimeout: 45.0,
-            allowedDevices: ["test-device-1", "test-device-2"],
             logFilePath: "/tmp/test-log.log"
         )
         
@@ -82,7 +78,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(loadedConfig.debugMode, originalConfig.debugMode)
         XCTAssertEqual(loadedConfig.maxConnections, originalConfig.maxConnections)
         XCTAssertEqual(loadedConfig.connectionTimeout, originalConfig.connectionTimeout)
-        XCTAssertEqual(loadedConfig.allowedDevices, originalConfig.allowedDevices)
         XCTAssertEqual(loadedConfig.logFilePath, originalConfig.logFilePath)
     }
     
@@ -129,41 +124,9 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertNoThrow(try config.validate())
     }
     
-    func testDeviceAllowance() {
-        let config = ServerConfig()
-        
-        // Sharing is opt-in: nothing bound means nothing shared. This asserted the
-        // opposite, which let the server offer every USB device on a fresh install.
-        XCTAssertFalse(config.isDeviceAllowed("any-device"))
-        
-        // Add specific allowed devices
-        config.allowedDevices = ["device1", "device2"]
-        
-        // Test allowed devices
-        XCTAssertTrue(config.isDeviceAllowed("device1"))
-        XCTAssertTrue(config.isDeviceAllowed("device2"))
-        
-        // Test disallowed device
-        XCTAssertFalse(config.isDeviceAllowed("device3"))
-        
-        // Add a device
-        config.allowDevice("device3")
-        XCTAssertTrue(config.isDeviceAllowed("device3"))
-        
-        // Add a duplicate device (should not affect behavior)
-        config.allowDevice("device3")
-        XCTAssertEqual(config.allowedDevices.filter { $0 == "device3" }.count, 1)
-        
-        // Remove a device
-        let removed = config.disallowDevice("device2")
-        XCTAssertTrue(removed)
-        XCTAssertFalse(config.isDeviceAllowed("device2"))
-        
-        // Remove a non-existent device
-        let notRemoved = config.disallowDevice("non-existent")
-        XCTAssertFalse(notRemoved)
-    }
-    
+    // testDeviceAllowance moved to BoundDeviceStoreTests: the bind list is no longer
+    // part of the configuration.
+
     func testShouldLog() {
         let config = ServerConfig(logLevel: .info)
         
