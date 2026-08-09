@@ -64,6 +64,23 @@ public class RequestProcessor {
     /// unit-test construction relies on; the daemon always supplies it.
     private let config: ServerConfig?
     
+    /// Where the allow-list is persisted, watched for edits made by another process.
+    ///
+    /// `usbipd bind` runs as a separate process: it writes this file and exits. The
+    /// daemon read the file once at startup and never again, so a device bound while
+    /// the daemon was running stayed unimportable — `usbip attach` failed with "Request
+    /// Failed" — until someone restarted the daemon. Nothing in bind's output said so.
+    private let allowListPath: String
+
+    /// The allow-list file's modification time as of the last check, so an edit can be
+    /// noticed without re-reading and re-decoding the file on every request.
+    private var allowListModified: Date?
+
+    /// Guards `allowListModified` and the allow-list read it protects. Requests are
+    /// served from several connection threads at once, and a reload writes to the
+    /// config those threads are reading.
+    private let allowListLock = NSLock()
+
     /// USB request handler for SUBMIT/UNLINK operations (will be injected later)
     private var usbRequestHandler: USBRequestHandlerProtocol?
     
@@ -79,11 +96,26 @@ public class RequestProcessor {
     }
     
     /// Initialize with device discovery and device claim manager
-    public init(deviceDiscovery: DeviceDiscovery, deviceClaimManager: DeviceClaimManager, config: ServerConfig? = nil, logger: ((String, LogLevel) -> Void)? = nil) {
+    public init(
+        deviceDiscovery: DeviceDiscovery,
+        deviceClaimManager: DeviceClaimManager,
+        config: ServerConfig? = nil,
+        configPath: String? = nil,
+        logger: ((String, LogLevel) -> Void)? = nil
+    ) {
         self.config = config
         self.deviceDiscovery = deviceDiscovery
         self.deviceClaimManager = deviceClaimManager
         self.logger = logger
+        self.allowListPath = configPath ?? ServerConfig.defaultConfigPath()
+
+        // Record the file's state now, so that a bind creating it for the first time
+        // registers as a change rather than as the baseline.
+        self.allowListModified = RequestProcessor.modificationDate(of: self.allowListPath)
+    }
+
+    private static func modificationDate(of path: String) -> Date? {
+        return try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
     }
     
     /// Set the USB request handler for processing SUBMIT/UNLINK requests
@@ -186,6 +218,30 @@ public class RequestProcessor {
     /// Whether a device has been bound for sharing. Absent config means no filtering.
     private func isDeviceShared(busID: String, deviceID: String) -> Bool {
         guard let config = config else { return true }
+
+        allowListLock.lock()
+        defer { allowListLock.unlock() }
+
+        // Pick up an edit made by `bind` or `unbind` since the last request. Checking a
+        // timestamp costs a stat, and these requests arrive at human pace, so this is
+        // not worth caching more cleverly.
+        //
+        // A missing file is left alone rather than treated as an empty allow-list: the
+        // daemon can be handed a configuration directly, and a config file that has not
+        // been written yet must not silently unshare everything.
+        if let modified = RequestProcessor.modificationDate(of: allowListPath),
+           modified != allowListModified {
+            allowListModified = modified
+            if let reloaded = try? ServerConfig.load(from: allowListPath) {
+                config.allowedDevices = reloaded.allowedDevices
+                log("Reloaded the device allow-list after \(allowListPath) changed", .info)
+            } else {
+                // Keep serving the list already in hand. A half-written or invalid file
+                // is a worse answer than a stale one, and bind writes atomically.
+                log("Could not reload \(allowListPath); keeping the allow-list in memory", .warning)
+            }
+        }
+
         return config.isDeviceAllowed("\(busID)-\(deviceID)")
     }
 

@@ -30,10 +30,15 @@ public class USBUnlinkProcessor {
         logger.info("USBUnlinkProcessor configured with submit processor for real URB cancellation")
     }
     
-    /// Set the device communicator for IOKit-level transfer cancellation
+    /// Record the device communicator, for reporting only.
+    ///
+    /// This processor no longer aborts anything itself. It used to, from the UNLINK
+    /// message's own ep and direction fields, which are always zero — so the abort was
+    /// aimed at the control pipe while the transfer it should have stopped kept running.
+    /// The submit processor does it now, using the endpoint the URB was submitted with.
     public func setDeviceCommunicator(_ communicator: USBDeviceCommunicator) {
         self.deviceCommunicator = communicator
-        logger.info("USBUnlinkProcessor configured with device communicator for IOKit cancellation")
+        logger.info("USBUnlinkProcessor configured with device communicator")
     }
     
     /// Process a USB UNLINK request and return response data

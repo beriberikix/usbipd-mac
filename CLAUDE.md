@@ -21,6 +21,13 @@ exchanges and stopped only at chip detection — the same error it gives with th
 plugged straight into the Mac, because no target is wired to its SWD pins. No System
 Extension and no entitlement are involved.
 
+`bind` and `unbind` take effect on a running daemon. They are separate processes that
+write `~/.usbipd/usbipd-config.json`; the daemon notices the file has changed and
+re-reads the allow-list. It used to read that file only at startup, so a device bound
+while the daemon was running stayed unimportable — `usbip attach` answered "Request
+Failed" — and nothing said a restart was needed. Only the allow-list is re-read; port
+and log level still need a restart.
+
 Clients that cancel a transfer are supported, which matters more than it sounds:
 libusb cancels any read it has timed out, and probe-rs drains the IN endpoint that way
 before its first command. A cancelled request is aborted at the pipe and answered by
