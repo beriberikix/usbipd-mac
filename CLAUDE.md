@@ -64,11 +64,19 @@ returns the same `kIOReturnExclusiveAccess` as a plain open, and neither unmount
 nor ejecting releases a device. Only the DriverKit USB transport entitlements would
 change it, and Apple has to grant those.
 
-USB-serial is **not** in that list, though it was until 0.6.0 and older revisions of
-this file said so. `IOUserSerial` attaches to every FTDI and CP210x interface without
-taking exclusive access, so those interfaces open and serve normally — verified against
-an FTDI Quad RS232-HS and a CP2102N. Ownership is decided by attempting the open, which
-is the only reliable test: a driver being attached settles nothing.
+"USB-serial" is not one answer, and this file gave the wrong one twice — first that
+none of it works, then that all of it does. It depends on which driver macOS attaches:
+
+- **FTDI and CP210x** carry `IOUserSerial`, which does not take exclusive access. They
+  open and serve normally, no entitlement involved. Verified against an FTDI Quad
+  RS232-HS and a CP2102N.
+- **CDC-ACM** is held by `AppleUSBACMControl` and refuses to open. This is the class
+  most dev boards with native USB present — Arduino, STM32 virtual COM ports, the
+  Raspberry Pi Debug Probe's UART side — and it is genuinely blocked.
+- **CH340, PL2303 and the rest** have not been measured. Do not assume either way.
+
+Which is why ownership is decided by attempting the open rather than by reading driver
+names: a driver being attached settles nothing, and the chip alone does not tell you.
 
 **Untested.** Interrupt endpoints (no unbound interrupt device has been available).
 Isochronous is not merely untested but structurally incomplete: alternate settings are
