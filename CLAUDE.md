@@ -70,9 +70,17 @@ none of it works, then that all of it does. It depends on which driver macOS att
 - **FTDI and CP210x** carry `IOUserSerial`, which does not take exclusive access. They
   open and serve normally, no entitlement involved. Verified against an FTDI Quad
   RS232-HS and a CP2102N.
-- **CDC-ACM** is held by `AppleUSBACMControl` and refuses to open. This is the class
-  most dev boards with native USB present — Arduino, STM32 virtual COM ports, the
-  Raspberry Pi Debug Probe's UART side — and it is genuinely blocked.
+- **CDC-ACM** splits. Measured on a Raspberry Pi Debug Probe with
+  `Scripts/validate-usb-entitlements.sh --only 2e8a:000c`: the *data* interface
+  (class 10, `AppleUSBACMData`) opens with `kIOReturnSuccess`, while the *control*
+  interface (class 2, `AppleUSBACMControl`) returns `kIOReturnExclusiveAccess`. The
+  data path carries the bytes; the control path carries `SET_LINE_CODING` and
+  `SET_CONTROL_LINE_STATE` — baud rate, DTR and RTS. So a CDC-ACM device cannot be
+  served usefully: a client can be handed the bytes but can never set the line up.
+  This is the class most dev boards with native USB present, and it is the one case
+  where a DriverKit entitlement would actually change the answer.
+  Note also that `AppleUSBACMData` publishes `/dev/cu.*` through `IOSerialBSDClient`
+  while that interface is simultaneously openable — the conflict hazard, confirmed.
 - **CH340, PL2303 and the rest** have not been measured. Do not assume either way.
 
 Which is why ownership is decided by attempting the open rather than by reading driver

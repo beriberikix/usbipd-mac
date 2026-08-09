@@ -7,11 +7,14 @@
 > path". That is false for FTDI and CP210x: `IOUserSerial` attaches to them without
 > taking exclusive access, and v0.6.0 serves both.
 >
-> It is true for **CDC-ACM**, which `AppleUSBACMControl` holds and which refuses to
-> open — measured on a Raspberry Pi Debug Probe, whose CMSIS-DAP interface is free
-> while its serial interfaces are not. That is the class most dev boards with native
-> USB present, so the Serial family remains the right thing to have asked for, and a
-> grant would still be usable. The reasoning simply named the wrong chips.
+> It is true for **CDC-ACM**, and precisely so. Measured on a Raspberry Pi Debug Probe:
+> the CDC *data* interface opens (`kIOReturnSuccess`, `AppleUSBACMData`) while the CDC
+> *control* interface does not (`kIOReturnExclusiveAccess`, `AppleUSBACMControl`).
+> Control is where `SET_LINE_CODING` and `SET_CONTROL_LINE_STATE` live, so a client
+> could be handed the bytes and still never set a baud rate. That is the class most dev
+> boards with native USB present, so the Serial family remains the right thing to have
+> asked for and a grant would still be usable. The reasoning simply named the wrong
+> chips: it should have argued from CDC-ACM control interfaces, not from FTDI.
 >
 > The submission cannot be edited or withdrawn from the portal. Leave it: if granted,
 > the Serial family is what a CDC-ACM extension would need. Note separately that no
