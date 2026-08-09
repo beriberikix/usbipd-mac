@@ -140,53 +140,6 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         return result
     }
     
-    /// Validate that a device is accessible for USB operations
-    public func validateDeviceAccess(_ busID: String) throws -> Bool {
-        log("Validating device access", .debug, ["busID": busID])
-        
-        do {
-            // Parse the busID to extract components (assuming format like "1-1:1.0" or just "1-1")
-            let components = busID.split(separator: ":")
-            guard !components.isEmpty else {
-                log("Invalid busID format", .error, ["busID": busID])
-                throw USBRequestError.invalidURB("Invalid busID format: \(busID)")
-            }
-            
-            let deviceBusID = String(components[0])
-            let deviceID = components.count > 1 ? String(components[1]) : "1.0" // Default deviceID
-            
-            log("Parsed device identifiers", .debug, ["deviceBusID": deviceBusID, "deviceID": deviceID])
-            
-            // Check if device exists
-            guard let device = try deviceDiscovery.getDevice(busID: deviceBusID, deviceID: deviceID) else {
-                log("Device not found", .error, ["busID": deviceBusID, "deviceID": deviceID])
-                throw USBRequestError.deviceNotClaimed("Device not found: \(busID)")
-            }
-            
-            // Check if device is claimed for USB operations
-            let deviceIdentifier = "\(device.busID)-\(device.deviceID)"
-            guard deviceClaimManager.isDeviceClaimed(deviceID: deviceIdentifier) else {
-                log("Device not claimed for USB operations", .error, ["deviceIdentifier": deviceIdentifier])
-                throw USBRequestError.deviceNotClaimed("Device not claimed: \(busID)")
-            }
-            
-            log("Device access validation successful", .info, [
-                "busID": busID,
-                "deviceIdentifier": deviceIdentifier,
-                "vendorID": String(format: "0x%04x", device.vendorID),
-                "productID": String(format: "0x%04x", device.productID)
-            ])
-            
-            return true
-        } catch let error as USBRequestError {
-            log("Device access validation failed", .error, ["busID": busID, "error": error.localizedDescription])
-            throw error
-        } catch {
-            log("Unexpected error during device access validation", .error, ["busID": busID, "error": error.localizedDescription])
-            throw USBRequestError.deviceNotClaimed("Device access validation failed: \(error.localizedDescription)")
-        }
-    }
-    
     // MARK: - Helper Methods
     
     /// Get device information for USB request processing

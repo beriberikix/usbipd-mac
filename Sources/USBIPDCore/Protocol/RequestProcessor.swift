@@ -11,9 +11,6 @@ public protocol USBRequestHandlerProtocol {
     
     /// Handle a USB UNLINK request and return response data  
     func handleUnlinkRequest(_ data: Data) throws -> Data
-    
-    /// Validate that a device is accessible for USB operations
-    func validateDeviceAccess(_ busID: String) throws -> Bool
 }
 
 /// Processes USB/IP protocol requests and generates responses

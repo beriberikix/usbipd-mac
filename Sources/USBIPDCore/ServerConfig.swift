@@ -117,20 +117,6 @@ public class ServerConfig: Codable {
     /// USB request processing queue quality of service
     public var usbRequestQoS: DispatchQoS.QoSClass
     
-    // MARK: - System Extension Configuration
-    
-    /// System Extension bundle configuration (optional)
-    public var systemExtensionBundleConfig: SystemExtensionBundleConfig?
-    
-    /// Enable automatic System Extension installation
-    public var enableSystemExtensionAutoInstall: Bool
-    
-    /// Maximum automatic installation attempts before giving up
-    public var maxAutoInstallAttempts: Int
-    
-    /// Minimum time between automatic installation attempts (in seconds)
-    public var autoInstallRetryDelay: TimeInterval
-    
     /// Initialize with default values
     public init(
         port: Int = defaultPort,
@@ -145,10 +131,6 @@ public class ServerConfig: Codable {
         maxUSBBufferSize: UInt32 = 1048576,
         maxPendingURBsPerDevice: Int = 32,
         usbRequestQoS: DispatchQoS.QoSClass = .userInitiated,
-        systemExtensionBundleConfig: SystemExtensionBundleConfig? = nil,
-        enableSystemExtensionAutoInstall: Bool = true,
-        maxAutoInstallAttempts: Int = 3,
-        autoInstallRetryDelay: TimeInterval = 30.0
     ) {
         self.port = port
         self.logLevel = logLevel
@@ -162,10 +144,6 @@ public class ServerConfig: Codable {
         self.maxUSBBufferSize = maxUSBBufferSize
         self.maxPendingURBsPerDevice = maxPendingURBsPerDevice
         self.usbRequestQoS = usbRequestQoS
-        self.systemExtensionBundleConfig = systemExtensionBundleConfig
-        self.enableSystemExtensionAutoInstall = enableSystemExtensionAutoInstall
-        self.maxAutoInstallAttempts = maxAutoInstallAttempts
-        self.autoInstallRetryDelay = autoInstallRetryDelay
     }
     
     /// Load configuration from file
@@ -283,14 +261,6 @@ public class ServerConfig: Codable {
         }
         
         // Validate System Extension configuration
-        guard maxAutoInstallAttempts >= 0 && maxAutoInstallAttempts <= 10 else {
-            throw ServerError.configurationError("Invalid max auto install attempts: \(maxAutoInstallAttempts). Must be between 0 and 10.")
-        }
-        
-        guard autoInstallRetryDelay >= 0 && autoInstallRetryDelay <= 3600 else {
-            throw ServerError.configurationError("Invalid auto install retry delay: \(autoInstallRetryDelay)s. Must be between 0 and 3600 seconds.")
-        }
-        
         // Validate log file path if specified
         if let logPath = logFilePath {
             let logFileURL = URL(fileURLWithPath: logPath)
@@ -331,90 +301,10 @@ public class ServerConfig: Codable {
 
     // MARK: - System Extension Bundle Configuration
     
-    /// Update the System Extension bundle configuration
-    /// - Parameter bundleConfig: New bundle configuration
-    public func updateSystemExtensionBundleConfig(_ bundleConfig: SystemExtensionBundleConfig?) {
-        self.systemExtensionBundleConfig = bundleConfig
-    }
-    
-    /// Check if System Extension auto-installation is enabled and configured
-    /// - Returns: True if auto-installation should be attempted
-    public func shouldAttemptAutoInstall() -> Bool {
-        return enableSystemExtensionAutoInstall && maxAutoInstallAttempts > 0
-    }
-    
-    /// Check if System Extension bundle is configured and valid
-    /// - Returns: True if bundle is available for installation
-    public func hasValidSystemExtensionBundle() -> Bool {
-        guard let bundleConfig = systemExtensionBundleConfig else {
-            return false
-        }
-        return bundleConfig.isValid
-    }
-    
-    /// Get System Extension bundle path if available
-    /// - Returns: Bundle path or nil if not configured
-    public func getSystemExtensionBundlePath() -> String? {
-        return systemExtensionBundleConfig?.bundlePath
-    }
-    
-    /// Get System Extension bundle identifier if available
-    /// - Returns: Bundle identifier or nil if not configured
-    public func getSystemExtensionBundleIdentifier() -> String? {
-        return systemExtensionBundleConfig?.bundleIdentifier
-    }
 }
 
 // MARK: - System Extension Bundle Configuration Models
 // Note: These types are referenced from SystemExtensionBundleDetector
-
-/// Bundle configuration structure (mirrors SystemExtensionBundleDetector.SystemExtensionBundleConfig)
-/// This is defined here to avoid circular imports between ServerConfig and BundleDetector
-public struct SystemExtensionBundleConfig: Codable {
-    /// Path to the System Extension bundle
-    public let bundlePath: String
-    
-    /// Bundle identifier
-    public let bundleIdentifier: String
-    
-    /// Last detection timestamp
-    public let lastDetectionTime: Date
-    
-    /// Bundle validation status
-    public let isValid: Bool
-    
-    /// Installation status of this bundle
-    public let installationStatus: String
-    
-    /// Issues found during detection/validation
-    public let detectionIssues: [String]
-    
-    /// Bundle size in bytes (for monitoring changes)
-    public let bundleSize: Int64
-    
-    /// Bundle modification time (for change detection)
-    public let modificationTime: Date
-    
-    public init(
-        bundlePath: String,
-        bundleIdentifier: String,
-        lastDetectionTime: Date = Date(),
-        isValid: Bool,
-        installationStatus: String = "unknown",
-        detectionIssues: [String] = [],
-        bundleSize: Int64 = 0,
-        modificationTime: Date = Date()
-    ) {
-        self.bundlePath = bundlePath
-        self.bundleIdentifier = bundleIdentifier
-        self.lastDetectionTime = lastDetectionTime
-        self.isValid = isValid
-        self.installationStatus = installationStatus
-        self.detectionIssues = detectionIssues
-        self.bundleSize = bundleSize
-        self.modificationTime = modificationTime
-    }
-}
 
 /// Extension to add configuration error to ServerError
 extension ServerError {

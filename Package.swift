@@ -22,9 +22,6 @@ let package = Package(
         .library(
             name: "Common",
             targets: ["Common"]),
-        .executable(
-            name: "USBIPDSystemExtension",
-            targets: ["SystemExtension"]),
         // Plugin temporarily disabled - completion generation works via CLI scripts
         // .plugin(
         //     name: "CompletionGeneratorPlugin",
@@ -43,7 +40,6 @@ let package = Package(
         .target(
             name: "USBIPDCore",
             dependencies: ["Common"],
-            exclude: ["SystemExtension/README.md"],
             linkerSettings: [
                 .linkedFramework("Security")
             ]),
@@ -53,18 +49,6 @@ let package = Package(
         .executableTarget(
             name: "QEMUTestServer",
             dependencies: ["Common", "USBIPDCore"]),
-        .executableTarget(
-            name: "SystemExtension",
-            dependencies: ["Common", "USBIPDCore"],
-            exclude: ["Info.plist"],
-            resources: [
-                .copy("SystemExtension.entitlements"),
-                .copy("Info.plist.template")
-            ],
-            linkerSettings: [
-                .linkedFramework("SystemExtensions"),
-                .linkedFramework("IOKit")
-            ]),
         // Temporarily reduce test scope to basic functionality only
         .testTarget(
             name: "USBIPDCLITests",
