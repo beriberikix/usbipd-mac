@@ -251,7 +251,7 @@ public class ConditionalSystemExtensionManager {
 public class ConditionalDeviceClaimAdapter: DeviceClaimManager {
     
     private let realAdapter: SystemExtensionClaimAdapter?
-    private let mockAdapter: MockDeviceClaimManager
+    private let mockAdapter: UserspaceDeviceClaimManager
     private let conditionalManager: ConditionalSystemExtensionManager
     
     public init() {
@@ -261,10 +261,10 @@ public class ConditionalDeviceClaimAdapter: DeviceClaimManager {
             self.realAdapter = SystemExtensionClaimAdapter(
                 systemExtensionManager: conditionalManager.realManager!
             )
-            self.mockAdapter = MockDeviceClaimManager()
+            self.mockAdapter = UserspaceDeviceClaimManager()
         } else {
             self.realAdapter = nil
-            self.mockAdapter = MockDeviceClaimManager()
+            self.mockAdapter = UserspaceDeviceClaimManager()
         }
     }
     
@@ -427,7 +427,7 @@ public class MockSystemExtensionManager {
 }
 
 /// Mock Device Claim Manager for production fallback
-public class MockDeviceClaimManager: DeviceClaimManager {
+public class UserspaceDeviceClaimManager: DeviceClaimManager {
     
     private var claimedDevices: Set<String> = []
     

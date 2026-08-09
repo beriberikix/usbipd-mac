@@ -21,7 +21,7 @@ public class TestDeviceSimulator: DeviceDiscovery {
     /// Initialize with test devices and claim manager
     public init(logger: Logger) {
         self.logger = logger
-        self.deviceClaimManager = MockDeviceClaimManager()
+        self.deviceClaimManager = UserspaceDeviceClaimManager()
         
         // Create a comprehensive set of test devices for various scenarios
         self.devices = [

@@ -8,7 +8,7 @@ import XCTest
 final class EndpointDirectionTests: XCTestCase {
 
     private func makeCommunicator() -> USBDeviceCommunicatorImplementation {
-        return USBDeviceCommunicatorImplementation(deviceClaimManager: MockDeviceClaimManager())
+        return USBDeviceCommunicatorImplementation(deviceClaimManager: UserspaceDeviceClaimManager())
     }
 
     private func makeRequest(endpoint: UInt8, direction: USBTransferDirection) -> USBRequestBlock {

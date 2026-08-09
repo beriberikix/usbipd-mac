@@ -36,7 +36,7 @@ class USBDeviceCLIIntegrationTests: XCTestCase, TestSuite {
     
     private var mockDeviceDiscovery: MockDeviceDiscovery!
     private var mockSystemExtensionManager: MockSystemExtensionManager!
-    private var mockDeviceClaimManager: MockDeviceClaimManager!
+    private var mockDeviceClaimManager: UserspaceDeviceClaimManager!
     private var serverConfig: ServerConfig!
     private var tempConfigPath: URL!
     
@@ -59,7 +59,7 @@ class USBDeviceCLIIntegrationTests: XCTestCase, TestSuite {
         // Set up mock dependencies
         mockDeviceDiscovery = MockDeviceDiscovery()
         mockSystemExtensionManager = MockSystemExtensionManager()
-        mockDeviceClaimManager = MockDeviceClaimManager()
+        mockDeviceClaimManager = UserspaceDeviceClaimManager()
         
         // Create test devices
         setupTestDevices()
@@ -699,7 +699,7 @@ private class MockDeviceDiscovery: DeviceDiscovery {
 // MARK: - Mock Device Claim Manager
 
 /// Mock Device Claim Manager for CLI testing
-private class MockDeviceClaimManager: DeviceClaimManager {
+private class UserspaceDeviceClaimManager: DeviceClaimManager {
     private var claimedDevices: Set<String> = []
     
     func claimDevice(_ device: USBDevice) throws -> Bool {

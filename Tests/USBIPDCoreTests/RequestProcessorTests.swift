@@ -83,7 +83,7 @@ class RequestProcessorTests: XCTestCase {
         let device = createSampleDevice()
         deviceDiscovery.devices = [device]
         
-        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let mockDeviceClaimManager = UserspaceDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceListRequest()
         
@@ -124,7 +124,7 @@ class RequestProcessorTests: XCTestCase {
 
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
-            deviceClaimManager: MockDeviceClaimManager(),
+            deviceClaimManager: UserspaceDeviceClaimManager(),
             boundDevices: temporaryStore(binding: [])
         )
 
@@ -142,7 +142,7 @@ class RequestProcessorTests: XCTestCase {
 
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
-            deviceClaimManager: MockDeviceClaimManager(),
+            deviceClaimManager: UserspaceDeviceClaimManager(),
             boundDevices: temporaryStore(binding: ["\(device.busID)-\(device.deviceID)"])
         )
 
@@ -159,7 +159,7 @@ class RequestProcessorTests: XCTestCase {
 
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
-            deviceClaimManager: MockDeviceClaimManager(),
+            deviceClaimManager: UserspaceDeviceClaimManager(),
             boundDevices: temporaryStore(binding: [])
         )
 
@@ -176,7 +176,7 @@ class RequestProcessorTests: XCTestCase {
         let deviceDiscovery = MockDeviceDiscovery()
         deviceDiscovery.devices = []
         
-        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let mockDeviceClaimManager = UserspaceDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceListRequest()
         
@@ -200,7 +200,7 @@ class RequestProcessorTests: XCTestCase {
         let device = createSampleDevice()
         deviceDiscovery.devices = [device]
         
-        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let mockDeviceClaimManager = UserspaceDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceImportRequest(busID: "1-17")
         
@@ -226,7 +226,7 @@ class RequestProcessorTests: XCTestCase {
         let deviceDiscovery = MockDeviceDiscovery()
         deviceDiscovery.devices = [] // No devices available
         
-        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let mockDeviceClaimManager = UserspaceDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         let requestData = createDeviceImportRequest(busID: "1-17")
         
@@ -245,7 +245,7 @@ class RequestProcessorTests: XCTestCase {
     func testProcessInvalidRequest() throws {
         // Arrange
         let deviceDiscovery = MockDeviceDiscovery()
-        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let mockDeviceClaimManager = UserspaceDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         
         // Create an invalid request with incorrect data
@@ -258,7 +258,7 @@ class RequestProcessorTests: XCTestCase {
     func testProcessUnsupportedCommand() throws {
         // Arrange
         let deviceDiscovery = MockDeviceDiscovery()
-        let mockDeviceClaimManager = MockDeviceClaimManager()
+        let mockDeviceClaimManager = UserspaceDeviceClaimManager()
         let processor = RequestProcessor(deviceDiscovery: deviceDiscovery, deviceClaimManager: mockDeviceClaimManager)
         
         // Create a reply message (which should not be processed as a request)
@@ -299,7 +299,7 @@ class RequestProcessorTests: XCTestCase {
         let store = temporaryStore(binding: [])
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
-            deviceClaimManager: MockDeviceClaimManager(),
+            deviceClaimManager: UserspaceDeviceClaimManager(),
             boundDevices: store
         )
 
@@ -326,7 +326,7 @@ class RequestProcessorTests: XCTestCase {
         let store = temporaryStore(binding: [busid])
         let processor = RequestProcessor(
             deviceDiscovery: deviceDiscovery,
-            deviceClaimManager: MockDeviceClaimManager(),
+            deviceClaimManager: UserspaceDeviceClaimManager(),
             boundDevices: store
         )
 

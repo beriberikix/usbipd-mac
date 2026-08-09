@@ -383,7 +383,7 @@ public class ServerCoordinator: USBIPServer {
         self.logger = Logger(config: loggerConfig, subsystem: "com.usbipd.mac", category: "server")
         
         // Use provided device claim manager or create a mock one
-        self.deviceClaimManager = deviceClaimManager ?? MockDeviceClaimManager()
+        self.deviceClaimManager = deviceClaimManager ?? UserspaceDeviceClaimManager()
         
         // Create request processor with device claim manager and configurable logging
         self.requestProcessor = RequestProcessor(

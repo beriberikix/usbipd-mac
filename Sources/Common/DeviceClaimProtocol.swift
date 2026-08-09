@@ -22,12 +22,27 @@ public protocol DeviceClaimManager {
     func releaseDevice(_ device: USBDevice) throws
 }
 
-/// Mock device claim manager for testing
-public class MockDeviceClaimManager: DeviceClaimManager {
+/// Records which devices have been offered for sharing, within this process.
+///
+/// This is the production implementation, and the name is meant literally: nothing is
+/// claimed from macOS. usbipd serves devices from userspace through IOKit and takes no
+/// exclusive access, because it has none to take. What this tracks is intent, so that
+/// callers asking "have I already prepared this device" get a coherent answer.
+///
+/// It used to be called `MockDeviceClaimManager` while being the default the daemon
+/// actually ran with — the real-sounding implementation, `SystemExtensionClaimAdapter`,
+/// threw `.extensionNotRunning` on every call because the extension was never started.
+/// Three separate call sites had to catch that and carry on, each after a release where
+/// treating it as fatal broke the daemon outright.
+///
+/// Ownership is decided in two places that do reflect reality: `DeviceOwnershipInspector`
+/// refuses to bind a device whose interfaces macOS holds, and IOKit refuses
+/// `USBInterfaceOpen` on an interface another driver owns.
+public class UserspaceDeviceClaimManager: DeviceClaimManager {
     private var claimedDevices: Set<String> = []
-    
+
     public init() {}
-    
+
     public func isDeviceClaimed(deviceID: String) -> Bool {
         return claimedDevices.contains(deviceID)
     }

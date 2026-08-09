@@ -597,7 +597,7 @@ final class QEMUTestServerTests: XCTestCase {
 // MARK: - Additional Test Data Structures
 
 /// Mock device claim manager for testing
-private class MockDeviceClaimManager: DeviceClaimManager {
+private class UserspaceDeviceClaimManager: DeviceClaimManager {
     private var claimedDevices: Set<String> = []
     
     func claimDevice(_ device: USBDevice) throws -> Bool {
