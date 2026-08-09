@@ -188,8 +188,16 @@ final class ServerCoordinatorDeviceIntegrationTests: XCTestCase {
         
         XCTAssertTrue(connectedBusIDs.contains("20"), "Should contain bus ID 20")
         XCTAssertTrue(connectedBusIDs.contains("21"), "Should contain bus ID 21")
-        XCTAssertTrue(connectedDeviceIDs.contains("0"), "Should contain device ID 0")
-        XCTAssertTrue(connectedDeviceIDs.contains("1"), "Should contain device ID 1")
+
+        // Device ids are hub port paths now, so "1" became "0.1" for a device one tier
+        // down. Assert they are distinct rather than pinning particular strings — what
+        // matters is that each device is separately addressable.
+        // Compare full busids, not device ids alone: two devices on different buses may
+        // legitimately share a port path.
+        let connectedBusids = Set(connectedDevices.map { "\($0.busID)-\($0.deviceID)" })
+        XCTAssertEqual(connectedBusids.count, connectedDevices.count,
+                       "Each connected device should have its own busid")
+        XCTAssertFalse(connectedDeviceIDs.contains(""), "Device IDs should not be empty")
         
         // Simulate disconnection of some devices
         mockIOKitInterface.simulateDeviceDisconnection(testDevice1)

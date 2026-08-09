@@ -147,13 +147,17 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
         XCTAssertTrue(output.contains("05ac:030d"), "Should contain Apple Magic Mouse VID:PID")
         XCTAssertTrue(output.contains("046d:c31c"), "Should contain Logitech VID:PID")
         
-        // Check for the correct device node format based on the bus IDs
-        // Format: /dev/bus/usb/{busID padded to 3}/{deviceID padded to 3}
-        // Note: The current implementation pads to the right, so "20" becomes "200", not "020"
-        XCTAssertTrue(output.contains("/dev/bus/usb/200/000"), "Should contain Linux-style device node for Apple device (20-0)")
-        XCTAssertTrue(output.contains("/dev/bus/usb/200/100"), "Should contain Linux-style device node for Logitech device (20-1)")
-        XCTAssertTrue(output.contains("/dev/bus/usb/210/000"), "Should contain Linux-style device node for SanDisk device (21-0)")
-        XCTAssertTrue(output.contains("/dev/bus/usb/210/100"), "Should contain Linux-style device node for Arduino (21-1)")
+        // The device node carries the ids unaltered.
+        //
+        // These assertions used to expect "/dev/bus/usb/200/000" for bus 20 device 0,
+        // and the comment beside them acknowledged why: the ids were right-padded with
+        // zeros, so "20" became "200". That is not a Linux device node, it is a
+        // corrupted one, and the same padding truncated port paths — "2.1.3" became
+        // "2.1" — which is what made distinct devices look identical in `list`.
+        XCTAssertTrue(output.contains("/dev/bus/usb/20/0"), "Device node for the Apple device (20-0)")
+        XCTAssertTrue(output.contains("/dev/bus/usb/20/1"), "Device node for the Logitech device (20-1)")
+        XCTAssertTrue(output.contains("/dev/bus/usb/21/0"), "Device node for the SanDisk device (21-0)")
+        XCTAssertTrue(output.contains("/dev/bus/usb/21/1"), "Device node for the Arduino (21-1)")
     }
     
     func testListCommandWithNoDevices() throws {
@@ -409,7 +413,8 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
             
             // Combined busid format should be valid for CLI commands
             let busid = "\(device.busID)-\(device.deviceID)"
-            let busidPattern = #"^\d+-\d+$"#
+            // A busid is a bus number and a hub port path, e.g. "32-2.1.3".
+            let busidPattern = #"^\d+-\d+(\.\d+)*$"#
             XCTAssertTrue(busid.range(of: busidPattern, options: .regularExpression) != nil, 
                          "Busid should match CLI format: \(busid)")
         }
@@ -484,9 +489,16 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
             XCTAssertFalse(device.busID.isEmpty, "Bus ID should not be empty")
             XCTAssertFalse(device.deviceID.isEmpty, "Device ID should not be empty")
             
-            // Bus and device IDs should be numeric strings (IOKit format)
+            // The bus is a number; the device id is a hub port path such as "2.1.3".
+            //
+            // It used to be a single number taken from one byte of the locationID,
+            // which collapsed every device behind a hub onto the same identifier — four
+            // devices on a dock all became "33", so binding one could bind another.
             XCTAssertNotNil(Int(device.busID), "Bus ID should be numeric: \(device.busID)")
-            XCTAssertNotNil(Int(device.deviceID), "Device ID should be numeric: \(device.deviceID)")
+            XCTAssertTrue(
+                device.deviceID.split(separator: ".").allSatisfy { Int($0) != nil },
+                "Device ID should be a dot-separated port path: \(device.deviceID)"
+            )
             
             // Vendor and product IDs should be valid
             XCTAssertGreaterThan(device.vendorID, 0, "Vendor ID should be greater than 0")
@@ -602,7 +614,8 @@ final class CLIDeviceDiscoveryIntegrationTests: XCTestCase {
             let busid = "\(device.busID)-\(device.deviceID)"
             
             // Then: Bus ID format should be compatible with CLI commands
-            let busidPattern = #"^\d+-\d+$"#
+            // A busid is a bus number and a hub port path, e.g. "32-2.1.3".
+            let busidPattern = #"^\d+-\d+(\.\d+)*$"#
             XCTAssertTrue(busid.range(of: busidPattern, options: .regularExpression) != nil, 
                          "Busid should match CLI format: \(busid)")
             

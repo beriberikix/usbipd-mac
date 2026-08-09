@@ -319,8 +319,18 @@ public extension TestUSBDeviceFixtures {
     
     /// Convert MockUSBDevice to expected USBDevice result
     static func expectedUSBDevice(from mockDevice: MockUSBDevice) -> USBDevice {
+        // Mirror the production derivation: the top byte is the controller and each
+        // remaining nibble is a hub port. Deriving it differently here would let the
+        // fixtures agree with a bug rather than with the code.
         let busID = String((mockDevice.locationID >> 24) & 0xFF)
-        let deviceID = String((mockDevice.locationID >> 16) & 0xFF)
+        var ports: [UInt32] = []
+        for shift in stride(from: 20, through: 0, by: -4) {
+            ports.append((mockDevice.locationID >> UInt32(shift)) & 0xF)
+        }
+        while let last = ports.last, last == 0 {
+            ports.removeLast()
+        }
+        let deviceID = ports.isEmpty ? "0" : ports.map(String.init).joined(separator: ".")
         
         let speed: USBSpeed
         switch mockDevice.speed {

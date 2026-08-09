@@ -134,6 +134,13 @@ public final class Logger {
     /// Defaults to `.warning`: a CLI should print its results, not its reasoning. The
     /// daemon raises it, since its output goes to a log file where detail is wanted.
     /// `USBIPD_LOG_LEVEL=debug|info|warning|error|critical` overrides it.
+    /// Set when USBIPD_LOG_LEVEL was given, in which case it replaces each logger's own
+    /// level rather than merely bounding it. Without this, asking for debug output got
+    /// nothing from the 27 components hardcoded to .info — the escape hatch only worked
+    /// for components that were already verbose.
+    public static let levelWasOverridden: Bool =
+        ProcessInfo.processInfo.environment["USBIPD_LOG_LEVEL"] != nil
+
     public static var globalLevel: LogLevel = {
         if let raw = ProcessInfo.processInfo.environment["USBIPD_LOG_LEVEL"]?.lowercased() {
             switch raw {
@@ -179,8 +186,13 @@ public final class Logger {
         line: Int = #line
     ) {
         // Check if we should log at this level
-        // The stricter of the instance level and the process-wide floor.
-        guard level >= config.level, level >= Logger.globalLevel else { return }
+        // An explicit USBIPD_LOG_LEVEL replaces the instance's own level; otherwise the
+        // stricter of the two wins.
+        if Logger.levelWasOverridden {
+            guard level >= Logger.globalLevel else { return }
+        } else {
+            guard level >= config.level, level >= Logger.globalLevel else { return }
+        }
         
         queue.async { [weak self] in
             self?.performLog(level, message, context: context, file: file, function: function, line: line)

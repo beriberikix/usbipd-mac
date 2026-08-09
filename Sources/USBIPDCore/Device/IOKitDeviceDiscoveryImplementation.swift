@@ -189,12 +189,30 @@ extension IOKitDeviceDiscovery {
             throw DeviceDiscoveryError.missingProperty("locationID")
         }
         
-        // Extract bus and device numbers from locationID
-        // LocationID format: 0xAABBCCDD where AA is bus, BB is device
+        // locationID is 0xBBPPPPPP: the top byte identifies the controller, and each
+        // remaining nibble is the port used at successive hub tiers, zero-padded.
+        //
+        // This used to take (locationID >> 16) & 0xFF as the device number, which keeps
+        // only the first port and discards the rest of the path. Everything behind one
+        // hub therefore collapsed onto a single busid: on a ThinkPad dock, four devices
+        // all became "32-33", so `bind 32-33` bound whichever the lookup happened to
+        // return first — asking for a keyboard could bind a hub — and one allow-list
+        // entry authorised all four.
+        //
+        // Using the whole path gives one identifier per device and matches the form
+        // Linux usbip uses, e.g. "32-2.1.3".
         let busNumber = (locationID >> 24) & 0xFF
-        let deviceNumber = (locationID >> 16) & 0xFF
-        
-        return (String(busNumber), String(deviceNumber))
+
+        var ports: [UInt32] = []
+        for shift in stride(from: 20, through: 0, by: -4) {
+            ports.append((locationID >> UInt32(shift)) & 0xF)
+        }
+        while let last = ports.last, last == 0 {
+            ports.removeLast()
+        }
+
+        let portPath = ports.isEmpty ? "0" : ports.map(String.init).joined(separator: ".")
+        return (String(busNumber), portPath)
     }
     
     /// Determine USB speed from IOKit properties

@@ -1,3 +1,14 @@
+/// Pad to a width without ever shortening.
+///
+/// Swift's `padding(toLength:)` truncates anything longer than the target, so a busid
+/// of "32-2.1.3" was displayed as "32-2.1" — and since that is the string users copy
+/// into `bind`, four distinct devices appeared to share one identifier and binding hit
+/// whichever the lookup returned first.
+private extension String {
+    func column(_ width: Int) -> String {
+        count >= width ? self : padding(toLength: width, withPad: " ", startingAt: 0)
+    }
+}
 // OutputFormatter.swift
 // Output formatting for USB/IP daemon CLI
 
@@ -47,14 +58,14 @@ public class LinuxCompatibleOutputFormatter: OutputFormatter {
     /// Format a single device for the device list
     private func formatDeviceListEntry(_ device: USBDevice) -> String {
         let busid = "\(device.busID)-\(device.deviceID)"
-        let devNode = "/dev/bus/usb/\(device.busID.padding(toLength: 3, withPad: "0", startingAt: 0))/\(device.deviceID.padding(toLength: 3, withPad: "0", startingAt: 0))"
+        let devNode = "/dev/bus/usb/\(device.busID)/\(device.deviceID)"
         
         var deviceInfo = "\(device.vendorID.hexString):\(device.productID.hexString)"
         if let productString = device.productString {
             deviceInfo += " (\(productString))"
         }
         
-        return "\(busid.padding(toLength: 6, withPad: " ", startingAt: 0))  \(devNode.padding(toLength: 44, withPad: " ", startingAt: 0))  \(deviceInfo)\n"
+        return "\(busid.column(10))  \(devNode.column(30))  \(deviceInfo)\n"
     }
     
     /// Format a single USB device with detailed information
@@ -133,14 +144,14 @@ public class DefaultOutputFormatter: OutputFormatter {
         
         for device in devices {
             let busid = "\(device.busID)-\(device.deviceID)"
-            let devNode = "/dev/bus/usb/\(device.busID.padding(toLength: 3, withPad: "0", startingAt: 0))/\(device.deviceID.padding(toLength: 3, withPad: "0", startingAt: 0))"
+            let devNode = "/dev/bus/usb/\(device.busID)/\(device.deviceID)"
             
             var deviceInfo = "\(device.vendorID.hexString):\(device.productID.hexString)"
             if let productString = device.productString {
                 deviceInfo += " (\(productString))"
             }
             
-            output += "\(busid.padding(toLength: 6, withPad: " ", startingAt: 0))  \(devNode.padding(toLength: 44, withPad: " ", startingAt: 0))  \(deviceInfo)\n"
+            output += "\(busid.column(10))  \(devNode.column(30))  \(deviceInfo)\n"
         }
         
         return output
@@ -149,7 +160,7 @@ public class DefaultOutputFormatter: OutputFormatter {
     /// Format a single USB device
     public func formatDevice(_ device: USBDevice, detailed: Bool) -> String {
         let busid = "\(device.busID)-\(device.deviceID)"
-        let devNode = "/dev/bus/usb/\(device.busID.padding(toLength: 3, withPad: "0", startingAt: 0))/\(device.deviceID.padding(toLength: 3, withPad: "0", startingAt: 0))"
+        let devNode = "/dev/bus/usb/\(device.busID)/\(device.deviceID)"
         
         var deviceInfo = "\(device.vendorID.hexString):\(device.productID.hexString)"
         if let productString = device.productString {

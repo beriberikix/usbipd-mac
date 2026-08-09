@@ -867,13 +867,19 @@ final class IOKitDeviceDiscoveryMockTests: XCTestCase {
         // Then: Should generate correct bus and device IDs
         XCTAssertEqual(devices.count, 5)
         
+        // Expectations come from the same locationID the fixture used, rather than from
+        // a hand-written formula: the device id is now a hub port path, so a single
+        // number was only ever correct while the derivation was throwing the path away.
         for (index, device) in devices.enumerated() {
-            let expectedBusID = String(1 + (index / 10)) // 10 devices per bus
-            let expectedDeviceID = String((index % 10) + 1)
-            
-            XCTAssertEqual(device.busID, expectedBusID, "Device \(index) bus ID mismatch")
-            XCTAssertEqual(device.deviceID, expectedDeviceID, "Device \(index) device ID mismatch")
+            let expected = TestUSBDeviceFixtures.expectedUSBDevice(from: testDevices[index])
+            XCTAssertEqual(device.busID, expected.busID, "Device \(index) bus ID mismatch")
+            XCTAssertEqual(device.deviceID, expected.deviceID, "Device \(index) device ID mismatch")
         }
+
+        // Whatever the path, every device must end up individually addressable — the
+        // collapse of distinct devices onto one busid is the bug this guards.
+        let busids = Set(devices.map { "\($0.busID)-\($0.deviceID)" })
+        XCTAssertEqual(busids.count, devices.count, "Every device needs a unique busid")
     }
     
     // MARK: - Mock Verification Tests
