@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-08-09
+
+This release makes usbipd usable on a machine with a USB hub, which in practice means
+most machines. It also makes CMSIS-DAP debug probes work end to end, and stops two
+attached devices from interfering with each other. Every fix below was measured against
+hardware: a SEGGER J-Link, a Raspberry Pi Debug Probe, an FTDI Quad RS232-HS, a Silicon
+Labs CP2102N, and a Pixel 10a.
+
+### Fixed — every device behind a hub was unreachable
+
+A busid became a hub port path when locationID decoding was corrected, so a device two
+tiers down is `32-2.2`. The wire protocol has no room for that: USB/IP identifies a
+device by a devid the client composes from the bus and device numbers in the import
+reply. The encoder kept only the final port, so `32-2.2` and `32-2` both went out as
+device number 2, and the server resolved the devid to whichever matched first.
+
+That was the hub. Importing a CP2102N at `32-2.2` handed back an identifier naming the
+USB2.0 hub above it, and the first transfer died in `USBDeviceOpen` with
+`kIOReturnExclusiveAccess`, because macOS owns hubs. On a docked machine this was nearly
+every device.
+
+The port path is now packed one nibble per tier, mirroring how macOS builds locationID,
+and a devid is resolved by matching it against the devices actually attached rather than
+by unpacking it — so a stale or unrepresentable identifier resolves to nothing and the
+client is told ENODEV instead of being pointed at the wrong device. Four tiers of up to
+fifteen ports each are representable; deeper chains are refused rather than approximated.
+
+### Fixed — transfers on one device blocked each other
+
+Every transfer on an interface went through a single serial queue, and IOKit's
+`ReadPipeTO` and `WritePipeTO` block the calling thread until they complete or time out.
+A pending IN transfer therefore held the queue for its entire timeout, and no other
+transfer could start — including the OUT transfer carrying the command that would have
+made the device answer the read. Any protocol that reads and writes at once deadlocked
+until the timeout, then failed.
+
+A Raspberry Pi Debug Probe showed it exactly: probe-rs posted a read, then fifteen
+writes that sat untouched for sixty seconds and all completed within sixteen
+milliseconds of the read finally timing out.
+
+Each endpoint now has its own queue. Transfers on one endpoint stay ordered, as USB
+requires of a pipe, while unrelated endpoints proceed in parallel — which USB/IP has
+always assumed, since the protocol carries a sequence number precisely so replies may
+return out of order.
+
+### Fixed — a cancelled transfer was carried out anyway, and answered later
+
+A client that withdrew a request got it performed regardless. The sequence number was
+claimed only after an IOKit enumeration, so an UNLINK arriving a millisecond later found
+nothing and was told the request had already completed; the abort was aimed at the
+endpoint in the UNLINK message, which is always zero, so it hit the control pipe; and
+`AbortPipe` was called with an endpoint number rather than an IOKit pipe reference. The
+transfer ran on, collected the answer to a later command, and delivered it under a
+sequence number the client had retired.
+
+This is why `probe-rs info` failed against a CMSIS-DAP probe with "Error in the USB
+access": probe-rs drains the IN endpoint with a short timeout before its first command,
+and that abandoned read consumed every response it wanted. It matters well beyond debug
+probes, because libusb cancels any read it has timed out.
+
+A cancelled request is now aborted at the correct pipe and answered by its RET_UNLINK
+alone, carrying `-ECONNRESET` as the URB status — which libusb reads as cancelled, and
+for a timed-out read as a timeout. `probe-rs info` against a Debug Probe now completes
+946 transfers, 929 of them on the CMSIS-DAP bulk endpoints, and stops only at chip
+detection — the identical error the probe gives plugged straight into the Mac, because
+no target is wired to its SWD pins.
+
+### Fixed — two attached devices interfered with each other
+
+USB/IP numbers requests per connection and the Linux client opens one connection per
+attached device, so every client starts again at 1. Request tracking used one
+process-wide table keyed on the bare sequence number, so a second client's first request
+looked like a duplicate of the first client's and was refused — and refused silently,
+because the rejection was thrown past the code that turns a refusal into a reply, leaving
+the client waiting for an answer that never came.
+
+Attaching two devices from a single machine was enough to trigger it. Measured with an
+FTDI and a CP2102N driven at once: five of ten concurrent transfers failed before the
+change, none after.
+
+### Fixed — `bind` and `unbind` needed a daemon restart
+
+They are separate processes that write a file the daemon read only at startup. A device
+bound while the daemon was running stayed unimportable — `usbip attach` answered
+"Request Failed" — and nothing said a restart was needed. The daemon now notices the
+file has changed and re-reads it.
+
+### Fixed — `bind` rewrote unrelated configuration
+
+The bound-device list lived in the configuration file beside the port, the log level and
+the transfer tuning, so `bind` rewrote the whole file to append one busid. Because the
+CLI falls back to a default configuration when that file will not parse, a single
+malformed character turned the next `bind` into a silent reset of the port and log
+level.
+
+The list now lives in `~/.usbipd/bound-devices.json` and is the only thing bind and
+unbind touch; `~/.usbipd/usbipd-config.json` is read and never written. An
+`allowedDevices` key left in an old configuration is migrated once and then ignored.
+Updates are serialised with a lock, so two `bind` commands can no longer lose each
+other's device.
+
+### Fixed — `bind` accepted devices it could not serve
+
+A device that exposes no USB interfaces was reported as free, then failed every transfer
+with "Interface 0 not found". This happens when macOS has not configured the device,
+usually because another process is driving it directly — a browser tab using WebUSB, for
+instance. It is now refused with an explanation.
+
 ### Fixed — USB-serial adapters were refused, and they work
 
 `bind` decided ownership from which driver was attached to an interface. That inference
@@ -28,6 +136,14 @@ correctly refused.
 **Caveat:** macOS keeps its serial driver attached and still publishes `/dev/cu.*`.
 Nothing prevents a local program opening that while a remote client drives the same
 UART.
+
+### Known limitations
+
+Interrupt endpoints remain untested — no unbound interrupt device has been available.
+Isochronous is structurally incomplete: alternate settings are never selected and pipes
+are discovered once at open, so a UVC device's isochronous endpoints would never appear.
+Hub port paths deeper than four tiers cannot be represented in a devid and are refused.
+A device that disappears mid-session may keep failing until the daemon is restarted.
 
 ## [v0.5.4] - 2026-08-08
 

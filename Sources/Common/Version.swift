@@ -10,7 +10,7 @@ import Foundation
 /// was built from. Keeping it in one place is what makes `usbipd --version` mean
 /// something.
 public enum USBIPDVersion {
-    public static let current = "0.5.4"
+    public static let current = "0.6.0"
 
     /// Whether this binary was built with optimisations.
     ///
