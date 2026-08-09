@@ -263,6 +263,10 @@ existed in the repository.
 - `verify-hardware.sh`: builds a chosen configuration, binds a device and runs the
   checks below against it. Defaults to release, which is the point
 - `verify-usb-transfer.py`: raw USB/IP control transfer, bypassing kernel enumeration
+- `verify-concurrent-transfers.py`: posts a bulk IN read that will block, then a control
+  transfer, and times the second. Catches transfers being serialized against each other,
+  which deadlocked every read/write protocol until 2026-08. Takes about a minute, since
+  it waits out the blocked read
 - `verify-adb-protocol.py`: sends an ADB CNXN to an Android device and reads its reply,
   which tests the transport without depending on adb's connection state machine
 

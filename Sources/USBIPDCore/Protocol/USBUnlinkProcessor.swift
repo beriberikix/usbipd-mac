@@ -311,7 +311,9 @@ public class USBUnlinkProcessor {
         // Convert devid to bus and device components
         // USB/IP devid is typically encoded as (busnum << 16) | devnum
         let busID = String((request.devid >> 16) & 0xFF)
-        let deviceID = String(request.devid & 0xFFFF)
+        // The low bits hold a hub port path packed one nibble per tier, not a plain
+        // number. Reading them as one made a device at 32-2.1.3 look like 32-531.
+        let deviceID = USBIPDeviceIdentity.portPath(forDevnum: request.devid & 0xFFFF)
         
         // Create device with available information for cancellation operations
         return USBDevice(

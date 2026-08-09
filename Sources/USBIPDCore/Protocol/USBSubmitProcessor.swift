@@ -497,10 +497,6 @@ public class USBSubmitProcessor {
     /// Create a USBDevice object from USB/IP request information
     /// Uses device discovery to get actual device information instead of placeholders
     private func createUSBDeviceFromRequest(_ request: USBIPSubmitRequest) throws -> USBDevice {
-        // USB/IP encodes devid as (busnum << 16) | devnum.
-        let busID = String((request.devid >> 16) & 0xFF)
-        let deviceID = String(request.devid & 0xFFFF)
-
         // Resolve the real device. This used to fabricate one with vendorID and
         // productID of 0x0000 and speed .unknown, deferring to "full implementation".
         // IOKitUSBInterface locates a device by vendor and product ID, so a
@@ -510,7 +506,12 @@ public class USBSubmitProcessor {
             throw USBRequestError.deviceNotAvailable
         }
 
-        guard let device = try discovery.getDevice(busID: busID, deviceID: deviceID) else {
+        // Match the devid against the devices actually attached. Deriving a busid from
+        // it arithmetically — busID from the high bits, deviceID from the low ones —
+        // could not express a hub port path, so a device at 32-2.2 resolved to 32-2,
+        // the hub above it, and every transfer was aimed at the wrong device.
+        let devices = try discovery.discoverDevices()
+        guard let device = USBIPDeviceIdentity.device(forDevid: request.devid, among: devices) else {
             throw USBRequestError.deviceNotAvailable
         }
 

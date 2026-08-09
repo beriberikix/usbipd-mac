@@ -118,7 +118,10 @@ final class EndpointTypeRoutingTests: XCTestCase {
         communicator.setEndpointTransferType(.interrupt, for: 0x81)
 
         let device = USBDevice(
-            busID: "1", deviceID: "17", vendorID: 0x1366, productID: 0x0101,
+            // "1.1" is a hub port path, which is what a device ID is now, and it packs
+            // to the 0x11 the devid above carries. "17" was a flat device number from
+            // before busids became paths, and no port is above 15.
+            busID: "1", deviceID: "1.1", vendorID: 0x1366, productID: 0x0101,
             deviceClass: 0, deviceSubClass: 0, deviceProtocol: 0, speed: .high,
             manufacturerString: nil, productString: nil, serialNumberString: nil
         )

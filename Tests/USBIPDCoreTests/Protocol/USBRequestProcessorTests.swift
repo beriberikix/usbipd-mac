@@ -50,6 +50,14 @@ final class USBRequestProcessorTests: XCTestCase {
     
     // MARK: - Helper Methods
     
+    /// The devid a client is handed for `createTestDevice()`: bus 1, hub port path "2".
+    ///
+    /// These tests used to submit devid 1 against a device on bus 1 at port 2, and pass,
+    /// because the stub discovery returned that device for any lookup at all. Nothing
+    /// checked that the identifier on the wire named the device the transfer reached —
+    /// which is exactly the mistake that let a device behind a hub resolve to the hub.
+    static let testDevid: UInt32 = (1 << 16) | 0x2
+
     private func createTestDevice() -> USBDevice {
         return USBDevice(
             busID: "1",
@@ -68,7 +76,7 @@ final class USBRequestProcessorTests: XCTestCase {
     
     private func createUSBSubmitRequestData(
         seqnum: UInt32 = 1,
-        devid: UInt32 = 1,
+        devid: UInt32 = USBRequestProcessorTests.testDevid,
         direction: UInt32 = 1, // IN
         endpoint: UInt32 = 0x81,
         transferFlags: UInt32 = 0,
@@ -98,7 +106,7 @@ final class USBRequestProcessorTests: XCTestCase {
     
     private func createUSBUnlinkRequestData(
         seqnum: UInt32 = 2,
-        devid: UInt32 = 1,
+        devid: UInt32 = USBRequestProcessorTests.testDevid,
         direction: UInt32 = 1,
         endpoint: UInt32 = 0x81,
         unlinkSeqnum: UInt32 = 1
@@ -125,7 +133,7 @@ final class USBRequestProcessorTests: XCTestCase {
         let setupPacket = Data([0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x12, 0x00])
         let requestData = try createUSBSubmitRequestData(
             seqnum: 123,
-            devid: 1,
+            devid: USBRequestProcessorTests.testDevid,
             direction: 1, // IN
             endpoint: 0x00,
             bufferLength: 18,
@@ -138,7 +146,7 @@ final class USBRequestProcessorTests: XCTestCase {
         // Decode and validate response
         let response = try USBIPSubmitResponse.decode(from: responseData)
         XCTAssertEqual(response.seqnum, 123)
-        XCTAssertEqual(response.devid, 1)
+        XCTAssertEqual(response.devid, USBRequestProcessorTests.testDevid)
         XCTAssertEqual(response.direction, 1)
         XCTAssertEqual(response.ep, 0x00)
         XCTAssertEqual(response.status, 0) // Success
@@ -156,7 +164,7 @@ final class USBRequestProcessorTests: XCTestCase {
         // Create bulk OUT transfer request
         let requestData = try createUSBSubmitRequestData(
             seqnum: 456,
-            devid: 1,
+            devid: USBRequestProcessorTests.testDevid,
             direction: 0, // OUT
             endpoint: 0x02,
             bufferLength: 512,
@@ -183,7 +191,7 @@ final class USBRequestProcessorTests: XCTestCase {
         // Create bulk IN transfer request
         let requestData = try createUSBSubmitRequestData(
             seqnum: 789,
-            devid: 1,
+            devid: USBRequestProcessorTests.testDevid,
             direction: 1, // IN
             endpoint: 0x82,
             bufferLength: 256
@@ -215,7 +223,7 @@ final class USBRequestProcessorTests: XCTestCase {
         // Create interrupt IN transfer request
         let requestData = try createUSBSubmitRequestData(
             seqnum: 101,
-            devid: 1,
+            devid: USBRequestProcessorTests.testDevid,
             direction: 1, // IN
             endpoint: 0x81,
             bufferLength: 8,
@@ -246,7 +254,7 @@ final class USBRequestProcessorTests: XCTestCase {
         // Create isochronous IN transfer request
         let requestData = try createUSBSubmitRequestData(
             seqnum: 202,
-            devid: 1,
+            devid: USBRequestProcessorTests.testDevid,
             direction: 1, // IN
             endpoint: 0x83,
             bufferLength: 1024,
@@ -369,7 +377,7 @@ final class USBRequestProcessorTests: XCTestCase {
         // Decode and validate unlink response
         let response = try USBIPUnlinkResponse.decode(from: unlinkResponseData)
         XCTAssertEqual(response.seqnum, 124)
-        XCTAssertEqual(response.devid, 1)
+        XCTAssertEqual(response.devid, USBRequestProcessorTests.testDevid)
         XCTAssertEqual(response.direction, 1)
         XCTAssertEqual(response.ep, 0x81)
         
@@ -516,7 +524,7 @@ final class USBRequestProcessorTests: XCTestCase {
         let setupPacket = Data([0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x12, 0x00])
         let requestData = try createUSBSubmitRequestData(
             seqnum: 3001,
-            devid: 1,
+            devid: USBRequestProcessorTests.testDevid,
             direction: 1, // IN
             endpoint: 0x00,
             bufferLength: 18,
@@ -529,7 +537,7 @@ final class USBRequestProcessorTests: XCTestCase {
         // Validate complete response
         let response = try USBIPSubmitResponse.decode(from: responseData)
         XCTAssertEqual(response.seqnum, 3001)
-        XCTAssertEqual(response.devid, 1)
+        XCTAssertEqual(response.devid, USBRequestProcessorTests.testDevid)
         XCTAssertEqual(response.direction, 1)
         XCTAssertEqual(response.ep, 0x00)
         XCTAssertEqual(response.status, 0)

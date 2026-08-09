@@ -220,8 +220,8 @@ public class RequestProcessor {
                     // device on the host report the same busid, "1", so a client could
                     // not name one to import.
                     busID: "\(device.busID)-\(device.deviceID)",
-                    busnum: UInt32(Int(device.busID.split(separator: "-").last ?? "0") ?? 0),
-                    devnum: UInt32(Int(device.deviceID.split(separator: ".").last ?? "0") ?? 0),
+                    busnum: UInt32(device.busID) ?? 0,
+                    devnum: USBIPDeviceIdentity.devnum(forPortPath: device.deviceID) ?? 0,
                     speed: UInt32(device.speed.rawValue),
                     vendorID: device.vendorID,
                     productID: device.productID,
@@ -390,8 +390,8 @@ public class RequestProcessor {
             let importedDevice = USBIPExportedDevice(
                 path: "/sys/devices/\(device.busID)-\(device.deviceID)",
                 busID: "\(device.busID)-\(device.deviceID)",
-                busnum: UInt32(Int(device.busID.split(separator: "-").last ?? "0") ?? 0),
-                devnum: UInt32(Int(device.deviceID.split(separator: ".").last ?? "0") ?? 0),
+                busnum: UInt32(device.busID) ?? 0,
+                devnum: USBIPDeviceIdentity.devnum(forPortPath: device.deviceID) ?? 0,
                 speed: UInt32(device.speed.rawValue),
                 vendorID: device.vendorID,
                 productID: device.productID,
