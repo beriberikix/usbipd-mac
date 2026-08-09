@@ -57,12 +57,18 @@ already received that announcement; attaching from a client causes no bus reset 
 phone can observe. Request/response devices are unaffected. See
 `Documentation/development/android-adb-validation.md`.
 
-**Does not work, and cannot be made to.** Devices macOS binds a driver to —
-USB-serial, HID, mass storage, audio, cameras. `bind` refuses these up front with an
+**Does not work, and cannot be made to.** Devices whose interfaces macOS actually
+holds — HID, mass storage, audio, cameras. `bind` refuses these up front with an
 explanation naming the owner. This was measured, not assumed: `USBInterfaceOpenSeize`
 returns the same `kIOReturnExclusiveAccess` as a plain open, and neither unmounting
 nor ejecting releases a device. Only the DriverKit USB transport entitlements would
 change it, and Apple has to grant those.
+
+USB-serial is **not** in that list, though it was until 0.6.0 and older revisions of
+this file said so. `IOUserSerial` attaches to every FTDI and CP210x interface without
+taking exclusive access, so those interfaces open and serve normally — verified against
+an FTDI Quad RS232-HS and a CP2102N. Ownership is decided by attempting the open, which
+is the only reliable test: a driver being attached settles nothing.
 
 **Untested.** Interrupt endpoints (no unbound interrupt device has been available).
 Isochronous is not merely untested but structurally incomplete: alternate settings are

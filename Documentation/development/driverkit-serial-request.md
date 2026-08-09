@@ -1,5 +1,21 @@
 # DriverKit Serial entitlement request
 
+> **Superseded by measurement. Do not build on this.**
+>
+> The request rests on the claim that USB-serial adapters cannot be served because
+> macOS holds their interfaces, and that "there is no userspace path". That is wrong.
+> `IOUserSerial` attaches to FTDI and CP210x interfaces without taking exclusive
+> access, so they open and serve normally; v0.6.0 ships this, verified against an FTDI
+> Quad RS232-HS and a CP2102N.
+>
+> So the request asks Apple for the one DriverKit family the project has since proven
+> it does not need. What remains genuinely blocked — HID, mass storage, audio, cameras
+> — belongs to different families and is not covered by this request.
+>
+> The submission cannot be edited or withdrawn from the developer portal. It is left to
+> run its course; granted or denied, nothing depends on it. Read the rest of this file
+> as a record of what was submitted, not as a statement of what is true.
+
 **Submitted 2026-08-06. Request ID `26F53XCAGY`.** Serial family only, development tier.
 Status appears under Capability Requests for App ID `com.usbipd.mac.system-extension`.
 
