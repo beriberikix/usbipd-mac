@@ -80,9 +80,6 @@ jobs:
           echo "Building main targets..."
           swift build --verbose
           
-          echo "Building System Extension target..."
-          swift build --product USBIPDSystemExtension --verbose
-          
           echo "Building test server..."
           swift build --product QEMUTestServer --verbose
 
