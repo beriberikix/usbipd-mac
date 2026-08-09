@@ -14,7 +14,11 @@ final class DeviceOwnershipTests: XCTestCase {
     private let driverEntry: io_registry_entry_t = 300
 
     /// A device node whose single interface has the given driver children.
-    private func inspector(interfaceDrivers: [String]) -> DeviceOwnershipInspector {
+    ///
+    /// `opens` models what actually decides ownership: whether the interface can be
+    /// claimed. A driver being attached does not settle it — IOUserSerial sits on every
+    /// FTDI interface and opens anyway.
+    private func inspector(interfaceDrivers: [String], opens: Bool = false) -> DeviceOwnershipInspector {
         let ioKit = MockIOKitInterface()
         ioKit.mockDevices = [MockUSBDevice(vendorID: 0x1366, productID: 0x0101)]
 
@@ -29,6 +33,9 @@ final class DeviceOwnershipTests: XCTestCase {
             children.append(entry)
         }
         ioKit.childrenByEntry[interfaceEntry] = children
+        if !opens && !interfaceDrivers.isEmpty {
+            ioKit.interfacesThatRefuseToOpen = [interfaceEntry]
+        }
 
         return DeviceOwnershipInspector(ioKit: ioKit)
     }
@@ -83,5 +90,29 @@ final class DeviceOwnershipTests: XCTestCase {
         let ownership = inspector(interfaceDrivers: ["AppleUserHIDDevice"])
             .ownership(vendorID: 0xDEAD, productID: 0xBEEF)
         XCTAssertEqual(ownership, .unbound)
+    }
+}
+
+// MARK: - Ownership is decided by opening, not by driver name
+
+extension DeviceOwnershipTests {
+
+    /// The bug this replaced: FTDI and CP210x adapters carry IOUserSerial on every
+    /// interface, which was read as "kernel driver, refuse". They open fine and serve
+    /// real bulk traffic over USB/IP, so refusing them was wrong — and it was the
+    /// category users asked for most.
+    func testDriverThatDoesNotHoldTheInterfaceIsNotAnOwner() {
+        let ownership = inspector(interfaceDrivers: ["IOUserSerial"], opens: true)
+            .ownership(vendorID: 0x1366, productID: 0x0101)
+        XCTAssertEqual(ownership, .unbound)
+        XCTAssertTrue(ownership.isServable)
+    }
+
+    /// And the converse still holds: a driver that does hold the interface blocks it.
+    func testDriverThatHoldsTheInterfaceBlocks() {
+        let ownership = inspector(interfaceDrivers: ["AppleUserHIDDevice"], opens: false)
+            .ownership(vendorID: 0x1366, productID: 0x0101)
+        XCTAssertEqual(ownership, .kernelDriver(drivers: ["AppleUserHIDDevice"]))
+        XCTAssertFalse(ownership.isServable)
     }
 }

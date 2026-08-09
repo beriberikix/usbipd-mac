@@ -395,6 +395,14 @@ public class MockIOKitInterface: IOKitInterface {
     public func objectCopyClass(_ object: io_object_t) -> String? {
         return classNamesByEntry[object]
     }
+
+    /// Interfaces that refuse to open. Ownership is decided by attempting the open, not
+    /// by which driver is attached, so tests state the outcome directly.
+    public var interfacesThatRefuseToOpen: Set<io_service_t> = []
+
+    public func usbInterfaceOpens(_ interfaceService: io_service_t) -> Bool {
+        return !interfacesThatRefuseToOpen.contains(interfaceService)
+    }
 }
 
 // MARK: - Mock USB Device

@@ -24,8 +24,9 @@ until approved" is wrong for a meaningful slice of embedded hardware.
 
 | Works today | Still blocked |
 | --- | --- |
-| Debug probes — J-Link, ST-Link, CMSIS-DAP | USB-serial — FTDI, CP210x, CH340 |
-| Android devices in ADB mode | Android in MTP mode |
+| Debug probes — J-Link, ST-Link, CMSIS-DAP | HID — keyboards, mice |
+| **USB-serial — FTDI, CP210x** (measured, see below) | Mass storage |
+| Android devices in ADB mode | Audio and cameras |
 | DFU / bootloader modes | Boards exposing CDC ACM (most Arduino-likes) |
 | Vendor-specific bulk interfaces generally | HID, mass storage, audio |
 
@@ -153,6 +154,42 @@ DriverKit extension appears, since a dext must live in an app bundle in `/Applic
 No System Extension, no DriverKit entitlement, no provisioning profile, no
 notarization beyond what already exists. The 20,445-line System Extension subsystem
 stays quarantined.
+
+## USB-serial is not blocked, and the earlier claim was wrong
+
+Measured on 2026-08-09 against an FTDI Quad RS232-HS (`0403:6011`) and a Silicon Labs
+CP2102N (`10c4:ea60`), both carrying `IOUserSerial`:
+
+```
+control transfer → idVendor=0403 idProduct=6011   PASS
+bulk IN ep1      → status=0 actual=2 data=0260    FTDI modem-status bytes
+```
+
+Real bulk data, over USB/IP, from an adapter macOS has a driver attached to.
+
+This document previously listed USB-serial as impossible. That was inference, not
+measurement: a driver was attached, so the device was assumed held. The inference is
+sound for HID and mass storage and wrong for serial, because `IOUserSerial` does not
+take exclusive access of the interface.
+
+The tempting refinement — "DriverKit dexts do not block, in-kernel drivers do" — is
+also wrong. `AppleUserHIDDevice` is a dext and does block. Neither the driver's name
+nor its kind predicts the outcome.
+
+| Device | Driver | Interface open |
+| --- | --- | --- |
+| FTDI Quad RS232-HS | `IOUserSerial` | success |
+| SiLabs CP2102N | `IOUserSerial` | success |
+| Keychron keyboard | `AppleUserHIDDevice` | `kIOReturnExclusiveAccess` |
+| Toshiba flash drive | `IOUSBMassStorageDriver` | `kIOReturnExclusiveAccess` |
+| Logitech webcam | mixed | `kIOReturnExclusiveAccess` |
+
+So ownership is now decided by attempting the open, which is what the entitlement
+harness always did and what `bind` did not. See `DeviceOwnershipInspector`.
+
+**One caveat this raises.** macOS still has its serial driver attached and will still
+publish a `/dev/cu.*` node. Nothing stops a local program opening that while a remote
+client drives the same UART. That is a genuine hazard and is not guarded against.
 
 ## A limitation that is not about claiming
 

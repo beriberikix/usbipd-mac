@@ -1,7 +1,9 @@
 > [!IMPORTANT]
-> **Which devices work:** those macOS has not bound a driver to. Debug probes
-> (J-Link, ST-Link, CMSIS-DAP), boards in DFU or bootloader mode, Android devices in
-> ADB mode, and vendor-specific interfaces generally. These need no entitlement and no
+> **Which devices work:** those whose USB interface can actually be claimed. Debug
+> probes (J-Link, ST-Link, CMSIS-DAP), boards in DFU or bootloader mode, Android
+> devices in ADB mode, vendor-specific interfaces generally, and **USB-serial adapters
+> (FTDI, CP210x)** — the last of these despite macOS having a driver attached, which
+> earlier versions of this file wrongly said made them impossible. These need no entitlement and no
 > System Extension — a J-Link has been driven end to end from a Linux client with
 > probe-rs, and a Pixel answers ADB protocol messages over the wire.
 >
@@ -11,8 +13,8 @@
 > Request/response devices are unaffected. See
 > [Documentation/development/android-adb-validation.md](Documentation/development/android-adb-validation.md).
 >
-> **Which do not:** anything macOS claims — USB-serial adapters, HID, mass storage,
-> audio, cameras. `bind` refuses these with an explanation rather than failing later.
+> **Which do not:** HID, mass storage, audio and cameras, whose drivers hold the
+> interface exclusively. `bind` refuses these with an explanation rather than failing later.
 > Releasing them needs the DriverKit USB transport entitlements
 > (`com.apple.developer.driverkit`, `com.apple.developer.driverkit.transport.usb`),
 > which Apple must approve. **That request was denied on 25 February 2026.** Apple

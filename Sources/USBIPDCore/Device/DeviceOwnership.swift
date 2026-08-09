@@ -117,11 +117,19 @@ public struct DeviceOwnershipInspector {
     /// can be opened while its interface is held by someone else, and it is the
     /// interface that a transfer needs. Collecting every class in the subtree instead
     /// swept up unrelated nodes and reported servable hardware as owned.
-    private func collectClaimants(of deviceEntry: io_registry_entry_t) -> [[String]] {
-        var perInterface: [[String]] = []
+    /// Per interface: the drivers attached to it, and whether it can actually be opened.
+    ///
+    /// Both are needed. The open attempt decides whether the interface is usable; the
+    /// driver names are only there to tell the user who is holding one that is not.
+    private func collectClaimants(of deviceEntry: io_registry_entry_t) -> [(drivers: [String], opens: Bool)] {
+        var perInterface: [(drivers: [String], opens: Bool)] = []
         for interfaceEntry in interfaceNodes(under: deviceEntry) {
             defer { _ = ioKit.objectRelease(interfaceEntry) }
-            perInterface.append(immediateDrivers(of: interfaceEntry))
+            let drivers = immediateDrivers(of: interfaceEntry)
+            // Only probe interfaces something has matched against. An interface with no
+            // driver is free by definition, and opening it needlessly would disturb it.
+            let opens = drivers.isEmpty ? true : ioKit.usbInterfaceOpens(interfaceEntry)
+            perInterface.append((drivers: drivers, opens: opens))
         }
         return perInterface
     }
@@ -173,13 +181,24 @@ public struct DeviceOwnershipInspector {
         return drivers
     }
 
-    private func classify(_ perInterface: [[String]]) -> DeviceOwnership {
-        let all = perInterface.flatMap { $0 }
+    private func classify(_ perInterface: [(drivers: [String], opens: Bool)]) -> DeviceOwnership {
+        let all = perInterface.flatMap { $0.drivers }
         guard !all.isEmpty else { return .unbound }
 
-        let free = perInterface.enumerated().filter { $0.element.isEmpty }.map { $0.offset }
+        // Usable means it opened, not that nothing is attached. An FTDI or CP210x has
+        // IOUserSerial on every interface and opens regardless.
+        let free = perInterface.enumerated().filter { $0.element.opens }.map { $0.offset }
 
-        let unique = Array(Set(all)).sorted()
+        // If every interface opens, the drivers present are not holding anything, so
+        // there is nothing to warn about.
+        if free.count == perInterface.count {
+            return .unbound
+        }
+
+        // Report only the drivers on interfaces that actually refused, so the message
+        // names what is really in the way.
+        let blocking = perInterface.filter { !$0.opens }.flatMap { $0.drivers }
+        let unique = Array(Set(blocking)).sorted()
         let kernelDrivers = unique.filter { !userspaceClientClasses.contains($0) }
 
         // At least one interface is unclaimed, so there is something to serve. This is

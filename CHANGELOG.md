@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — USB-serial adapters were refused, and they work
+
+`bind` decided ownership from which driver was attached to an interface. That inference
+holds for HID and mass storage, and is wrong for serial: `IOUserSerial` sits on every
+FTDI and CP210x interface without taking exclusive access. Measured against an FTDI
+Quad RS232-HS and a Silicon Labs CP2102N, both return their real descriptor over USB/IP
+and the FTDI returns real bulk data — `status=0 actual=2 data=0260`, its modem-status
+bytes.
+
+So the most-requested category was being refused with a message claiming it needed a
+DriverKit entitlement from Apple. It does not.
+
+Ownership is now decided by attempting to open the interface and closing it again,
+which is what the entitlement harness always did. The refinement "dexts do not block,
+kernel drivers do" is also wrong — `AppleUserHIDDevice` is a dext and does block — so
+nothing short of attempting the open is reliable. HID, mass storage and audio are still
+correctly refused.
+
+**Caveat:** macOS keeps its serial driver attached and still publishes `/dev/cu.*`.
+Nothing prevents a local program opening that while a remote client drives the same
+UART.
+
 ## [v0.5.4] - 2026-08-08
 
 ### Fixed — v0.5.3 could not serve any device
