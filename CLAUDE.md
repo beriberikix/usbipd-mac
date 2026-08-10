@@ -100,6 +100,13 @@ implementation would slot into, satisfied by `UserspaceDeviceClaimManager`, whic
 intent and says so. See
 `Documentation/development/system-extension-archive/why-it-was-removed.md`.
 
+Serving the devices macOS *does* hold — HID, mass storage, audio, cameras, and CDC-ACM
+control interfaces — needs a DriverKit extension, which needs an app bundle in
+`/Applications` to activate it, which needs a capability Apple has not granted. That
+work is planned but not started: see
+`Documentation/development/app-bundle-phase-2.md`, which records the measurements, the
+chosen non-breaking distribution shape, and the two questions to settle first.
+
 ## Architecture
 
 The project is structured as a multi-target Swift package:
@@ -162,9 +169,9 @@ scripts that claimed to provide one filtered on target names that were never dec
 so they matched nothing and exited 0. They were removed in 2026-08 along with the CI
 step that called them. `swift test` is the whole story.
 
-Note that `swift test` needs XCTest, which ships with Xcode. A machine with only the
-Command Line Tools cannot run it (`error: no such module 'XCTest'`); use CI, which runs
-on `macos-latest` with full Xcode.
+Note that `swift test` needs XCTest, which ships with Xcode rather than the Command Line
+Tools — a CLT-only machine fails with `error: no such module 'XCTest'` and has to use CI.
+The current development Mac has full Xcode, so the whole gate runs locally.
 
 ### Code Quality
 ```bash
