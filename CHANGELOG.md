@@ -57,6 +57,39 @@ record the identifier and entitlement decisions a future DriverKit extension nee
 Also corrected: `CLAUDE.md` claimed `Tests/SharedUtilities/` was compiled by both test
 targets. SwiftPM ignores `sources:` paths outside the target directory, so it never was.
 
+### Fixed — a command sent close behind another was dropped
+
+The receive handler treated every TCP read as exactly one message. A read returns
+whatever bytes have arrived, so two commands a client sent back-to-back came in
+together: the first was decoded and the second was never seen. The client got no reply
+until its own timeout unlinked the request, and any driver that keeps a read posted
+while it writes lost every read that way.
+
+Xilinx `hw_server` showed it exactly. Its FTDI JTAG driver submits a bulk OUT and the
+bulk IN for the reply seventeen microseconds apart. Every IN timed out after five
+seconds, the replies stacked up in the FTDI's FIFO, a later read returned all of them
+at once, and Vivado decoded that as a chain of bogus IDCODEs — or, when the surviving
+request was the read, as an empty chain. The same board through usbipd-win worked, and
+openFPGALoader worked through this daemon only because libftdi never has two requests
+in flight.
+
+Bytes now go through a framer that yields whole messages, with the length taken from
+the header for the phase the connection is in: op_common plus its body before import,
+usbip_header_basic plus the OUT payload and any ISO descriptors after. Each message
+then runs on a serial queue per device, endpoint and direction, so writes to one pipe
+keep their order while a blocking read on another pipe holds nothing else up; UNLINK
+has its own queue so it can cancel a transfer that is still blocking. The per-client
+concurrency check warns instead of dropping the request it was counting.
+
+The listener also sets TCP_NODELAY. With Nagle on, a reply waited behind the previous
+unacknowledged one until the client's delayed ACK arrived, which measured as 40–100 ms
+added to every transfer; the Linux usbip tools set it on both ends for the same reason.
+
+With this, Vivado 2019.1 on a Linux host opens a Digilent Nexys A7-50T attached to a
+Mac over USB/IP and reads its IDCODE, and a test that submits an OUT and an IN
+back-to-back completes both within the network round trip instead of one of them
+within the client's timeout.
+
 ## [v0.6.0] - 2026-08-09
 
 This release makes usbipd usable on a machine with a USB hub, which in practice means

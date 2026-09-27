@@ -421,42 +421,46 @@ public class ServerCoordinator: USBIPServer {
             // usbip_header_basic, and nothing in the bytes says so.
             let connectionState = USBIPConnectionState()
             
-            // Set up data handler for the connection with concurrent processing
-            connection.onDataReceived = { [weak self] data in
-                guard let self = self else { return }
-                
-                self.logger.debug("Received data from client", context: [
-                    "connectionId": connection.id.uuidString,
-                    "dataSize": data.count
-                ])
-                
-                // Check if this connection has reached its concurrent request limit
-                let activeCount = self.activeRequests.getActiveRequestCount(for: connection.id)
-                if activeCount >= self.maxConcurrentRequestsPerClient {
-                    self.logger.warning("Client connection reached concurrent request limit", context: [
-                        "connectionId": connection.id.uuidString,
-                        "activeRequests": activeCount,
-                        "limit": self.maxConcurrentRequestsPerClient
-                    ])
-                    // Could send error response or drop request
-                    return
-                }
-                
-                // Increment active request count
-                self.activeRequests.incrementActiveRequests(for: connection.id)
-                
-                // Process request concurrently
-                self.requestProcessingQueue.async {
+            // Bytes from the socket go through a framer first. A TCP read is a run
+            // of bytes, not a message: two URB commands sent back-to-back arrive in
+            // one chunk and a large one arrives in several. Passing each chunk to
+            // the processor as if it were one message silently dropped every second
+            // command in a chunk, and the client only learned of it when its
+            // timeout unlinked the URB. hw_server's JTAG driver posts a bulk IN a
+            // few microseconds after its bulk OUT and lost the IN on every scan.
+            //
+            // Each framed message then runs on a serial lane per endpoint and
+            // direction, so writes to one pipe keep their order while a pending
+            // read on another pipe blocks nothing but itself. See ConnectionLanes.
+            let pipeline = ConnectionReceivePipeline(
+                state: connectionState,
+                label: connection.id.uuidString,
+                qos: DispatchQoS(qosClass: self.config.usbRequestQoS, relativePriority: 0),
+                handler: { [weak self] message in
+                    guard let self = self else { return }
+
+                    // The count feeds statistics and a warning; it no longer drops
+                    // requests. The client bounds its own URBs in flight, and a
+                    // dropped URB is indistinguishable from the framing bug above.
+                    let activeCount = self.activeRequests.getActiveRequestCount(for: connection.id)
+                    if activeCount >= self.maxConcurrentRequestsPerClient {
+                        self.logger.warning("Client connection exceeded expected concurrent requests", context: [
+                            "connectionId": connection.id.uuidString,
+                            "activeRequests": activeCount,
+                            "limit": self.maxConcurrentRequestsPerClient
+                        ])
+                    }
+                    self.activeRequests.incrementActiveRequests(for: connection.id)
                     defer {
                         // Always decrement active request count when done
                         self.activeRequests.decrementActiveRequests(for: connection.id)
                     }
-                    
+
                     do {
                         // Process the request using the request processor
                         let responseData = try self.requestProcessor.processRequest(
-                            data, connectionState: connectionState)
-                        
+                            message, connectionState: connectionState)
+
                         // An empty response means the processor deliberately has nothing
                         // to say — a request the client withdrew, which is answered by
                         // its RET_UNLINK and must not also draw a RET_SUBMIT. Writing
@@ -472,7 +476,7 @@ public class ServerCoordinator: USBIPServer {
                            let tcpConnection = connection as? TCPClientConnection {
                             tcpConnection.keepAlive = true
                         }
-                        
+
                         self.logger.debug("Sent response to client", context: [
                             "connectionId": connection.id.uuidString,
                             "responseSize": responseData.count
@@ -482,10 +486,10 @@ public class ServerCoordinator: USBIPServer {
                             "connectionId": connection.id.uuidString,
                             "error": error.localizedDescription
                         ])
-                        
+
                         // Forward error to server error handler
                         self.onError?(error)
-                        
+
                         // Close the connection on critical errors
                         if case USBIPProtocolError.invalidHeader = error {
                             self.logger.warning("Closing connection due to invalid header", context: [
@@ -494,9 +498,21 @@ public class ServerCoordinator: USBIPServer {
                             try? connection.close()
                         }
                     }
-                }
+                },
+                onFramingError: { [weak self] error in
+                    // The stream no longer parses as USB/IP; nothing after this point
+                    // can be trusted, so drop the connection rather than guess.
+                    self?.logger.error("Closing connection: cannot frame input", context: [
+                        "connectionId": connection.id.uuidString,
+                        "error": String(describing: error)
+                    ])
+                    try? connection.close()
+                })
+
+            connection.onDataReceived = { data in
+                pipeline.receive(data)
             }
-            
+
             // Set up error handler for the connection
             connection.onError = { [weak self] error in
                 guard let self = self else { return }
