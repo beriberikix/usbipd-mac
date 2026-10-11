@@ -25,6 +25,10 @@ public class IOKitDeviceDiscovery: DeviceDiscovery {
     
     // Cache of connected devices for proper disconnection callbacks
     internal var connectedDevices: [String: USBDevice] = [:]
+
+    /// Device key by registry entry ID. A removed service can no longer be asked for its
+    /// properties, but its entry ID is still readable, and that is what finds the device.
+    internal var deviceKeysByEntryID: [UInt64: String] = [:]
     
     // MARK: - Performance Optimization Properties
     

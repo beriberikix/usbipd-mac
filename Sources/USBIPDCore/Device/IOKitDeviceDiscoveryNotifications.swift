@@ -140,18 +140,17 @@ extension IOKitDeviceDiscovery {
         var processedCount = 0
         
         while device != 0 {
-            defer {
-                _ = ioKit.objectRelease(device)
-                device = ioKit.iteratorNext(addedIterator)
-            }
-            
             processedCount += 1
-            
-            // Process the device in the background to avoid blocking
-            let currentDevice = device
-            queue.async { [weak self] in
-                self?.handleDeviceAdded(currentDevice)
-            }
+
+            // Handled before release, as in deviceAddedCallback: queued, it ran after the
+            // object had been freed, and devices present at startup were never tracked —
+            // so unplugging one was never reported either.
+            // On the discovery queue, which owns connectedDevices; sync, so the release
+            // below still comes after.
+            let current = device
+            queue.sync { handleDeviceAdded(current) }
+            _ = ioKit.objectRelease(device)
+            device = ioKit.iteratorNext(addedIterator)
         }
         
         // Process devices from the removed iterator to clear any stale entries
@@ -188,7 +187,7 @@ extension IOKitDeviceDiscovery {
     // MARK: - Device Notification Handlers
     
     /// Optimized device connection handler with minimal IOKit calls
-    internal func handleDeviceAdded(_ service: io_service_t) {
+    internal func handleDeviceAdded(_ service: io_service_t, attempt: Int = 0) {
         logger.debug("Processing device addition", context: ["service": service])
         
         do {
@@ -201,6 +200,10 @@ extension IOKitDeviceDiscovery {
             
             // Update connected devices cache
             connectedDevices[deviceKey] = device
+            var entryID: UInt64 = 0
+            if IORegistryEntryGetRegistryEntryID(service, &entryID) == KERN_SUCCESS {
+                deviceKeysByEntryID[entryID] = deviceKey
+            }
             
             logger.info("Device connected", context: [
                 "busID": device.busID,
@@ -215,6 +218,21 @@ extension IOKitDeviceDiscovery {
                 self?.onDeviceConnected?(device)
             }
         } catch {
+            // A device is announced before IOKit has published all its properties — seen
+            // as "Missing required property: idVendor" on an RP2040 entering BOOTSEL. Given
+            // up on, it was never tracked, so its later removal was never reported and
+            // its client was never told it left. Look again shortly.
+            if attempt < 10 {
+                IOObjectRetain(service)
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    guard let self = self else { IOObjectRelease(service); return }
+                    self.queue.async {
+                        self.handleDeviceAdded(service, attempt: attempt + 1)
+                        IOObjectRelease(service)
+                    }
+                }
+                return
+            }
             logger.warning("Failed to process added device", context: [
                 "service": service,
                 "error": error.localizedDescription
@@ -225,6 +243,24 @@ extension IOKitDeviceDiscovery {
     /// Optimized device disconnection handler with minimal IOKit calls
     internal func handleDeviceRemoved(_ service: io_service_t) {
         logger.debug("Processing device removal", context: ["service": service])
+
+        // By entry ID first: it is still readable when the properties are not.
+        var entryID: UInt64 = 0
+        if IORegistryEntryGetRegistryEntryID(service, &entryID) == KERN_SUCCESS,
+           let deviceKey = deviceKeysByEntryID.removeValue(forKey: entryID),
+           let removedDevice = connectedDevices.removeValue(forKey: deviceKey) {
+            logger.info("Device disconnected", context: [
+                "busID": removedDevice.busID,
+                "deviceID": removedDevice.deviceID,
+                "vendorID": String(format: "0x%04x", removedDevice.vendorID),
+                "productID": String(format: "0x%04x", removedDevice.productID),
+                "product": removedDevice.productString ?? "Unknown"
+            ])
+            DispatchQueue.main.async { [weak self] in
+                self?.onDeviceDisconnected?(removedDevice)
+            }
+            return
+        }
         
         do {
             // Try to create device info for the removed device
@@ -295,9 +331,12 @@ private func deviceAddedCallback(
         let currentService = service
 
         // Handle the device addition on the discovery's queue
-        discovery.queue.async {
-            discovery.handleDeviceAdded(currentService)
-        }
+        // Handled here, before the release below. It used to be queued, and released
+        // before the queue ran it, so the handler read properties from a freed object:
+        // every device failed with "Missing required property: idVendor", none was ever
+        // tracked, and so no unplug was ever reported. The notification port already
+        // delivers on discovery.queue, so there is nothing to hop to.
+        discovery.handleDeviceAdded(currentService)
 
         _ = discovery.ioKit.objectRelease(service)
         service = discovery.ioKit.iteratorNext(iterator)
@@ -323,9 +362,12 @@ private func deviceRemovedCallback(
         let currentService = service
         
         // Handle the device removal on the discovery's queue
-        discovery.queue.async {
-            discovery.handleDeviceRemoved(currentService)
-        }
+        // Handled here, before the release below. It used to be queued, and released
+        // before the queue ran it, so the handler read properties from a freed object:
+        // every device failed with "Missing required property: idVendor", none was ever
+        // tracked, and so no unplug was ever reported. The notification port already
+        // delivers on discovery.queue, so there is nothing to hop to.
+        discovery.handleDeviceRemoved(currentService)
         
         _ = discovery.ioKit.objectRelease(service)
         service = discovery.ioKit.iteratorNext(iterator)

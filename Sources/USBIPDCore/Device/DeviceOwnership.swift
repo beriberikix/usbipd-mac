@@ -137,7 +137,12 @@ public struct DeviceOwnershipInspector {
             let drivers = immediateDrivers(of: interfaceEntry)
             // Only probe interfaces something has matched against. An interface with no
             // driver is free by definition, and opening it needlessly would disturb it.
-            let opens = drivers.isEmpty ? true : ioKit.usbInterfaceOpens(interfaceEntry)
+            //
+            // Never probe one a mass-storage driver holds. On current macOS creating the
+            // user client for it does not fail, it blocks in the kernel indefinitely, and
+            // took `bind` with it on every card reader and flash drive.
+            let massStorage = drivers.contains { $0.contains("MassStorage") }
+            let opens = drivers.isEmpty ? true : (massStorage ? false : ioKit.usbInterfaceOpens(interfaceEntry))
             perInterface.append((drivers: drivers, opens: opens))
         }
         return perInterface

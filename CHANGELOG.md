@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — connections the client closed first were never released
+
+When a client hung up first — every `usbip list -r`, every failed import — the
+connection was dropped from the server's table but never cancelled, so its socket sat
+in `CLOSE_WAIT` for the life of the daemon. They accumulate at one per request; a
+daemon found no longer accepting on its Tailscale address held 609 of them.
+
+### Changed — composite devices are served whole, including interfaces macOS drives
+
+Every transfer used to go through interface 0. A device whose interface 0 macOS holds
+(a CDC-ACM console) could not enumerate; a multi-target CMSIS-DAP probe served only its
+first target. The daemon now opens every interface, routes each endpoint to the
+interface that owns it, and sends control requests on the default pipe.
+
+Interfaces macOS drives are captured while a client is attached and released after:
+`USBDeviceReEnumerate` with the capture option, which root may use without an
+entitlement. `bind` no longer refuses such devices. Mass storage is bridged instead —
+its driver survives capture — by answering Bulk-Only Transport and SCSI from the raw
+disk, unmounted first; this needs Full Disk Access for the daemon. Note what binding a
+drive now means: any host that can reach port 3240 gets raw block access to it.
+
+A client's connection is closed when its device leaves the Mac's bus, as `usbip-host`
+does, and a connection stays pinned to the device it imported. Device discovery had
+never tracked a device — its callbacks released each IOKit object before handling it —
+so no departure had ever been reported.
+
+Also fixed: two UNLINK races that made Linux drop the connection; aborted pipes cleared
+on the host side only, losing the next reply; stalls reported as `EPROTO` instead of
+`EPIPE`; a full IOKit enumeration on every URB; per-URB logging at info level.
+
 ### Removed — the System Extension subsystem
 
 Some 24,000 lines that no shipping path could reach, and a release artifact no
@@ -56,6 +86,39 @@ record the identifier and entitlement decisions a future DriverKit extension nee
 
 Also corrected: `CLAUDE.md` claimed `Tests/SharedUtilities/` was compiled by both test
 targets. SwiftPM ignores `sources:` paths outside the target directory, so it never was.
+
+### Fixed — a command sent close behind another was dropped
+
+The receive handler treated every TCP read as exactly one message. A read returns
+whatever bytes have arrived, so two commands a client sent back-to-back came in
+together: the first was decoded and the second was never seen. The client got no reply
+until its own timeout unlinked the request, and any driver that keeps a read posted
+while it writes lost every read that way.
+
+Xilinx `hw_server` showed it exactly. Its FTDI JTAG driver submits a bulk OUT and the
+bulk IN for the reply seventeen microseconds apart. Every IN timed out after five
+seconds, the replies stacked up in the FTDI's FIFO, a later read returned all of them
+at once, and Vivado decoded that as a chain of bogus IDCODEs — or, when the surviving
+request was the read, as an empty chain. The same board through usbipd-win worked, and
+openFPGALoader worked through this daemon only because libftdi never has two requests
+in flight.
+
+Bytes now go through a framer that yields whole messages, with the length taken from
+the header for the phase the connection is in: op_common plus its body before import,
+usbip_header_basic plus the OUT payload and any ISO descriptors after. Each message
+then runs on a serial queue per device, endpoint and direction, so writes to one pipe
+keep their order while a blocking read on another pipe holds nothing else up; UNLINK
+has its own queue so it can cancel a transfer that is still blocking. The per-client
+concurrency check warns instead of dropping the request it was counting.
+
+The listener also sets TCP_NODELAY. With Nagle on, a reply waited behind the previous
+unacknowledged one until the client's delayed ACK arrived, which measured as 40–100 ms
+added to every transfer; the Linux usbip tools set it on both ends for the same reason.
+
+With this, Vivado 2019.1 on a Linux host opens a Digilent Nexys A7-50T attached to a
+Mac over USB/IP and reads its IDCODE, and a test that submits an OUT and an IN
+back-to-back completes both within the network round trip instead of one of them
+within the client's timeout.
 
 ## [v0.6.0] - 2026-08-09
 

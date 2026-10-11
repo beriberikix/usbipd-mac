@@ -11,101 +11,68 @@ usbipd-mac is a macOS USB/IP protocol implementation for sharing USB devices ove
 
 ### Current state — what works and what does not
 
-**Works, verified against hardware.** Devices macOS has *not* bound a driver to are
-served end to end: enumeration, string descriptors, control transfers, and
-bidirectional bulk transfers. Three device classes have been driven: a SEGGER J-Link
-with probe-rs, which read the probe's VTref over the wire and behaved exactly as it does
-connected directly; a Pixel 10a in ADB mode, which answered a CNXN with its AUTH
-challenge; and a Raspberry Pi Debug Probe, where probe-rs ran ~930 CMSIS-DAP bulk
-exchanges and stopped only at chip detection — the same error it gives with the probe
-plugged straight into the Mac, because no target is wired to its SWD pins. No System
-Extension and no entitlement are involved.
+**Composite devices are served whole.** A session (`IOKitUSBDevice`) opens every
+interface on a device, routes each endpoint to the interface that owns it, and sends
+control requests on the device's default pipe. It used to open interface 0 only, so a
+device whose interface 0 macOS holds (a CDC-ACM console) could not even enumerate, and
+a multi-target CMSIS-DAP probe served its first target and nothing else. Verified on a
+FreeWili 2 from a Linux client: openocd and gdb on both RP2350s through its RP2040
+probe, DISPLAY flashed over SWD, MAIN's CDC console, its CDC-NCM network interface, the
+FT232H, and MAIN reflashed through its UF2 loader drive. Earlier hardware — J-Link,
+Pixel in ADB mode, Raspberry Pi Debug Probe — still applies.
 
-`bind` and `unbind` take effect on a running daemon. They ask it directly, over a Unix
-socket at `~/.usbipd/control.sock`, so the command reports what the daemon actually did
-rather than what it hoped would happen. When no daemon is listening they write
-`~/.usbipd/bound-devices.json` themselves and say so; the daemon reads it at startup.
+**Interfaces macOS drives are taken from it.** A root daemon captures such a device
+(`USBDeviceReEnumerate` with `kUSBReEnumerateCaptureDeviceMask`, which IOUSBLib.h allows
+for root without any entitlement) and releases it when the client disconnects. The
+capture runs in a short-lived child process (`usbipd __reenumerate`). Capture keeps the
+device object — it raises no disconnect — and only detaches drivers. An earlier revision
+of this file said driver-held devices "cannot be made to" work; that measured
+`USBInterfaceOpenSeize` and unmounting, and never tried capture.
 
-The control channel is deliberately not a command on port 3240. That port is exposed to
-the network, so a bind reachable there would let any host that can open a TCP connection
-share any USB device on this machine. The socket is mode 0600 in the user's own
-directory.
+**Mass storage is bridged, not opened.** Capture does not detach a mass-storage
+driver, and asking for a user client on a mass-storage interface either blocks in the
+kernel indefinitely or is refused by privacy control (TCC) — measured: the same
+unprivileged program is allowed from a terminal holding the grant and refused over SSH.
+So `MassStorageBridge` answers Bulk-Only Transport and SCSI itself, from the raw disk
+(`/dev/rdiskN`, unmounted first). The client gets an ordinary `/dev/sdX`; verified by
+reading an RP2040's `RPI-RP2` drive and flashing UF2s through it and through a FreeWili
+MAIN's `FW2Main FBL` loader. The daemon needs Full Disk Access for this, and is signed
+with a local identity (`~/.usbipd-signing/`) so the grant survives rebuilds — an ad-hoc
+signature changes with every build and silently drops it.
 
-The daemon still checks the file's timestamp when it consults the list. That is not
-redundant: it is how a change made over the control socket, or by a CLI that ran while
-no daemon was up, reaches the request path — the file stays the single source of
-truth.
+**Unplug on the Mac is unplug on the client.** When a served device leaves the bus its
+client connection is closed, as Linux's `usbip-host` does, so the client tears the port
+down; a connection is pinned to the device it imported and never serves a different one
+that appears at the same location. Both were missing: the discovery callbacks released
+each IOKit object before handling it, so no device was ever tracked and no departure
+ever reported, and a probe rebooted into BOOTSEL was served on the connection that had
+imported the probe — the client's vhci port wedged. Re-attaching what re-enumerates is
+the client's job; the cluster's `usb` tool does it with a follower.
 
-State and configuration are separate files, and only state is ever written by the tool.
-`~/.usbipd/usbipd-config.json` holds the port, log level and tuning; it is read at
-startup and needs a restart to change. `~/.usbipd/bound-devices.json` holds the bind
-list, guarded by a lock file so two `bind` commands cannot lose each other's device.
-The two used to share one file, so `bind` rewrote the whole configuration to append a
-busid — and because the CLI falls back to defaults when that file will not parse, one
-malformed character turned the next `bind` into a silent reset of the port and log
-level. A `allowedDevices` key left in an old config is migrated once and then ignored.
+**Cancellation and ordering.** An UNLINK for a request whose reply is being sent waits
+for that reply (`claimReply`/`replySent`), and a request still queued on its lane is
+cancelled there (`requestReceived`). Either race made Linux drop the connection with
+"cannot find a urb of seqnum". Aborted pipes are cleared with `ClearPipeStallBothEnds`,
+as libusb does; clearing the host side only desynchronised the data toggle and lost the
+next reply.
 
-Clients that cancel a transfer are supported, which matters more than it sounds:
-libusb cancels any read it has timed out, and probe-rs drains the IN endpoint that way
-before its first command. A cancelled request is aborted at the pipe and answered by
-its RET_UNLINK alone.
+`bind` and `unbind` take effect on a running daemon over `~/.usbipd/control.sock`
+(mode 0600), never over port 3240, which is network-reachable. State and configuration
+are separate files; only state (`bound-devices.json`, lock-guarded) is written by the
+tool.
 
-**A caveat that is not about claiming.** A client whose protocol keys off USB
-connection or reset events may not work even on a claimable device. `adb` reports a
-Pixel `offline` because the phone announces itself once per connection and macOS
-already received that announcement; attaching from a client causes no bus reset the
-phone can observe. Request/response devices are unaffected. See
-`Documentation/development/android-adb-validation.md`.
+**Caveats.** A client whose protocol keys off USB connection events may not work: `adb`
+reports a Pixel `offline`; see `Documentation/development/android-adb-validation.md`.
+Throughput is bounded by round trips — each CMSIS-DAP exchange is one — so Wi-Fi's
+latency dominates debugging; gdb needs `set remotetimeout` above its 2 s default for an
+RP2350 attach. Isochronous is structurally incomplete: alternate settings are never
+selected for it and a UVC device's isochronous endpoints would not appear.
 
-**Does not work, and cannot be made to.** Devices whose interfaces macOS actually
-holds — HID, mass storage, audio, cameras. `bind` refuses these up front with an
-explanation naming the owner. This was measured, not assumed: `USBInterfaceOpenSeize`
-returns the same `kIOReturnExclusiveAccess` as a plain open, and neither unmounting
-nor ejecting releases a device. Only the DriverKit USB transport entitlements would
-change it, and Apple has to grant those.
-
-"USB-serial" is not one answer, and this file gave the wrong one twice — first that
-none of it works, then that all of it does. It depends on which driver macOS attaches:
-
-- **FTDI and CP210x** carry `IOUserSerial`, which does not take exclusive access. They
-  open and serve normally, no entitlement involved. Verified against an FTDI Quad
-  RS232-HS and a CP2102N.
-- **CDC-ACM** splits. Measured on a Raspberry Pi Debug Probe with
-  `Scripts/validate-usb-entitlements.sh --only 2e8a:000c`: the *data* interface
-  (class 10, `AppleUSBACMData`) opens with `kIOReturnSuccess`, while the *control*
-  interface (class 2, `AppleUSBACMControl`) returns `kIOReturnExclusiveAccess`. The
-  data path carries the bytes; the control path carries `SET_LINE_CODING` and
-  `SET_CONTROL_LINE_STATE` — baud rate, DTR and RTS. So a CDC-ACM device cannot be
-  served usefully: a client can be handed the bytes but can never set the line up.
-  This is the class most dev boards with native USB present, and it is the one case
-  where a DriverKit entitlement would actually change the answer.
-  Note also that `AppleUSBACMData` publishes `/dev/cu.*` through `IOSerialBSDClient`
-  while that interface is simultaneously openable — the conflict hazard, confirmed.
-- **CH340, PL2303 and the rest** have not been measured. Do not assume either way.
-
-Which is why ownership is decided by attempting the open rather than by reading driver
-names: a driver being attached settles nothing, and the chip alone does not tell you.
-
-**Untested.** Interrupt endpoints (no unbound interrupt device has been available).
-Isochronous is not merely untested but structurally incomplete: alternate settings are
-never selected and pipes are discovered once at open, so a UVC device's isochronous
-endpoints would never appear. See `Documentation/development/probe-rs-validation.md`.
-
-The **SystemExtension subsystem was removed in 0.7.0** — some 24,000 lines that no
-shipping path could reach. `OSSystemExtensionRequest` resolves extensions inside the
-calling process's own bundle and requires that bundle to live in `/Applications`, so a
-Homebrew install could never activate one; the claiming strategy underneath was measured
-not to unbind anything either. `DeviceClaimManager` survives as the seam a real
-implementation would slot into, satisfied by `UserspaceDeviceClaimManager`, which tracks
-intent and says so. See
+The **SystemExtension subsystem was removed in 0.7.0**; see
 `Documentation/development/system-extension-archive/why-it-was-removed.md`.
-
-Serving the devices macOS *does* hold — HID, mass storage, audio, cameras, and CDC-ACM
-control interfaces — needs a DriverKit extension, which needs an app bundle in
-`/Applications` to activate it, which needs a capability Apple has not granted. That
-work is planned but not started: see
-`Documentation/development/app-bundle-phase-2.md`, which records the measurements, the
-chosen non-breaking distribution shape, and the two questions to settle first.
+`DeviceClaimManager` survives as a seam, satisfied by `UserspaceDeviceClaimManager`.
+`Documentation/development/app-bundle-phase-2.md` predates capture and the bridge; its
+premise that driver-held devices need DriverKit no longer holds for a root daemon.
 
 ## Architecture
 
@@ -171,7 +138,11 @@ step that called them. `swift test` is the whole story.
 
 Note that `swift test` needs XCTest, which ships with Xcode rather than the Command Line
 Tools — a CLT-only machine fails with `error: no such module 'XCTest'` and has to use CI.
-The current development Mac has full Xcode, so the whole gate runs locally.
+The development Mac (patroclus) has only the Command Line Tools as of 2026-09, so the
+test targets do not build there; new tests were checked through standalone harnesses and
+first run in CI. `swift build -Xswiftc -warnings-as-errors` still works, apart from the
+pre-existing `kIOMasterPortDefault` deprecation, which that SDK flags at its macOS 12
+minimum.
 
 ### Code Quality
 ```bash
@@ -264,7 +235,7 @@ The project uses a comprehensive SwiftLint configuration (`.swiftlint.yml`) with
 
 ## Testing Strategy
 
-`swift test --parallel` is the whole suite — 429 tests across `USBIPDCoreTests` and
+`swift test --parallel` is the whole suite — the tests across `USBIPDCoreTests` and
 `USBIPDCLITests`. There is no development/CI/production tier system; the scripts that
 claimed to provide one filtered on target names that were never declared, matched
 nothing, and exited 0. See `Documentation/development/testing-strategy.md`.

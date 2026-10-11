@@ -6,7 +6,7 @@ import Foundation
 /// Hands out one serial queue per USB endpoint address.
 ///
 /// This exists as its own type because it encodes a correctness rule that is worth
-/// testing on its own, and `IOKitUSBInterface` cannot be constructed without real
+/// testing on its own, and `IOKitUSBDevice` cannot be constructed without real
 /// hardware.
 ///
 /// The rule has two halves, and both matter:

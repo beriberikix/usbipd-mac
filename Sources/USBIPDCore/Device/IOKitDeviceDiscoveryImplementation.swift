@@ -24,7 +24,7 @@ extension IOKitDeviceDiscovery {
         // The caching and retry mechanisms were causing hangs in the original implementation
         let devices = try performDeviceDiscovery()
         
-        logger.info("Discovered USB devices", context: ["count": devices.count])
+        logger.debug("Discovered USB devices", context: ["count": devices.count])
         return devices
     }
     

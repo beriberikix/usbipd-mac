@@ -86,6 +86,9 @@ public protocol USBDeviceCommunicator: AnyObject {
     ///   - endpoint: Endpoint address to cancel transfers on
     /// - Throws: USBRequestError if cancellation fails
     func cancelTransfers(device: USBDevice, interfaceNumber: UInt8, endpoint: UInt8) async throws
+
+    /// Release everything held for a device, once no client is using it.
+    func releaseDevice(_ device: USBDevice)
 }
 
 /// Default implementation of USB device communication
@@ -94,4 +97,7 @@ public extension USBDeviceCommunicator {
     func endpointTransferType(device: USBDevice, endpoint: UInt8) -> USBTransferType? {
         return nil
     }
+
+    /// Conformers that hold nothing per device have nothing to release.
+    func releaseDevice(_ device: USBDevice) {}
 }

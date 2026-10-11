@@ -24,10 +24,11 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     /// IOKit interface factory for dependency injection
     private let ioKitInterfaceFactory: IOKitInterfaceFactory
     
-    /// Active USB interfaces keyed by device identifier and interface number
-    private var activeInterfaces: [String: [UInt8: IOKitUSBInterface]] = [:]
+    /// Open IOKit sessions keyed by device identifier. One per device: a session opens
+    /// every interface macOS will release, so there is nothing to key by interface.
+    private var activeDevices: [String: IOKitUSBDevice] = [:]
     
-    /// Lock for thread-safe interface management
+    /// Lock for thread-safe session management
     private let interfaceLock = NSLock()
     
     // MARK: - Initialization
@@ -50,84 +51,27 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     
     // MARK: - USB Interface Lifecycle
     
+    /// Open the device for transfers. The interface number is not used: interfaces are
+    /// not opened one at a time any more, because a transfer's endpoint decides which
+    /// interface it needs and the caller cannot know that. See IOKitUSBDevice.
     public func openUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
-        // Validate device claim first
         _ = try validateDeviceClaim(device: device)
-        
-        let deviceKey = deviceIdentifier(for: device)
-        
+
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
-                self.interfaceLock.lock()
-                defer { self.interfaceLock.unlock() }
-                
                 do {
-                    // Check if interface is already open
-                    if let deviceInterfaces = self.activeInterfaces[deviceKey],
-                       deviceInterfaces[interfaceNumber] != nil {
-                        self.logger.debug("USB interface \(interfaceNumber) already open for device \(deviceKey)")
-                        continuation.resume()
-                        return
-                    }
-                    
-                    // Create new IOKit USB interface
-                    let interface = try self.ioKitInterfaceFactory.createIOKitUSBInterface(
-                        device: device,
-                        interfaceNumber: interfaceNumber
-                    )
-                    try interface.open()
-                    
-                    // Store the interface
-                    if self.activeInterfaces[deviceKey] == nil {
-                        self.activeInterfaces[deviceKey] = [:]
-                    }
-                    self.activeInterfaces[deviceKey]![interfaceNumber] = interface
-                    
-                    self.logger.info("Successfully opened USB interface \(interfaceNumber) for device \(deviceKey)")
+                    _ = try self.session(for: device)
                     continuation.resume()
                 } catch {
-                    self.logger.error("Failed to open USB interface \(interfaceNumber) for device \(deviceKey): \(error)")
                     continuation.resume(throwing: error)
                 }
             }
         }
     }
     
+    /// Release the device. Every interface goes with it; see `openUSBInterface`.
     public func closeUSBInterface(device: USBDevice, interfaceNumber: UInt8) async throws {
-        let deviceKey = deviceIdentifier(for: device)
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                self.interfaceLock.lock()
-                defer { self.interfaceLock.unlock() }
-                
-                do {
-                    guard let deviceInterfaces = self.activeInterfaces[deviceKey],
-                          let interface = deviceInterfaces[interfaceNumber] else {
-                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey)")
-                        continuation.resume()
-                        return
-                    }
-                    
-                    // Close the interface
-                    try interface.close()
-                    
-                    // Remove from active interfaces
-                    self.activeInterfaces[deviceKey]?.removeValue(forKey: interfaceNumber)
-                    
-                    // Clean up empty device entries
-                    if self.activeInterfaces[deviceKey]?.isEmpty == true {
-                        self.activeInterfaces.removeValue(forKey: deviceKey)
-                    }
-                    
-                    self.logger.info("Successfully closed USB interface \(interfaceNumber) for device \(deviceKey)")
-                    continuation.resume()
-                } catch {
-                    self.logger.error("Failed to close USB interface \(interfaceNumber) for device \(deviceKey): \(error)")
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        releaseDevice(device)
     }
     
     public func isInterfaceOpen(device: USBDevice, interfaceNumber: UInt8) -> Bool {
@@ -136,7 +80,50 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         interfaceLock.lock()
         defer { interfaceLock.unlock() }
         
-        return activeInterfaces[deviceKey]?[interfaceNumber] != nil
+        return activeDevices[deviceKey] != nil
+    }
+
+    /// Give back everything held for a device: its interfaces, the device open, and any
+    /// transfer parked on it.
+    ///
+    /// Called when the client serving it disconnects. Sessions used to live until the
+    /// daemon restarted, so a detached device stayed open by this process — and a later
+    /// bind found its interfaces taken, by the daemon itself.
+    public func releaseDevice(_ device: USBDevice) {
+        let deviceKey = deviceIdentifier(for: device)
+
+        interfaceLock.lock()
+        let released = activeDevices.removeValue(forKey: deviceKey)
+        interfaceLock.unlock()
+
+        guard let session = released else { return }
+        // Closed outside the lock: close() makes IOKit calls, and wakes parked transfers
+        // that will want the lock to report their completion.
+        session.close()
+        logger.info("Released device \(deviceKey)")
+    }
+
+    /// The open session for a device, opening one on first use.
+    private func session(for device: USBDevice) throws -> IOKitUSBDevice {
+        let deviceKey = deviceIdentifier(for: device)
+
+        interfaceLock.lock()
+        defer { interfaceLock.unlock() }
+
+        if let existing = activeDevices[deviceKey] {
+            return existing
+        }
+
+        let session = try ioKitInterfaceFactory.createIOKitUSBDevice(device: device)
+        do {
+            try session.open()
+        } catch {
+            session.close()
+            logger.error("Failed to open device \(deviceKey): \(error)")
+            throw error
+        }
+        activeDevices[deviceKey] = session
+        return session
     }
     
     // MARK: - Device Claim Validation
@@ -163,12 +150,16 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     
     // MARK: - Transfer Methods
     
-    /// Ask the open interface what kind of endpoint this is. IOKit reports the type
-    /// from the device's own descriptors, which is the only authoritative source —
-    /// USB/IP does not put it on the wire.
+    /// Ask the device what kind of endpoint this is. IOKit reports the type from the
+    /// device's own descriptors, which is the only authoritative source — USB/IP does
+    /// not put it on the wire.
+    ///
+    /// Opens the device if it is not open yet. This is asked before the first transfer
+    /// runs, and answering nil then sent that transfer down the inference path, which
+    /// guesses.
     public func endpointTransferType(device: USBDevice, endpoint: UInt8) -> USBTransferType? {
-        guard let interface = try? getInterface(for: device, interfaceNumber: 0),
-              let raw = interface.transferType(for: endpoint) else {
+        guard let session = try? session(for: device),
+              let raw = session.transferType(for: endpoint) else {
             return nil
         }
 
@@ -182,23 +173,19 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     }
 
     public func executeControlTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        // Validate device claim and request type
         _ = try validateDeviceClaim(device: device)
         try validateRequest(request, expectedType: .control)
         
-        // Get the USB interface (using interface 0 as default for now)
-        let interface = try getInterface(for: device, interfaceNumber: 0)
+        let session = try getSession(for: device)
         
         logger.debug("Executing control transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
         
-        // Execute control transfer through IOKit interface
-        let result = try await interface.executeControlTransfer(
-            endpoint: request.endpoint,
+        let result = try await session.executeControlTransfer(
             setupPacket: request.setupPacket ?? Data(),
             transferBuffer: request.transferBuffer,
             timeout: request.timeout
         )
-        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
+        discardSessionIfDeviceGone(result, device: device)
         return result
     }
     
@@ -218,44 +205,30 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
     }
 
     public func executeBulkTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        // Validate device claim and request type
         _ = try validateDeviceClaim(device: device)
         try validateRequest(request, expectedType: .bulk)
-        
-        // Get the USB interface (using interface 0 as default for now)
-        let interface = try getInterface(for: device, interfaceNumber: 0)
-        
-        logger.debug("Executing bulk transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
-        
-        // Execute bulk transfer through IOKit interface
-        let result = try await interface.executeBulkTransfer(
-            endpoint: endpointAddress(for: request),
-            data: request.transferBuffer,
-            bufferLength: request.bufferLength,
-            timeout: request.timeout
-        )
-        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
-        return result
+        return try await executePipeTransfer(device: device, request: request)
     }
     
     public func executeInterruptTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
-        // Validate device claim and request type
         _ = try validateDeviceClaim(device: device)
         try validateRequest(request, expectedType: .interrupt)
+        return try await executePipeTransfer(device: device, request: request)
+    }
+
+    /// Bulk and interrupt run through the same IOKit pipe calls.
+    private func executePipeTransfer(device: USBDevice, request: USBRequestBlock) async throws -> USBTransferResult {
+        let session = try getSession(for: device)
         
-        // Get the USB interface (using interface 0 as default for now)
-        let interface = try getInterface(for: device, interfaceNumber: 0)
+        logger.debug("Executing \(request.transferType) transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
         
-        logger.debug("Executing interrupt transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
-        
-        // Execute interrupt transfer through IOKit interface
-        let result = try await interface.executeInterruptTransfer(
+        let result = try await session.executePipeTransfer(
             endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             timeout: request.timeout
         )
-        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
+        discardSessionIfDeviceGone(result, device: device)
         return result
     }
     
@@ -264,20 +237,18 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         _ = try validateDeviceClaim(device: device)
         try validateRequest(request, expectedType: .isochronous)
         
-        // Get the USB interface (using interface 0 as default for now)
-        let interface = try getInterface(for: device, interfaceNumber: 0)
+        let session = try getSession(for: device)
         
         logger.debug("Executing isochronous transfer for device \(device.busID)-\(device.deviceID), endpoint \(request.endpoint)")
         
-        // Execute isochronous transfer through IOKit interface
-        let result = try await interface.executeIsochronousTransfer(
+        let result = try await session.executeIsochronousTransfer(
             endpoint: endpointAddress(for: request),
             data: request.transferBuffer,
             bufferLength: request.bufferLength,
             startFrame: request.startFrame,
             numberOfPackets: max(request.numberOfPackets, 1)
         )
-        discardInterfaceIfDeviceGone(result, device: device, interfaceNumber: 0)
+        discardSessionIfDeviceGone(result, device: device)
         return result
     }
     
@@ -341,155 +312,88 @@ public class USBDeviceCommunicatorImplementation: USBDeviceCommunicator, @unchec
         logger.debug("Request validation passed for \(expectedType) transfer")
     }
     
-    /// Get the IOKit interface for a specific device and interface number
-    /// - Parameters:
-    ///   - device: USB device
-    ///   - interfaceNumber: Interface number
-    /// - Returns: IOKit USB interface
-    /// - Throws: USBRequestError if interface is not available
-    private func getInterface(for device: USBDevice, interfaceNumber: UInt8) throws -> IOKitUSBInterface {
-        let deviceKey = deviceIdentifier(for: device)
-        
-        interfaceLock.lock()
-        defer { interfaceLock.unlock() }
-        
-        guard let deviceInterfaces = activeInterfaces[deviceKey],
-              let interface = deviceInterfaces[interfaceNumber] else {
-            logger.error("USB interface \(interfaceNumber) not open for device \(deviceKey)")
+    /// The session for a device, opening it if this is the first transfer.
+    private func getSession(for device: USBDevice) throws -> IOKitUSBDevice {
+        do {
+            return try session(for: device)
+        } catch {
+            logger.error("Device \(deviceIdentifier(for: device)) could not be opened: \(error)")
             throw USBRequestError.deviceNotAvailable
         }
-        
-        return interface
     }
     
-    /// Whether a transfer result means the cached interface can no longer be used.
+    /// Whether a transfer result means the cached session can no longer be used.
     ///
     /// `deviceGone` is what both `kIOReturnNoDevice` and `kIOReturnNotResponding` map
-    /// to. Either way the IOKit interface behind the handle is finished, and every
-    /// transfer through it will keep failing.
+    /// to. Either way the IOKit handles behind the session are finished, and every
+    /// transfer through them will keep failing.
     static func shouldDiscardInterface(after status: USBStatus) -> Bool {
         return status == .deviceGone
     }
 
-    /// Drop a cached interface whose device has gone, so the next request opens a new
-    /// one instead of reusing a handle that can only fail.
+    /// Drop a session whose device has gone, so the next request opens a new one
+    /// instead of reusing handles that can only fail.
     ///
-    /// Interfaces are opened once and kept. That is right while a device stays put, and
+    /// Sessions are opened once and kept. That is right while a device stays put, and
     /// wrong the moment it does not: a device that disappears briefly — re-enumerating,
     /// or an Android phone changing its USB configuration — left the daemon holding a
     /// dead handle, and every subsequent transfer returned "no device" until the daemon
     /// was restarted. Observed with a Pixel, where a fresh daemon worked immediately
     /// while the running one never recovered.
-    private func discardInterfaceIfDeviceGone(
-        _ result: USBTransferResult,
-        device: USBDevice,
-        interfaceNumber: UInt8
-    ) {
+    private func discardSessionIfDeviceGone(_ result: USBTransferResult, device: USBDevice) {
         guard USBDeviceCommunicatorImplementation.shouldDiscardInterface(after: result.status) else {
             return
         }
-
-        let deviceKey = deviceIdentifier(for: device)
-
-        // Held only long enough to take the interface out of the table. Letting it
-        // deallocate inside the lock would run its deinit — and so `close()`, and so
-        // IOKit calls — while every other transfer waited on that lock.
-        var discarded: IOKitUSBInterface?
-        interfaceLock.lock()
-        discarded = activeInterfaces[deviceKey]?.removeValue(forKey: interfaceNumber)
-        if activeInterfaces[deviceKey]?.isEmpty == true {
-            activeInterfaces.removeValue(forKey: deviceKey)
-        }
-        interfaceLock.unlock()
-
-        guard discarded != nil else { return }
-        discarded = nil
-
-        logger.warning("Device reported gone; discarding the cached interface so it is reopened", context: [
-            "device": deviceKey,
-            "interface": String(interfaceNumber)
+        logger.warning("Device reported gone; discarding its session so it is reopened", context: [
+            "device": deviceIdentifier(for: device)
         ])
+        releaseDevice(device)
     }
 
     // MARK: - Transfer Cancellation
     
+    /// Abort everything outstanding on the device. Sessions span every interface, so
+    /// the interface number no longer narrows anything.
     public func cancelAllTransfers(device: USBDevice, interfaceNumber: UInt8) async throws {
-        let deviceKey = deviceIdentifier(for: device)
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                self.interfaceLock.lock()
-                defer { self.interfaceLock.unlock() }
-                
-                do {
-                    guard let deviceInterfaces = self.activeInterfaces[deviceKey],
-                          let interface = deviceInterfaces[interfaceNumber] else {
-                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey) - no transfers to cancel")
-                        continuation.resume()
-                        return
-                    }
-                    
-                    // Cancel all transfers on the interface
-                    try interface.cancelAllTransfers()
-                    
-                    self.logger.info("Successfully cancelled all transfers on interface \(interfaceNumber) for device \(deviceKey)")
-                    continuation.resume()
-                } catch {
-                    self.logger.error("Failed to cancel transfers on interface \(interfaceNumber) for device \(deviceKey): \(error)")
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        existingSession(for: device)?.cancelAllTransfers()
     }
     
+    /// Abort what is outstanding on one endpoint. The session knows which interface owns
+    /// it, which the caller does not — CMD_UNLINK carries no endpoint at all.
     public func cancelTransfers(device: USBDevice, interfaceNumber: UInt8, endpoint: UInt8) async throws {
-        let deviceKey = deviceIdentifier(for: device)
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                self.interfaceLock.lock()
-                defer { self.interfaceLock.unlock() }
-                
-                do {
-                    guard let deviceInterfaces = self.activeInterfaces[deviceKey],
-                          let interface = deviceInterfaces[interfaceNumber] else {
-                        self.logger.debug("USB interface \(interfaceNumber) not open for device \(deviceKey) - no transfers to cancel")
-                        continuation.resume()
-                        return
-                    }
-                    
-                    // Cancel transfers on the specific endpoint
-                    try interface.cancelTransfers(endpoint: endpoint)
-                    
-                    self.logger.info("Successfully cancelled transfers on endpoint 0x\(String(endpoint, radix: 16)) for device \(deviceKey)")
-                    continuation.resume()
-                } catch {
-                    self.logger.error("Failed to cancel transfers on endpoint 0x\(String(endpoint, radix: 16)) for device \(deviceKey): \(error)")
-                    continuation.resume(throwing: error)
-                }
-            }
+        guard let session = existingSession(for: device) else {
+            logger.debug("Device \(deviceIdentifier(for: device)) not open - no transfers to cancel")
+            return
         }
+        session.cancelTransfers(endpoint: endpoint)
+    }
+
+    /// A session only if one is already open. Cancelling must never open a device.
+    private func existingSession(for device: USBDevice) -> IOKitUSBDevice? {
+        interfaceLock.lock()
+        defer { interfaceLock.unlock() }
+        return activeDevices[deviceIdentifier(for: device)]
     }
 }
 
 // MARK: - IOKit Interface Factory
 
-/// Protocol for creating IOKit USB interfaces (for dependency injection and testing)
+/// Protocol for creating IOKit device sessions (for dependency injection and testing)
 public protocol IOKitInterfaceFactory {
-    func createIOKitUSBInterface(device: USBDevice, interfaceNumber: UInt8) throws -> IOKitUSBInterface
+    func createIOKitUSBDevice(device: USBDevice) throws -> IOKitUSBDevice
 }
 
 /// Default implementation of IOKit interface factory
 public class DefaultIOKitInterfaceFactory: IOKitInterfaceFactory {
     public init() {}
     
-    public func createIOKitUSBInterface(device: USBDevice, interfaceNumber: UInt8) throws -> IOKitUSBInterface {
-        return try IOKitUSBInterface(device: device, interfaceNumber: interfaceNumber)
+    public func createIOKitUSBDevice(device: USBDevice) throws -> IOKitUSBDevice {
+        return try IOKitUSBDevice(device: device)
     }
 }
 
 // MockIOKitInterfaceFactory was removed. Despite the name it returned a real
-// IOKitUSBInterface — "in tests, this would return a mock interface / for now, create a
+// IOKit wrapper — "in tests, this would return a mock interface / for now, create a
 // real interface" — so any test reaching for it would have opened live hardware while
 // believing it was mocked. Nothing referenced it. A real mock belongs here if the
 // transfer path ever needs one, but an empty shell with a misleading name is worse

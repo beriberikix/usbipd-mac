@@ -126,6 +126,33 @@ final class TCPServerTests: XCTestCase {
         wait(for: [disconnectionExpectation], timeout: 2.0)
     }
     
+    /// A client that hangs up first must get the server's FIN back. Without it the
+    /// server's socket sits in CLOSE_WAIT forever - one per `usbip list`.
+    func testServerClosesItsSideWhenClientHangsUp() throws {
+        let connectionExpectation = XCTestExpectation(description: "Client connection")
+        let serverClosedExpectation = XCTestExpectation(description: "Server sent FIN")
+
+        server.onClientConnected = { _ in connectionExpectation.fulfill() }
+
+        let port = Int.random(in: 8000...9000)
+        try server.start(port: port)
+
+        let connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: UInt16(port)), using: .tcp)
+        connection.start(queue: DispatchQueue.global())
+
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // Half-close: send our FIN but keep reading, the way a client that has
+        // finished talking does. The server's FIN arrives as isComplete.
+        connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .idempotent)
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1) { _, _, isComplete, _ in
+            if isComplete { serverClosedExpectation.fulfill() }
+        }
+
+        wait(for: [serverClosedExpectation], timeout: 2.0)
+        connection.cancel()
+    }
+
     func testDataSendingAndReceiving() throws {
         let connectionExpectation = XCTestExpectation(description: "Client connection")
         let dataReceivedExpectation = XCTestExpectation(description: "Data received")

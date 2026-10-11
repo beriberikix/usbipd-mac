@@ -82,7 +82,13 @@ public class TCPServer: NetworkService {
             throw NetworkError.bindFailed("Invalid port number: \(port)")
         }
         
-        let parameters = NWParameters.tcp
+        // USB/IP is a request/reply stream of small messages. With Nagle on, a
+        // reply sits behind the previous unacknowledged one until the client's
+        // delayed ACK arrives, which measured as 40-100 ms added to every URB.
+        // The Linux usbip tools set TCP_NODELAY on both ends for the same reason.
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         parameters.allowLocalEndpointReuse = true
         
         do {

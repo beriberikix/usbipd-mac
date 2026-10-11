@@ -183,6 +183,9 @@ public struct USBErrorMapping {
     /// a protocol error — rather than ETIMEDOUT.
     static let kIOUSBTransactionTimeout = IOReturn(bitPattern: 0xE000_4051)
 
+    /// IOUSBFamily's stall code, likewise not exposed by the overlay.
+    static let kIOUSBPipeStalled = IOReturn(bitPattern: 0xE000_404F)
+
     /// Maps IOKit error codes to USB status codes
     public static func mapIOKitError(_ ioKitError: IOReturn) -> Int32 {
         switch ioKitError {
@@ -192,6 +195,11 @@ public struct USBErrorMapping {
             return USBStatus.timeout.rawValue
         case kIOReturnAborted:
             return USBStatus.cancelled.rawValue
+        case USBErrorMapping.kIOUSBPipeStalled:
+            // Without this a stall reached the client as EPROTO. Linux treats EPIPE as
+            // "the device refused this request", which is routine — an unsupported
+            // descriptor read during enumeration — where EPROTO reads as a broken link.
+            return USBStatus.stall.rawValue
         case kIOReturnBadArgument:
             return USBStatus.invalidRequest.rawValue
         case kIOReturnNoDevice:

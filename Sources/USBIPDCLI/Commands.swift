@@ -287,41 +287,22 @@ public class BindCommand: Command {
                 print("that program and try again.")
                 throw CommandLineError.invalidArguments("Device \(busid) exposes no USB interfaces")
 
-            case .partiallyClaimed(let free, let claimedBy):
-                // Some interfaces are owned and some are not. A composite debug probe
-                // looks like this: CMSIS-DAP free, the CDC serial port taken by macOS.
-                // Refusing the whole device here rejected hardware that works.
+            case .partiallyClaimed(_, let claimedBy), .kernelDriver(let claimedBy):
+                // macOS drives some or all of the device. While a client has it attached,
+                // the daemon takes it from those drivers — USBDeviceReEnumerate with the
+                // capture option, which root may use without an entitlement — and gives
+                // it back on detach. This used to refuse outright, on the strength of a
+                // measurement of USBInterfaceOpenSeize and unmounting; capture was never
+                // tried.
                 let names = claimedBy.joined(separator: ", ")
-                let list = free.map(String.init).joined(separator: ", ")
-                logger.info("Binding a partially claimed device", context: [
-                    "busid": busid,
-                    "freeInterfaces": list,
-                    "claimedBy": names
-                ])
-                print("Note: macOS holds some interfaces of \(busid) (\(names)).")
-                print("Interface \(list) is free and will be served — for a debug probe")
-                print("that is the debug interface; the serial port stays with macOS.")
-
-            case .kernelDriver(let drivers):
-                let names = drivers.joined(separator: ", ")
-                logger.error("Refusing to bind a driver-bound device", context: [
+                logger.info("Binding a device macOS drives", context: [
                     "busid": busid,
                     "drivers": names
                 ])
-                // Printed rather than folded into the thrown error: the error string is
-                // also logged as context, and a multi-line message there is unreadable.
-                print("""
-                    Cannot share \(busid): macOS has bound a driver to it (\(names)).
-
-                    Releasing it needs a DriverKit entitlement Apple has to grant.
-                    Seizing the interface was measured and does not work, and neither
-                    unmounting nor ejecting releases it.
-
-                    Devices macOS does not claim — debug probes, boards in DFU mode,
-                    vendor-specific interfaces — work today. Check a specific device
-                    with ./Scripts/validate-usb-entitlements.sh
-                    """)
-                throw CommandHandlerError.deviceBindingFailed("\(busid) is owned by \(names)")
+                print("Note: macOS drives \(busid) (\(names)).")
+                print("While a client has it attached, the daemon detaches those drivers so the")
+                print("client gets the whole device; macOS gets it back on detach. Mass-storage")
+                print("volumes are ejected first.")
 
             case .userspaceProcess(let clients):
                 let names = clients.joined(separator: ", ")

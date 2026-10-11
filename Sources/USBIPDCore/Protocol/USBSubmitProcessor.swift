@@ -23,6 +23,8 @@ public class USBSubmitProcessor {
         let reserved: Bool
         let urb: USBRequestBlock?
         let device: USBDevice?
+        /// Set when the request had already completed and its reply is being sent.
+        var replyInFlight: DispatchSemaphore?
     }
 
     /// Identifies a request. A sequence number alone does not.
@@ -48,6 +50,29 @@ public class USBSubmitProcessor {
     /// complete after the abort, and its result must be dropped rather than sent: the
     /// client has been told the request is dead and is not expecting a reply.
     private var cancelled: Set<URBKey> = []
+
+    /// Replies claimed for sending and not yet on the socket, each with a signal raised
+    /// once it is. See `claimReply` and `cancelURB`.
+    private var repliesInFlight: [URBKey: DispatchSemaphore] = [:]
+
+    /// Requests off the wire and waiting on their lane, not yet started. An UNLINK that
+    /// finds one here cancels it outright; it is dropped when its turn comes.
+    private var queued: Set<URBKey> = []
+
+    /// Devices already resolved from a devid. Resolving means a full IOKit enumeration,
+    /// and it ran twice for every URB: about 2 ms of a CMSIS-DAP command's round trip,
+    /// enough that openocd took longer than gdb's 2-second timeout to answer an attach.
+    ///
+    /// Also what pins a client to the device it imported. It is kept when the device
+    /// goes away and cleared only when a client leaves (forgetResolvedDevices): a
+    /// different device appearing at the same location then fails the identity check
+    /// in IOKitUSBDevice rather than silently taking the old one's place. Clearing it on
+    /// failure let exactly that happen — a probe rebooted into BOOTSEL was served on the
+    /// connection that had imported the probe, the client's cancels went to a device
+    /// that had never seen the transfers, and its vhci port wedged.
+    ///
+    /// Guarded by `urbQueue`.
+    private var resolvedDevices: [UInt32: USBDevice] = [:]
     private let urbQueue = DispatchQueue(label: "com.usbipd.mac.urb", attributes: .concurrent)
     
     /// Device communicator for executing USB transfers
@@ -106,7 +131,9 @@ public class USBSubmitProcessor {
         // Decode the SUBMIT request
         let request = try USBIPMessageDecoder.decodeUSBSubmitRequest(from: data)
         
-        logger.info("Processing SUBMIT request", context: [
+        // Debug, not info: a debug probe issues thousands of these a second, and at info
+        // they grew the daemon's log by hundreds of megabytes and cost time on every URB.
+        logger.debug("Processing SUBMIT request", context: [
             "seqnum": String(request.seqnum),
             "devid": String(request.devid),
             "direction": String(request.direction),
@@ -117,9 +144,6 @@ public class USBSubmitProcessor {
         // throwing. A thrown error reaches ServerCoordinator, which logs it and sends
         // nothing, leaving the client waiting on a reply that never comes.
         do {
-            try validateSubmitRequest(request)
-            try await checkConcurrentRequestLimit(devid: request.devid)
-
             // Claim the request before doing anything that can block.
             //
             // Registration used to happen after the device had been resolved, which
@@ -132,7 +156,22 @@ public class USBSubmitProcessor {
             // This sits inside the block above so that a rejected claim is answered.
             // Thrown from outside it, a duplicate reached ServerCoordinator, which logs
             // and sends nothing, and the client waited for a reply that never came.
-            try await reserveSequenceNumber(devid: request.devid, seqnum: request.seqnum)
+            guard try reserveSequenceNumber(devid: request.devid, seqnum: request.seqnum) else {
+                logger.debug("Dropping a request cancelled before it ran", context: [
+                    "seqnum": String(request.seqnum)
+                ])
+                return Data()
+            }
+
+            // Checked after the claim, so a rejection is answered through claimReply
+            // like any other reply and an UNLINK cannot overtake it.
+            do {
+                try validateSubmitRequest(request)
+                try await checkConcurrentRequestLimit(devid: request.devid)
+            } catch {
+                guard claimReply(devid: request.devid, seqnum: request.seqnum) else { return Data() }
+                throw error
+            }
         } catch {
             logger.warning("Rejected SUBMIT request", context: [
                 "seqnum": String(request.seqnum),
@@ -189,11 +228,11 @@ public class USBSubmitProcessor {
         do {
             // Execute the USB transfer
             let result = try await executeUSBTransfer(request: request, urb: urb)
-            
+
             // Create and return response
             let response = createSubmitResponse(from: request, result: result)
             
-            logger.info("SUBMIT request completed successfully", context: [
+            logger.debug("SUBMIT request completed successfully", context: [
                 "seqnum": String(request.seqnum),
                 "actualLength": String(result.actualLength),
                 "status": String(result.status.rawValue)
@@ -208,17 +247,13 @@ public class USBSubmitProcessor {
             // The data is dropped with it. That is the honest outcome: it belongs to a
             // transfer the client cancelled, and handing it to the next read would put
             // one command's answer in front of another's.
-            if await wasCancelled(devid: request.devid, seqnum: request.seqnum) {
+            guard claimReply(devid: request.devid, seqnum: request.seqnum) else {
                 logger.info("Discarding result of a cancelled request", context: [
                     "seqnum": String(request.seqnum),
                     "actualLength": String(result.actualLength)
                 ])
-                await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
                 return Data()
             }
-
-            // Remove URB from tracking
-            await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
 
             return try USBIPMessageEncoder.encodeUSBSubmitResponse(
                 seqnum: response.seqnum,
@@ -235,11 +270,10 @@ public class USBSubmitProcessor {
         } catch {
             // Aborting a pipe makes the transfer in flight fail, so a cancelled request
             // usually arrives here rather than above. It is silent for the same reason.
-            if await wasCancelled(devid: request.devid, seqnum: request.seqnum) {
+            guard claimReply(devid: request.devid, seqnum: request.seqnum) else {
                 logger.info("Cancelled request ended without a reply", context: [
                     "seqnum": String(request.seqnum)
                 ])
-                await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
                 return Data()
             }
 
@@ -250,9 +284,6 @@ public class USBSubmitProcessor {
             
             // Create error response
             let errorResponse = createErrorResponse(from: request, error: error)
-            
-            // Remove URB from tracking
-            await removeActiveURB(devid: request.devid, seqnum: request.seqnum)
             
             return try USBIPMessageEncoder.encodeUSBSubmitResponse(
                 seqnum: errorResponse.seqnum,
@@ -278,7 +309,7 @@ public class USBSubmitProcessor {
             throw USBIPProtocolError.invalidMessageFormat
         }
         
-        // Bound the requested transfer size. IOKitUSBInterface allocates
+        // Bound the requested transfer size. IOKitUSBDevice allocates
         // Int(bufferLength) directly from this value, so an unbounded UInt32 from the
         // wire becomes an allocation of up to 4 GiB requested by a remote client.
         guard request.transferBufferLength <= maxUSBBufferSize else {
@@ -338,13 +369,33 @@ public class USBSubmitProcessor {
     /// carries the duplicate check that used to live in `addActiveURB`, which is the
     /// right place for it: a repeat of a sequence number is a client error whether or
     /// not the first one has finished being prepared.
-    private func reserveSequenceNumber(devid: UInt32, seqnum: UInt32) async throws {
-        try urbQueue.sync(flags: .barrier) {
+    ///
+    /// Returns false for a request its client cancelled while it was still queued.
+    private func reserveSequenceNumber(devid: UInt32, seqnum: UInt32) throws -> Bool {
+        return try urbQueue.sync(flags: .barrier) {
             let key = URBKey(devid: devid, seqnum: seqnum)
+            if queued.remove(key) != nil, cancelled.remove(key) != nil {
+                return false
+            }
             guard !reserved.contains(key) else {
                 throw USBRequestError.duplicateRequest
             }
             reserved.insert(key)
+            return true
+        }
+    }
+
+    /// Record a request as it comes off the wire, ahead of its turn on its lane.
+    ///
+    /// A lane runs one request at a time, and Linux's cdc_acm keeps sixteen reads posted
+    /// on a serial port's IN endpoint, so fifteen of them wait while the first blocks.
+    /// Closing the port unlinks all sixteen. The waiting ones were unknown here, so each
+    /// UNLINK was answered "already completed" — and then the request ran and answered
+    /// too, which the Linux client treats as a protocol violation and drops the
+    /// connection over.
+    public func requestReceived(devid: UInt32, seqnum: UInt32) {
+        urbQueue.sync(flags: .barrier) {
+            _ = queued.insert(URBKey(devid: devid, seqnum: seqnum))
         }
     }
 
@@ -358,9 +409,52 @@ public class USBSubmitProcessor {
         }
     }
 
+    /// Forget the device resolved at one location. Called when its client leaves, since
+    /// the next device there may not be the one that was. Other clients stay pinned.
+    public func forgetResolvedDevice(busID: String, deviceID: String) {
+        urbQueue.sync(flags: .barrier) {
+            resolvedDevices = resolvedDevices.filter { $0.value.busID != busID || $0.value.deviceID != deviceID }
+        }
+    }
+
     /// Whether the client withdrew this request while it was running.
     func wasCancelled(devid: UInt32, seqnum: UInt32) async -> Bool {
         return urbQueue.sync { cancelled.contains(URBKey(devid: devid, seqnum: seqnum)) }
+    }
+
+    /// Decide, once and atomically, whether a finished request is answered.
+    ///
+    /// Returns false if the client withdrew it first; its RET_UNLINK is the only answer.
+    /// Otherwise the request stops being cancellable here, and its reply is marked in
+    /// flight until `replySent` reports it written.
+    ///
+    /// This was a check followed by a removal, with the send later still. An UNLINK
+    /// landing between the check and the send was acknowledged on its own lane and could
+    /// reach the socket first — and the Linux client, having given the URB back on the
+    /// RET_UNLINK, treats the RET_SUBMIT that follows as a protocol violation and drops
+    /// the whole connection ("cannot find a urb of seqnum"). openocd hit it at exit,
+    /// where it cancels reads that are completing at that same moment.
+    func claimReply(devid: UInt32, seqnum: UInt32) -> Bool {
+        return urbQueue.sync(flags: .barrier) {
+            let key = URBKey(devid: devid, seqnum: seqnum)
+            let wasCancelled = cancelled.contains(key)
+            activeURBs.removeValue(forKey: key)
+            reserved.remove(key)
+            cancelled.remove(key)
+            if !wasCancelled {
+                repliesInFlight[key] = DispatchSemaphore(value: 0)
+            }
+            return !wasCancelled
+        }
+    }
+
+    /// The reply claimed by `claimReply` has been written, or will never be. Releases any
+    /// UNLINK waiting to be answered behind it.
+    public func replySent(devid: UInt32, seqnum: UInt32) {
+        let signal: DispatchSemaphore? = urbQueue.sync(flags: .barrier) {
+            repliesInFlight.removeValue(forKey: URBKey(devid: devid, seqnum: seqnum))
+        }
+        signal?.signal()
     }
 
     /// Remove URB from active tracking
@@ -414,8 +508,9 @@ public class USBSubmitProcessor {
     private func executeControlTransfer(request: USBIPSubmitRequest, urb: USBRequestBlock, communicator: USBDeviceCommunicator) async throws -> USBTransferResult {
         let device = try createUSBDeviceFromRequest(request)
         
-        // Ensure USB interface is open for transfer execution
-        let interfaceNumber: UInt8 = 0 // Control transfers typically use interface 0
+        // Opens the whole device on first use; the number is not consulted. Which
+        // interface a transfer needs is decided by its endpoint, inside the communicator.
+        let interfaceNumber: UInt8 = 0
         if !communicator.isInterfaceOpen(device: device, interfaceNumber: interfaceNumber) {
             try await communicator.openUSBInterface(device: device, interfaceNumber: interfaceNumber)
         }
@@ -430,8 +525,8 @@ public class USBSubmitProcessor {
     private func executeBulkTransfer(request: USBIPSubmitRequest, urb: USBRequestBlock, communicator: USBDeviceCommunicator) async throws -> USBTransferResult {
         let device = try createUSBDeviceFromRequest(request)
         
-        // Ensure USB interface is open for transfer execution
-        let interfaceNumber: UInt8 = 0 // Default interface, would ideally be derived from endpoint
+        // Opens the whole device on first use; see executeControlTransfer.
+        let interfaceNumber: UInt8 = 0
         if !communicator.isInterfaceOpen(device: device, interfaceNumber: interfaceNumber) {
             try await communicator.openUSBInterface(device: device, interfaceNumber: interfaceNumber)
         }
@@ -446,8 +541,8 @@ public class USBSubmitProcessor {
     private func executeInterruptTransfer(request: USBIPSubmitRequest, urb: USBRequestBlock, communicator: USBDeviceCommunicator) async throws -> USBTransferResult {
         let device = try createUSBDeviceFromRequest(request)
         
-        // Ensure USB interface is open for transfer execution
-        let interfaceNumber: UInt8 = 0 // Default interface, would ideally be derived from endpoint
+        // Opens the whole device on first use; see executeControlTransfer.
+        let interfaceNumber: UInt8 = 0
         if !communicator.isInterfaceOpen(device: device, interfaceNumber: interfaceNumber) {
             try await communicator.openUSBInterface(device: device, interfaceNumber: interfaceNumber)
         }
@@ -462,8 +557,8 @@ public class USBSubmitProcessor {
     private func executeIsochronousTransfer(request: USBIPSubmitRequest, urb: USBRequestBlock, communicator: USBDeviceCommunicator) async throws -> USBTransferResult {
         let device = try createUSBDeviceFromRequest(request)
         
-        // Ensure USB interface is open for transfer execution
-        let interfaceNumber: UInt8 = 0 // Default interface, would ideally be derived from endpoint
+        // Opens the whole device on first use; see executeControlTransfer.
+        let interfaceNumber: UInt8 = 0
         if !communicator.isInterfaceOpen(device: device, interfaceNumber: interfaceNumber) {
             try await communicator.openUSBInterface(device: device, interfaceNumber: interfaceNumber)
         }
@@ -597,8 +692,15 @@ public class USBSubmitProcessor {
             // still being set up could not be cancelled, and the client was told its URB
             // had already completed when in fact it had not started.
             let key = URBKey(devid: devid, seqnum: seqnum)
+            if queued.contains(key) {
+                // Not started: cancelling it is simply never running it.
+                cancelled.insert(key)
+                return CancelClaim(reserved: true, urb: nil, device: nil)
+            }
             guard reserved.contains(key) else {
-                return CancelClaim(reserved: false, urb: nil, device: nil)
+                var missed = CancelClaim(reserved: false, urb: nil, device: nil)
+                missed.replyInFlight = repliesInFlight[key]
+                return missed
             }
             cancelled.insert(key)
             guard var entry = activeURBs[key] else {
@@ -609,7 +711,15 @@ public class USBSubmitProcessor {
             return CancelClaim(reserved: true, urb: entry.urb, device: entry.device)
         }
 
-        guard claimed.reserved else { return false }
+        guard claimed.reserved else {
+            // Too late to cancel, and the reply is on its way. The RET_UNLINK saying so
+            // must not overtake it, so wait for it to be written. Bounded, because a
+            // connection that dies mid-send never reports back.
+            if let inFlight = claimed.replyInFlight {
+                waitForReplyWritten(inFlight)
+            }
+            return false
+        }
 
         // Marking the URB is not enough on its own: the transfer is sitting inside a
         // blocking IOKit call and will run to completion, or to its timeout, unless the
@@ -621,6 +731,12 @@ public class USBSubmitProcessor {
             await abortTransfer(for: urb, on: device)
         }
         return true
+    }
+
+    /// Synchronous on purpose: the wait is short and bounded, and UNLINKs run on their
+    /// own lane, so blocking it holds up nothing but later UNLINKs.
+    private func waitForReplyWritten(_ signal: DispatchSemaphore) {
+        _ = signal.wait(timeout: .now() + .seconds(2))
     }
 
     /// Abort the pipe a cancelled URB is waiting on, so it returns immediately.
@@ -653,9 +769,13 @@ public class USBSubmitProcessor {
     private func createUSBDeviceFromRequest(_ request: USBIPSubmitRequest) throws -> USBDevice {
         // Resolve the real device. This used to fabricate one with vendorID and
         // productID of 0x0000 and speed .unknown, deferring to "full implementation".
-        // IOKitUSBInterface locates a device by vendor and product ID, so a
+        // IOKitUSBDevice locates a device by location and identity, so a
         // placeholder matched nothing and every transfer came back ENODEV — a
         // correctly framed RET_SUBMIT reporting that the device did not exist.
+        if let cached = urbQueue.sync(execute: { resolvedDevices[request.devid] }) {
+            return cached
+        }
+
         guard let discovery = deviceDiscovery else {
             throw USBRequestError.deviceNotAvailable
         }
@@ -669,6 +789,7 @@ public class USBSubmitProcessor {
             throw USBRequestError.deviceNotAvailable
         }
 
+        urbQueue.sync(flags: .barrier) { resolvedDevices[request.devid] = device }
         return device
     }
 }

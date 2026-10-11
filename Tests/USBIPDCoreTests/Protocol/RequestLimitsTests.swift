@@ -24,7 +24,7 @@ final class RequestLimitsTests: XCTestCase {
         return try request.encode()
     }
 
-    /// IOKitUSBInterface allocates Int(bufferLength) straight from this field, so an
+    /// IOKitUSBDevice allocates Int(bufferLength) straight from this field, so an
     /// unbounded UInt32 lets a remote client request an allocation of up to 4 GiB.
     func testOversizedTransferIsRejected() async throws {
         let config = ServerConfig()

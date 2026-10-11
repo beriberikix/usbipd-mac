@@ -11,6 +11,27 @@ public protocol USBRequestHandlerProtocol {
     
     /// Handle a USB UNLINK request and return response data  
     func handleUnlinkRequest(_ data: Data) throws -> Data
+
+    /// A RET_SUBMIT has been written to the socket, or failed to be.
+    func submitReplySent(devid: UInt32, seqnum: UInt32)
+
+    /// A CMD_SUBMIT has come off the wire and is queued behind others on its endpoint.
+    func submitReceived(devid: UInt32, seqnum: UInt32)
+
+    /// A client is about to be given this device; open it now rather than on its first
+    /// transfer.
+    func prepareDevice(busID: String)
+}
+
+public extension USBRequestHandlerProtocol {
+    /// Handlers that do not order replies against unlinks have nothing to release.
+    func submitReplySent(devid: UInt32, seqnum: UInt32) {}
+
+    /// Handlers that do not track queued requests have nothing to record.
+    func submitReceived(devid: UInt32, seqnum: UInt32) {}
+
+    /// Handlers that open devices lazily need no warning.
+    func prepareDevice(busID: String) {}
 }
 
 /// Processes USB/IP protocol requests and generates responses
@@ -104,6 +125,30 @@ public class RequestProcessor {
     }
     
     /// Set the USB request handler for processing SUBMIT/UNLINK requests
+    /// Report that a reply has left, whether or not the write succeeded.
+    ///
+    /// Only RET_SUBMIT matters: an UNLINK for a request that already completed waits for
+    /// its RET_SUBMIT to go first. See USBSubmitProcessor.claimReply.
+    public func replySent(_ reply: Data) {
+        guard reply.count >= 12, let handler = usbRequestHandler else { return }
+        let word = { (offset: Int) -> UInt32 in
+            reply.subdata(in: offset..<offset + 4).withUnsafeBytes { UInt32(bigEndian: $0.loadUnaligned(as: UInt32.self)) }
+        }
+        guard word(0) == 0x0000_0003 else { return } // USBIP_RET_SUBMIT
+        handler.submitReplySent(devid: word(8), seqnum: word(4))
+    }
+
+    /// Note a request as it comes off the wire, before it waits on its lane.
+    /// See USBSubmitProcessor.requestReceived.
+    public func requestReceived(_ message: Data) {
+        guard message.count >= 20, let handler = usbRequestHandler else { return }
+        let word = { (offset: Int) -> UInt32 in
+            message.subdata(in: offset..<offset + 4).withUnsafeBytes { UInt32(bigEndian: $0.loadUnaligned(as: UInt32.self)) }
+        }
+        guard word(0) == 0x0000_0001 else { return } // USBIP_CMD_SUBMIT
+        handler.submitReceived(devid: word(8), seqnum: word(4))
+    }
+
     public func setUSBRequestHandler(_ handler: USBRequestHandlerProtocol) {
         self.usbRequestHandler = handler
     }
@@ -152,7 +197,7 @@ public class RequestProcessor {
             log("Validating USB/IP header", .debug)
             let header = try USBIPMessageDecoder.validateHeader(in: data)
             
-            log("Received request with command: \(header.command)", .info)
+            log("Received request with command: \(header.command)", .debug)
             
             // Process based on command type
             switch header.command {
@@ -169,6 +214,10 @@ public class RequestProcessor {
                 if let importRequest = try? DeviceImportRequest.decode(from: data),
                    let decoded = try? DeviceImportResponse.decode(from: response),
                    decoded.header.status == 0 {
+                    // Before the reply, not after: opening can mean taking the device
+                    // from macOS, which re-enumerates it. Done on the first transfer
+                    // instead, that lands in the middle of the client's enumeration.
+                    usbRequestHandler?.prepareDevice(busID: importRequest.busID)
                     log("Connection entering attached phase", .info)
                     connectionState.markAttached(busID: importRequest.busID)
                 }

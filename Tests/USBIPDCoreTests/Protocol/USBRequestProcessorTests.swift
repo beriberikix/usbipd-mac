@@ -447,6 +447,45 @@ final class USBRequestProcessorTests: XCTestCase {
         XCTAssertFalse(response.isEmpty, "an ordinary request must still be answered")
     }
 
+    /// An UNLINK that arrives after a request completed, but before its RET_SUBMIT is on
+    /// the socket, must not be answered first. The Linux client gives the URB back on the
+    /// RET_UNLINK and then treats the RET_SUBMIT as a protocol violation, dropping the
+    /// connection — openocd triggered it at exit, cancelling reads as they completed.
+    func testUnlinkOfAnsweredRequestWaitsForItsReplyToBeWritten() async throws {
+        let seqnum: UInt32 = 4244
+        let requestData = try createUSBSubmitRequestData(seqnum: seqnum, direction: 1, endpoint: 0x81)
+        let response = try await submitProcessor.processSubmitRequest(requestData)
+        XCTAssertFalse(response.isEmpty, "the request completed and has a reply to send")
+
+        let started = Date()
+        let unlink = Task {
+            await self.submitProcessor.cancelURB(devid: USBRequestProcessorTests.testDevid, seqnum: seqnum)
+        }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        submitProcessor.replySent(devid: USBRequestProcessorTests.testDevid, seqnum: seqnum)
+
+        let cancelled = await unlink.value
+        XCTAssertFalse(cancelled, "a request whose reply is already going out cannot be cancelled")
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.2,
+                                    "the UNLINK must wait until the RET_SUBMIT has been written")
+    }
+
+    /// A request still waiting on its lane — behind a blocking read on the same endpoint —
+    /// must be cancellable, and must then never run or answer. Answering the UNLINK
+    /// "already completed" and the request later as well is what made Linux drop the
+    /// connection when a serial port with sixteen reads posted was closed.
+    func testUnlinkOfQueuedRequestCancelsItBeforeItRuns() async throws {
+        let seqnum: UInt32 = 4245
+        submitProcessor.requestReceived(devid: USBRequestProcessorTests.testDevid, seqnum: seqnum)
+
+        let cancelled = await submitProcessor.cancelURB(devid: USBRequestProcessorTests.testDevid, seqnum: seqnum)
+        XCTAssertTrue(cancelled, "a queued request should be cancellable")
+
+        let requestData = try createUSBSubmitRequestData(seqnum: seqnum, direction: 1, endpoint: 0x81)
+        let response = try await submitProcessor.processSubmitRequest(requestData)
+        XCTAssertTrue(response.isEmpty, "a request cancelled while queued must not answer")
+    }
+
     func testUnknownSequenceNumberIsNotCancellable() async throws {
         let cancelled = await submitProcessor.cancelURB(devid: USBRequestProcessorTests.testDevid, seqnum: 999_999)
         XCTAssertFalse(cancelled, "a sequence number never submitted should not be cancellable")

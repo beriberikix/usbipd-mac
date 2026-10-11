@@ -105,7 +105,7 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
             try await self.submitProcessor.processSubmitRequest(data)
         }
         
-        log("USB SUBMIT request processed successfully", .info)
+        log("USB SUBMIT request processed successfully", .debug)
         return result
     }
     
@@ -140,6 +140,50 @@ public class USBRequestHandler: USBRequestHandlerProtocol {
         return result
     }
     
+    public func submitReplySent(devid: UInt32, seqnum: UInt32) {
+        submitProcessor.replySent(devid: devid, seqnum: seqnum)
+    }
+
+    public func submitReceived(devid: UInt32, seqnum: UInt32) {
+        submitProcessor.requestReceived(devid: devid, seqnum: seqnum)
+    }
+
+    public func prepareDevice(busID: String) {
+        guard let separator = busID.firstIndex(of: "-"),
+              let communicator = deviceCommunicator,
+              let device = try? deviceDiscovery.getDevice(
+                busID: String(busID[..<separator]),
+                deviceID: String(busID[busID.index(after: separator)...])) else {
+            return
+        }
+        // Failure is not fatal here: the first transfer tries again and reports it.
+        _ = try? executeAsyncSynchronously {
+            try await communicator.openUSBInterface(device: device, interfaceNumber: 0)
+        }
+    }
+
+    /// Release the IOKit session for a device once the client using it has gone.
+    ///
+    /// The busid is the one the client imported, e.g. "2-1.1".
+    public func releaseDevice(busID: String) {
+        guard let separator = busID.firstIndex(of: "-") else { return }
+        let bus = String(busID[..<separator])
+        let device = String(busID[busID.index(after: separator)...])
+
+        // Whatever connects next at this busid may be a different device — the same
+        // board rebooted into its bootloader — so nothing resolved for this one carries over.
+        submitProcessor.forgetResolvedDevice(busID: bus, deviceID: device)
+
+        guard let communicator = deviceCommunicator else { return }
+        // Sessions are keyed by location. A device that has left can no longer be looked
+        // up, but its session still has to go, so it is named by location alone.
+        let resolved = (try? deviceDiscovery.getDevice(busID: bus, deviceID: device)) ?? USBDevice(
+            busID: bus, deviceID: device, vendorID: 0, productID: 0,
+            deviceClass: 0, deviceSubClass: 0, deviceProtocol: 0, speed: .unknown,
+            manufacturerString: nil, productString: nil, serialNumberString: nil)
+        communicator.releaseDevice(resolved)
+    }
+
     // MARK: - Helper Methods
     
     /// Get device information for USB request processing

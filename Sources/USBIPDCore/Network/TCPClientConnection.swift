@@ -13,6 +13,7 @@ public class TCPClientConnection: ClientConnection {
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "TCPClientConnection", qos: .userInitiated)
     private var isActive = false
+    private var disconnected = false
 
     /// When this connection last carried traffic, so the server can reap idle clients.
     /// Guarded by its own lock because the reaper reads it off the connection queue.
@@ -158,11 +159,23 @@ public class TCPClientConnection: ClientConnection {
     
     /// Handle connection disconnection
     private func handleDisconnection() {
+        // Reached from the client's FIN, a receive error, .failed and .cancelled -
+        // and the cancel() below itself delivers .cancelled - so run once.
+        guard !disconnected else { return }
+        disconnected = true
+
         logger.info("Handling client disconnection", context: ["connectionId": id.uuidString])
-        
+
         // Clean up resources gracefully (requirement 2.5)
         isActive = false
-        
+
+        // Dropping the NWConnection does not close its socket; only cancel() does.
+        // Without this, every client that hung up first - each `usbip list`, each
+        // failed import - left a socket in CLOSE_WAIT for the life of the daemon
+        // (one found deaf to clients on its tailnet address held 609 of them).
+        // Cancelling an already-cancelled connection is a no-op.
+        connection.cancel()
+
         // Notify about disconnection
         onDisconnected?(id)
         

@@ -218,5 +218,11 @@ func main() {
     }
 }
 
+// The daemon's re-enumeration helper runs before anything else is initialised: it does
+// one IOKit call and exits. See IOKitUSBDevice.captureFromMacOS.
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == IOKitUSBDevice.reEnumerateHelperCommand {
+    exit(IOKitUSBDevice.reEnumerateHelperMain(Array(CommandLine.arguments.dropFirst(2))))
+}
+
 // Run the main function
 main()
